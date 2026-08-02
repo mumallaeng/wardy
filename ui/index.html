@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wardy Safety Monitor</title>
+  <style>
+    :root { --bg:#0b1220; --panel:#121d30; --line:#263650; --text:#e8eef8; --muted:#8fa2bd; --green:#43d19e; --amber:#f5bd4f; --red:#ff6b6b; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,sans-serif; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:20px 28px; border-bottom:1px solid var(--line); }
+    h1,h2,p { margin:0; } h1 { font-size:22px; } h2 { font-size:15px; margin-bottom:14px; } .sub { color:var(--muted); margin-top:4px; }
+    .status { display:flex; gap:9px; align-items:center; color:var(--green); } .dot { width:9px; height:9px; border-radius:50%; background:currentColor; }
+    main { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:18px; padding:22px 28px; max-width:1500px; margin:auto; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; } .wide { grid-column:1/-1; }
+    .camera { position:relative; min-height:440px; overflow:hidden; background:#070b13; border-radius:8px; display:grid; place-items:center; }
+    video { width:100%; height:100%; max-height:560px; object-fit:contain; display:block; } canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    .camera-note { position:absolute; inset:auto 14px 12px; color:var(--muted); text-align:center; } button { border:1px solid #3c5375; background:#1d3150; color:var(--text); border-radius:7px; padding:9px 13px; cursor:pointer; } button:hover { background:#294568; }
+    .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:12px; } .metric { background:#0d1727; padding:12px; border-radius:8px; } .metric b { display:block; font-size:24px; margin-top:4px; } .label { color:var(--muted); font-size:12px; }
+    .risk { display:flex; align-items:center; gap:14px; margin-bottom:18px; } .risk-score { font-size:44px; font-weight:700; color:var(--amber); } .bar { height:9px; background:#25324a; border-radius:8px; overflow:hidden; flex:1; } .bar i { display:block; height:100%; width:42%; background:var(--amber); }
+    .zones { display:grid; gap:10px; } .zone { display:flex; justify-content:space-between; padding:10px 12px; background:#0d1727; border-radius:7px; } .zone span:last-child { color:var(--amber); }
+    table { width:100%; border-collapse:collapse; } th,td { padding:11px 9px; border-bottom:1px solid var(--line); text-align:left; } th { color:var(--muted); font-size:12px; font-weight:500; } .tag { display:inline-block; padding:3px 7px; border-radius:99px; font-size:12px; } .tag.warn { background:#4d3a18; color:#ffd477; } .tag.info { background:#183a48; color:#7edaf2; } .tag.ok { background:#153d34; color:#77e5ba; }
+    @media (max-width:800px) { header,main { padding:16px; } main { display:block; } .panel { margin-bottom:16px; } .camera { min-height:300px; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>Wardy <span class="sub">Safety Monitor</span></h1><p class="sub">병실·요양시설 안전 모니터링</p></div><div class="status"><i class="dot"></i><span id="connection">UI 연결됨 · 샘플 모드</span></div></header>
+  <main>
+    <section class="panel"><h2>실시간 관찰 화면</h2><div class="camera"><video id="camera" autoplay muted playsinline></video><canvas id="overlay"></canvas><div class="camera-note" id="camera-note">카메라를 시작하면 영상이 표시됩니다.<br><button id="start">웹캠 시작</button></div></div><div class="metrics"><div class="metric"><span class="label">추적 객체</span><b id="tracks">3</b></div><div class="metric"><span class="label">현재 FPS</span><b>--</b></div><div class="metric"><span class="label">최근 이벤트</span><b id="event-count">2</b></div></div></section>
+    <aside class="panel"><h2>현재 위험도</h2><div class="risk"><strong class="risk-score" id="score">42</strong><div class="bar"><i id="scorebar"></i></div></div><p id="risk-label">주의 · 침대 주변 체류</p><hr style="border:0;border-top:1px solid var(--line);margin:20px 0"><h2>관심 구역 체류시간</h2><div class="zones"><div class="zone"><span>침대 주변</span><span>02:14</span></div><div class="zone"><span>출입구</span><span>00:38</span></div><div class="zone"><span>위험 구역</span><span>00:00</span></div></div></aside>
+    <section class="panel wide"><h2>이벤트 로그</h2><table><thead><tr><th>시각</th><th>이벤트</th><th>대상</th><th>위험도</th><th>상태</th><th></th></tr></thead><tbody id="events"><tr><td>15:42:18</td><td>침대 주변 장시간 체류</td><td>person #01</td><td><span class="tag warn">42</span></td><td><span class="tag warn">신규</span></td><td><button class="ack">확인</button></td></tr><tr><td>15:41:52</td><td>의료기기 이동</td><td>wheelchair #02</td><td><span class="tag info">18</span></td><td><span class="tag ok">해제</span></td><td>—</td></tr></tbody></table></section>
+  </main>
+  <script>
+    const video=document.querySelector('#camera'), note=document.querySelector('#camera-note'), canvas=document.querySelector('#overlay'), ctx=canvas.getContext('2d');
+    document.querySelector('#start').onclick=async()=>{ try { video.srcObject=await navigator.mediaDevices.getUserMedia({video:true,audio:false}); note.style.display='none'; draw(); } catch(e) { note.innerHTML='카메라를 열 수 없습니다.<br>브라우저 권한과 HTTPS 또는 localhost 접속을 확인하세요.'; } };
+    function draw(){ canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||360; ctx.clearRect(0,0,canvas.width,canvas.height); if(video.readyState>=2){ const boxes=[[.32,.22,.22,.48,'person #01'],[.62,.42,.18,.25,'wheelchair #02']]; boxes.forEach(([x,y,w,h,label],i)=>{ctx.strokeStyle=i?'#43d19e':'#f5bd4f';ctx.lineWidth=3;ctx.strokeRect(x*canvas.width,y*canvas.height,w*canvas.width,h*canvas.height);ctx.fillStyle=ctx.strokeStyle;ctx.font='bold 14px system-ui';ctx.fillText(label,x*canvas.width+5,y*canvas.height-7);}); } requestAnimationFrame(draw); }
+    document.querySelectorAll('.ack').forEach(b=>b.onclick=()=>{b.parentElement.previousElementSibling.innerHTML='<span class="tag ok">확인</span>';b.remove();});
+  </script>
+</body>
+</html>
