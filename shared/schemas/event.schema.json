@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wardy.local/schemas/event.schema.json",
+  "title": "Wardy Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_type", "occurred_at", "first_seen_at", "last_seen_at", "subject_location", "event_status", "reason", "source_results", "media_type"],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "event_type": { "enum": ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity", "managed_item_moved", "zone_entry", "zone_dwell", "camera_fault", "detection_fault"] },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "first_seen_at": { "type": "string", "format": "date-time" },
+    "last_seen_at": { "type": "string", "format": "date-time" },
+    "subject_id": { "type": ["string", "null"] },
+    "subject_name": { "type": ["string", "null"] },
+    "subject_location": { "type": "string" },
+    "object_id": { "type": ["string", "null"] },
+    "object_class": { "type": ["string", "null"] },
+    "zone_id": { "type": ["string", "null"] },
+    "care_status": { "type": ["string", "null"], "enum": ["normal", "caution", "warning", "emergency", null] },
+    "event_status": { "enum": ["new", "confirmed", "released", "false_detection"] },
+    "confirmed_at": { "type": ["string", "null"], "format": "date-time" },
+    "released_at": { "type": ["string", "null"], "format": "date-time" },
+    "false_detection_at": { "type": ["string", "null"], "format": "date-time" },
+    "reason": { "type": "string", "minLength": 1 },
+    "source_results": { "type": "array", "items": { "type": "object" } },
+    "media_type": { "enum": ["none", "image", "video"] },
+    "media_path": { "type": ["string", "null"] },
+    "media_started_at": { "type": ["string", "null"], "format": "date-time" },
+    "media_ended_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
