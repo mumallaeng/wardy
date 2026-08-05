@@ -18,6 +18,7 @@
       <button class="nav-tab is-active" data-view="dashboard">대시보드</button>
       <button class="nav-tab" data-view="events">이벤트 기록</button>
       <button class="nav-tab" data-view="settings">설정</button>
+      <button class="nav-tab" data-view="jetson">Jetson 연결</button>
     </nav>
     <div class="privacy-pill"><span class="status-dot is-ok"></span>로컬 UI</div>
   </header>
@@ -33,6 +34,7 @@
         <div><span class="status-dot" id="camera-dot"></span><small>카메라</small><strong id="camera-status">대기</strong></div>
         <div><span class="status-dot is-muted"></span><small>안전 감지</small><strong>AI 미연결</strong></div>
         <div><span class="status-dot is-ok"></span><small>이벤트 UI</small><strong>준비됨</strong></div>
+        <div><span class="status-dot" id="jetson-dot"></span><small>Jetson 서비스</small><strong id="jetson-status">확인 전</strong></div>
       </div>
 
       <div class="dashboard-grid">
@@ -94,7 +96,16 @@
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">MANAGED ITEMS</span><h2>관리·제외 물품</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="물품 이름"><select name="policy"><option value="included">관리 대상</option><option value="excluded">이벤트 제외</option></select><button class="button" type="submit">추가</button></form><div class="chip-list" id="item-list"></div></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>상황별 알림</h2></div></div><div class="setting-list" id="notification-settings"></div></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 전송</dt><dd>사용하지 않음</dd></div><div><dt>UI 저장 위치</dt><dd>브라우저 localStorage</dd></div><div><dt>AI 등록 정보</dt><dd>저장하지 않음</dd></div><div><dt>이벤트 자료</dt><dd>경로 metadata만 표시</dd></div></dl></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 cloud</dt><dd>사용하지 않음</dd></div><div><dt>UI demo·설정</dt><dd>브라우저 localStorage</dd></div><div><dt>운영 처리 대상</dt><dd>로컬 Jetson</dd></div><div><dt>이벤트 자료</dt><dd>연결 후 Jetson 로컬 저장</dd></div></dl></section>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="jetson">
+      <div class="page-heading"><div><p class="eyebrow">JETSON SERVICE</p><h1>Jetson 연결</h1><p>가정 내부 network의 Jetson Wardy service 상태를 확인합니다. 이 연결은 AI 추론을 구현하거나 실행하지 않습니다.</p></div><button class="button button-secondary" id="check-jetson" type="button">연결 다시 확인</button></div>
+      <div class="connection-grid">
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">ENDPOINT</span><h2>서비스 주소</h2></div><span class="badge" id="jetson-badge">확인 전</span></div><form id="jetson-form" class="stack-form"><label>Jetson base URL<input id="jetson-base-url" type="url" inputmode="url" autocomplete="url" placeholder="예: http://jetson.local:8787"></label><button class="button" type="submit">저장하고 연결 확인</button></form><p class="helper">비워 두면 현재 UI를 제공한 주소를 사용합니다. 다른 장치에서 접속할 때는 Jetson의 LAN 주소와 service port를 입력합니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">HEALTH CHECK</span><h2>연결 확인 결과</h2></div></div><div class="connection-result" id="jetson-result" aria-live="polite">연결 확인을 실행해 주세요.</div><dl class="data-facts"><div><dt>현재 기준 주소</dt><dd id="jetson-resolved-url">—</dd></div><div><dt>확인 endpoint</dt><dd><code>/api/health</code></dd></div><div><dt>event·state 동기화</dt><dd>후속 통합</dd></div><div><dt>AI 실행</dt><dd>포함하지 않음</dd></div></dl></section>
+        <section class="card wide-card boundary-card"><div><span class="section-kicker">CURRENT BOUNDARY</span><h2>현재 연결 범위</h2></div><p>브라우저는 Jetson service의 생존 상태만 확인합니다. camera inference, tracking, event rule과 실시간 event·state 수신은 AI 학습 및 후속 통합 단계에서 연결합니다.</p></section>
       </div>
     </section>
 

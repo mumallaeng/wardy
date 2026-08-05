@@ -7,15 +7,17 @@ const root = path.resolve(import.meta.dirname, "../..");
 
 test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", async () => {
   const html = await readFile(path.join(root, "apps/index.html"), "utf8");
-  for (const view of ["dashboard", "events", "settings"]) {
+  for (const view of ["dashboard", "events", "settings", "jetson"]) {
     assert.match(html, new RegExp(`data-view-panel=["']${view}["']`));
   }
-  for (const id of ["start-camera", "event-table-body"]) {
+  for (const id of ["start-camera", "event-table-body", "jetson-form", "check-jetson"]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
   assert.match(html, /AI 미연결/);
   assert.match(html, /AI 결과 아님/);
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
+  assert.match(html, /\/api\/health/);
+  assert.match(html, /event·state 동기화<\/dt><dd>후속 통합/);
 });
 
 test("이벤트 작업 버튼은 표 셀 내부 그룹으로 정렬한다", async () => {

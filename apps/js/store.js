@@ -59,6 +59,10 @@ export class WardyStore {
     return this.#commit((state) => { state.settings.notifications[eventType] = value; });
   }
 
+  setJetsonBaseUrl(baseUrl) {
+    return this.#commit((state) => { state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() }; });
+  }
+
   addEvent(event) {
     return this.#commit((state) => { state.events.unshift(clone(event)); });
   }

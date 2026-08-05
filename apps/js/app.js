@@ -1,6 +1,7 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES, createDemoEvent } from "./constants.js";
 import { CameraController } from "./camera.js";
 import { filterEvents, formatDateTime, renderEventRows, sortEvents, summarizeEvents } from "./events.js";
+import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.js";
 import { OverlayController } from "./overlay.js";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.js";
 import { WardyStore } from "./store.js";
@@ -9,6 +10,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const store = new WardyStore(window.localStorage);
 let demoOverlayEnabled = false;
+let jetsonStatus = "idle";
 
 function toast(message) {
   const element = document.createElement("div");
@@ -40,6 +42,32 @@ function setCameraStatus(status) {
 }
 
 const camera = new CameraController($("#camera"), setCameraStatus);
+
+function setJetsonStatus(status, detail = {}) {
+  jetsonStatus = status;
+  const labels = { idle: "확인 전", connecting: "연결 확인 중", connected: "연결됨", fault: "연결 실패" };
+  const connected = status === "connected";
+  $("#jetson-status").textContent = labels[status] ?? status;
+  $("#jetson-dot").className = `status-dot${connected ? " is-ok" : status === "fault" ? " is-fault" : ""}`;
+  $("#jetson-badge").textContent = labels[status] ?? status;
+  $("#jetson-badge").className = `badge${connected ? " is-connected" : status === "fault" ? " is-fault" : ""}`;
+  $("#check-jetson").disabled = status === "connecting";
+  $("#jetson-result").textContent = connected
+    ? `${detail.service}${detail.version ? ` ${detail.version}` : ""} · ${detail.endpoint}`
+    : detail.message ?? (status === "connecting" ? `${detail.endpoint} 확인 중` : "연결 확인을 실행해 주세요.");
+}
+
+const jetson = new JetsonConnection({ onStatus: setJetsonStatus });
+
+async function checkJetsonConnection() {
+  const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
+  try {
+    await jetson.check(baseUrl, window.location.origin);
+    toast("Jetson Wardy 서비스에 연결했습니다.");
+  } catch (error) {
+    toast(error.message);
+  }
+}
 
 function renderCareState(state) {
   const care = CARE_STATUS[state.careState.status] ?? CARE_STATUS.normal;
@@ -111,6 +139,9 @@ function render(state = store.getState()) {
   renderSubjects($("#subject-list"), state.subjects, (id) => store.removeSubject(id));
   renderManagedItems($("#item-list"), state.managedItems, (id) => store.removeManagedItem(id));
   renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
+  if (document.activeElement !== $("#jetson-base-url")) $("#jetson-base-url").value = state.settings.jetson?.baseUrl ?? "";
+  const configured = state.settings.jetson?.baseUrl || window.location.origin;
+  $("#jetson-resolved-url").textContent = configured;
 }
 
 store.subscribe(render);
@@ -120,7 +151,7 @@ setCameraStatus("idle");
 $$('.nav-tab').forEach((button) => button.addEventListener("click", () => openView(button.dataset.view)));
 $$('[data-open-view]').forEach((button) => button.addEventListener("click", () => openView(button.dataset.openView)));
 const initialView = location.hash.slice(1);
-if (["dashboard", "events", "settings"].includes(initialView)) openView(initialView);
+if (["dashboard", "events", "settings", "jetson"].includes(initialView)) openView(initialView);
 
 $("#start-camera").addEventListener("click", async () => {
   try { await camera.start(); toast("카메라 영상을 로컬 화면에 표시합니다."); }
@@ -177,4 +208,21 @@ $("#export-events").addEventListener("click", () => {
 });
 $("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
 
+$("#jetson-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const rawBaseUrl = $("#jetson-base-url").value;
+  try {
+    if (rawBaseUrl.trim()) normalizeJetsonBaseUrl(rawBaseUrl);
+    store.setJetsonBaseUrl(rawBaseUrl);
+    setJetsonStatus("idle");
+    await checkJetsonConnection();
+  } catch (error) {
+    setJetsonStatus("fault", { message: error.message });
+    toast(error.message);
+  }
+});
+$("#check-jetson").addEventListener("click", checkJetsonConnection);
+
 window.addEventListener("beforeunload", () => camera.stop());
+
+setJetsonStatus(jetsonStatus);
