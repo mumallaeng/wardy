@@ -1,13 +1,33 @@
+import type { Detection, OverlaySettings, Zone, ZoneRect } from "./types.ts";
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Drawing {
+  start: Point;
+  end: Point;
+}
+
 export class OverlayController {
-  constructor(canvas, container, onZoneCreated) {
+  private readonly canvas: HTMLCanvasElement;
+  private readonly container: HTMLElement;
+  private readonly context: CanvasRenderingContext2D;
+  private readonly onZoneCreated: (zone: ZoneRect) => void;
+  private detections: readonly Detection[] = [];
+  private zones: readonly Zone[] = [];
+  private settings: OverlaySettings = { showClass: true, showRole: true, showName: true, showPosture: true };
+  private drawing: Drawing | null = null;
+  private readonly resizeObserver: ResizeObserver;
+
+  constructor(canvas: HTMLCanvasElement, container: HTMLElement, onZoneCreated: (zone: ZoneRect) => void) {
     this.canvas = canvas;
     this.container = container;
-    this.context = canvas.getContext("2d");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("2D canvas를 초기화할 수 없습니다.");
+    this.context = context;
     this.onZoneCreated = onZoneCreated;
-    this.detections = [];
-    this.zones = [];
-    this.settings = { showClass: true, showRole: true, showName: true, showPosture: true };
-    this.drawing = null;
     this.resizeObserver = new ResizeObserver(() => this.draw());
     this.resizeObserver.observe(container);
     canvas.addEventListener("pointerdown", (event) => this.#pointerDown(event));
@@ -15,24 +35,24 @@ export class OverlayController {
     canvas.addEventListener("pointerup", (event) => this.#pointerUp(event));
   }
 
-  setDetections(detections) { this.detections = detections; this.draw(); }
-  setZones(zones) { this.zones = zones; this.draw(); }
-  setSettings(settings) { this.settings = { ...settings }; this.draw(); }
-  beginZoneDrawing() { this.container.classList.add("is-zone-drawing"); }
+  setDetections(detections: readonly Detection[]): void { this.detections = detections; this.draw(); }
+  setZones(zones: readonly Zone[]): void { this.zones = zones; this.draw(); }
+  setSettings(settings: OverlaySettings): void { this.settings = { ...settings }; this.draw(); }
+  beginZoneDrawing(): void { this.container.classList.add("is-zone-drawing"); }
 
-  #point(event) {
+  #point(event: PointerEvent): Point {
     const rect = this.canvas.getBoundingClientRect();
     return { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)), y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) };
   }
-  #pointerDown(event) {
+  #pointerDown(event: PointerEvent): void {
     if (!this.container.classList.contains("is-zone-drawing")) return;
     this.canvas.setPointerCapture(event.pointerId);
     const point = this.#point(event);
     this.drawing = { start: point, end: point };
     this.draw();
   }
-  #pointerMove(event) { if (this.drawing) { this.drawing.end = this.#point(event); this.draw(); } }
-  #pointerUp(event) {
+  #pointerMove(event: PointerEvent): void { if (this.drawing) { this.drawing.end = this.#point(event); this.draw(); } }
+  #pointerUp(event: PointerEvent): void {
     if (!this.drawing) return;
     this.drawing.end = this.#point(event);
     const { start, end } = this.drawing;
@@ -45,7 +65,7 @@ export class OverlayController {
     this.draw();
   }
 
-  draw() {
+  draw(): void {
     const rect = this.container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.max(1, Math.round(rect.width * dpr));
@@ -58,7 +78,7 @@ export class OverlayController {
     this.detections.forEach((detection) => this.#drawDetection(detection, dpr));
   }
 
-  #drawZone(zone, dpr, draft = false) {
+  #drawZone(zone: ZoneRect, dpr: number, draft = false): void {
     const x = zone.x * this.canvas.width, y = zone.y * this.canvas.height, width = zone.width * this.canvas.width, height = zone.height * this.canvas.height;
     this.context.save();
     this.context.strokeStyle = draft ? "#ffffff" : "#62b88f";
@@ -74,7 +94,7 @@ export class OverlayController {
     this.context.restore();
   }
 
-  #drawDetection(detection, dpr) {
+  #drawDetection(detection: Detection, dpr: number): void {
     const [nx, ny, nw, nh] = detection.box;
     const x = nx * this.canvas.width, y = ny * this.canvas.height, width = nw * this.canvas.width, height = nh * this.canvas.height;
     const labels = [];

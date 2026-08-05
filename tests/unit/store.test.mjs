@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { MemoryStorage, WardyStore } from "../../apps/js/store.js";
+import { MemoryStorage, WardyStore } from "../../apps/js/store.ts";
 
 test("상태와 설정을 로컬 저장소에 보존한다", () => {
   const storage = new MemoryStorage();

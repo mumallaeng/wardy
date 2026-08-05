@@ -22,15 +22,24 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /V4L2/);
 });
 
+test("브라우저 application source는 TypeScript만 사용한다", async () => {
+  const entries = await readdir(path.join(root, "apps/js"));
+  assert.equal(entries.some((entry) => entry.endsWith(".js")), false);
+  assert.ok(entries.includes("app.ts"));
+  assert.ok(entries.includes("types.ts"));
+  const html = await readFile(path.join(root, "apps/index.html"), "utf8");
+  assert.match(html, /src=["']\.\/js\/app\.ts["']/);
+});
+
 test("이벤트 작업 버튼은 표 셀 내부 그룹으로 정렬한다", async () => {
-  const source = await readFile(path.join(root, "apps/js/events.js"), "utf8");
+  const source = await readFile(path.join(root, "apps/js/events.ts"), "utf8");
   const css = await readFile(path.join(root, "apps/css/app.css"), "utf8");
   assert.match(source, /className = "table-action-group"/);
   assert.doesNotMatch(css, /\.table-actions\s*\{[^}]*display:\s*flex/s);
 });
 
 test("화면 자산은 외부 네트워크 자원에 의존하지 않는다", async () => {
-  const files = ["apps/index.html", "apps/css/app.css", "apps/js/app.js"];
+  const files = ["apps/index.html", "apps/css/app.css", "apps/js/app.ts"];
   for (const file of files) {
     const content = await readFile(path.join(root, file), "utf8");
     assert.doesNotMatch(content, /(?:src|href)=["']https?:\/\//);

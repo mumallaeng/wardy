@@ -1,13 +1,14 @@
-import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES } from "./constants.js";
+import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES } from "./constants.ts";
+import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
 
-export function sortEvents(events) {
+export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
   return [...events].sort((a, b) => {
     const statusDelta = (CARE_STATUS[b.care_status]?.rank ?? -1) - (CARE_STATUS[a.care_status]?.rank ?? -1);
-    return statusDelta || new Date(b.occurred_at) - new Date(a.occurred_at);
+    return statusDelta || new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
   });
 }
 
-export function filterEvents(events, filters = {}) {
+export function filterEvents(events: readonly WardyEvent[], filters: EventFilters = {}): WardyEvent[] {
   const query = (filters.query ?? "").trim().toLocaleLowerCase("ko");
   return sortEvents(events).filter((event) => {
     if (filters.eventStatus && filters.eventStatus !== "all" && event.event_status !== filters.eventStatus) return false;
@@ -18,10 +19,10 @@ export function filterEvents(events, filters = {}) {
   });
 }
 
-export function summarizeEvents(events, now = new Date()) {
-  const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+export function summarizeEvents(events: readonly WardyEvent[], now = new Date()): EventSummary {
+  const dayKey = (date: Date): string => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   const today = events.filter((event) => dayKey(new Date(event.occurred_at)) === dayKey(now));
-  const result = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
+  const result: EventSummary = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
   today.forEach((event) => {
     if (event.care_status in result) result[event.care_status] += 1;
     if (event.event_status === "new") result.unconfirmed += 1;
@@ -29,19 +30,19 @@ export function summarizeEvents(events, now = new Date()) {
   return result;
 }
 
-export function formatDateTime(value) {
+export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 }
 
-function chip(text, className) {
+function chip(text: string, className: string): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = `status-chip is-${className}`;
   span.textContent = text;
   return span;
 }
 
-function actionButton(text, action, eventId) {
+function actionButton(text: string, action: string, eventId: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.dataset.action = action;
@@ -50,7 +51,7 @@ function actionButton(text, action, eventId) {
   return button;
 }
 
-export function renderEventRows(tbody, events) {
+export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly WardyEvent[]): void {
   tbody.replaceChildren();
   events.forEach((event) => {
     const row = document.createElement("tr");

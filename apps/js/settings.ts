@@ -1,6 +1,7 @@
-import { EVENT_TYPES, OVERLAY_FIELDS } from "./constants.js";
+import { EVENT_TYPES, OVERLAY_FIELDS } from "./constants.ts";
+import type { EventType, ManagedItem, NotificationLevel, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
 
-function switchControl(checked, onChange, label) {
+function switchControl(checked: boolean, onChange: (checked: boolean) => void, label: string): HTMLLabelElement {
   const wrapper = document.createElement("label");
   wrapper.className = "switch";
   wrapper.setAttribute("aria-label", label);
@@ -13,7 +14,11 @@ function switchControl(checked, onChange, label) {
   return wrapper;
 }
 
-export function renderOverlaySettings(container, settings, onChange) {
+export function renderOverlaySettings(
+  container: HTMLElement,
+  settings: OverlaySettings,
+  onChange: (key: OverlaySettingKey, value: boolean) => void,
+): void {
   container.replaceChildren();
   OVERLAY_FIELDS.forEach((field) => {
     const row = document.createElement("div");
@@ -29,9 +34,14 @@ export function renderOverlaySettings(container, settings, onChange) {
   });
 }
 
-export function renderNotifications(container, settings, onChange) {
+export function renderNotifications(
+  container: HTMLElement,
+  settings: NotificationSettings,
+  onChange: (eventType: EventType, value: NotificationLevel) => void,
+): void {
   container.replaceChildren();
-  ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity"].forEach((eventType) => {
+  const configurableEventTypes: EventType[] = ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity"];
+  configurableEventTypes.forEach((eventType) => {
     const row = document.createElement("div");
     row.className = "setting-row";
     const label = document.createElement("div");
@@ -42,20 +52,21 @@ export function renderNotifications(container, settings, onChange) {
     label.append(title, description);
     const select = document.createElement("select");
     select.setAttribute("aria-label", `${EVENT_TYPES[eventType]} 알림`);
-    [["off", "사용 안 함"], ["normal", "일반"], ["strong", "강하게"]].forEach(([value, text]) => {
+    const options: Array<[NotificationLevel, string]> = [["off", "사용 안 함"], ["normal", "일반"], ["strong", "강하게"]];
+    options.forEach(([value, text]) => {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = text;
       select.append(option);
     });
     select.value = settings[eventType] ?? "normal";
-    select.addEventListener("change", () => onChange(eventType, select.value));
+    select.addEventListener("change", () => onChange(eventType, select.value as NotificationLevel));
     row.append(label, select);
     container.append(row);
   });
 }
 
-function removeButton(label, onClick) {
+function removeButton(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "icon-button";
@@ -65,7 +76,7 @@ function removeButton(label, onClick) {
   return button;
 }
 
-export function renderSubjects(container, subjects, onRemove) {
+export function renderSubjects(container: HTMLElement, subjects: readonly Subject[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   subjects.forEach((subject) => {
     const item = document.createElement("div");
@@ -81,7 +92,7 @@ export function renderSubjects(container, subjects, onRemove) {
   });
 }
 
-export function renderManagedItems(container, items, onRemove) {
+export function renderManagedItems(container: HTMLElement, items: readonly ManagedItem[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   items.forEach((item) => {
     const chip = document.createElement("span");
@@ -98,7 +109,7 @@ export function renderManagedItems(container, items, onRemove) {
   });
 }
 
-export function renderZones(container, zones, onRemove) {
+export function renderZones(container: HTMLElement, zones: readonly Zone[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   if (!zones.length) {
     const empty = document.createElement("p");
