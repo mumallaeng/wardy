@@ -12,7 +12,7 @@ export type EventType =
   | "detection_fault";
 export type MediaType = "none" | "image" | "video";
 export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture";
-export type NotificationLevel = "off" | "normal" | "strong";
+export type NotificationSetting = "off" | "on";
 export type ManagedItemPolicy = "included" | "excluded";
 export type CameraStatus = "idle" | "connecting" | "connected" | "fault";
 export type JetsonStatus = CameraStatus;
@@ -48,7 +48,7 @@ export interface WardyEvent {
 }
 
 export interface OverlaySettings extends Record<OverlaySettingKey, boolean> {}
-export type NotificationSettings = Partial<Record<EventType, NotificationLevel>>;
+export type NotificationSettings = Partial<Record<EventType, NotificationSetting>>;
 
 export interface CareState {
   status: CareStatus;

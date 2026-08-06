@@ -1,5 +1,5 @@
 import { EVENT_TYPES, OVERLAY_FIELDS } from "./constants.ts";
-import type { EventType, ManagedItem, NotificationLevel, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
+import type { EventType, ManagedItem, NotificationSetting, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
 
 /**
  * Creates an accessible checkbox switch with an initial state and change callback.
@@ -57,7 +57,7 @@ export function renderOverlaySettings(
 export function renderNotifications(
   container: HTMLElement,
   settings: NotificationSettings,
-  onChange: (eventType: EventType, value: NotificationLevel) => void,
+  onChange: (eventType: EventType, value: NotificationSetting) => void,
 ): void {
   container.replaceChildren();
   const configurableEventTypes: EventType[] = ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity"];
@@ -68,20 +68,10 @@ export function renderNotifications(
     const title = document.createElement("strong");
     title.textContent = EVENT_TYPES[eventType];
     const description = document.createElement("small");
-    description.textContent = "알림 사용 여부와 강도";
+    description.textContent = "알림 ON/OFF";
     label.append(title, description);
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `${EVENT_TYPES[eventType]} 알림`);
-    const options: Array<[NotificationLevel, string]> = [["off", "사용 안 함"], ["normal", "일반"], ["strong", "강하게"]];
-    options.forEach(([value, text]) => {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = text;
-      select.append(option);
-    });
-    select.value = settings[eventType] ?? "normal";
-    select.addEventListener("change", () => onChange(eventType, select.value as NotificationLevel));
-    row.append(label, select);
+    const enabled = settings[eventType] !== "off";
+    row.append(label, switchControl(enabled, (checked) => onChange(eventType, checked ? "on" : "off"), `${EVENT_TYPES[eventType]} 알림`));
     container.append(row);
   });
 }

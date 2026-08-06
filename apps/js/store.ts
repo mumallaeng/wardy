@@ -1,5 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
-import type { CareStatus, EventType, ManagedItemPolicy, NotificationLevel, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CareStatus, EventType, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -67,7 +67,7 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
     || !isRecord(settings.notifications)
-    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "normal", "strong"].includes(String(level)))
+    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on", "normal", "strong"].includes(String(level)))
     || !isRecord(settings.jetson)
     || typeof settings.jetson.baseUrl !== "string") return false;
 
@@ -108,7 +108,12 @@ export class WardyStore {
       if (!stored) return createInitialState();
       const parsed = JSON.parse(stored);
       if (!isWardyState(parsed)) return createInitialState();
-      return parsed;
+      const state = parsed as WardyState;
+      const notifications = state.settings.notifications as Record<string, NotificationSetting | "normal" | "strong">;
+      Object.entries(notifications).forEach(([eventType, value]) => {
+        notifications[eventType] = value === "off" ? "off" : "on";
+      });
+      return state;
     } catch {
       return createInitialState();
     }
@@ -143,7 +148,7 @@ export class WardyStore {
     return this.#commit((state) => { state.settings.overlay[key] = Boolean(value); });
   }
 
-  setNotificationSetting(eventType: EventType, value: NotificationLevel): WardyState {
+  setNotificationSetting(eventType: EventType, value: NotificationSetting): WardyState {
     return this.#commit((state) => { state.settings.notifications[eventType] = value; });
   }
 
