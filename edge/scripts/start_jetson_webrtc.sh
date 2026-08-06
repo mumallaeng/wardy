@@ -19,7 +19,13 @@ camera_height="${WARDY_CAMERA_HEIGHT:-480}"
 camera_fps="${WARDY_CAMERA_FPS:-30}"
 webrtc_bitrate="${WARDY_WEBRTC_BITRATE:-2000000}"
 keyframe_interval="${WARDY_WEBRTC_KEYFRAME_INTERVAL:-15}"
-mediamtx_bin="${WARDY_MEDIAMTX_BIN:-mediamtx}"
+bundled_mediamtx="${edge_dir}/tools/mediamtx"
+if [[ -x "${bundled_mediamtx}" ]]; then
+  default_mediamtx="${bundled_mediamtx}"
+else
+  default_mediamtx="mediamtx"
+fi
+mediamtx_bin="${WARDY_MEDIAMTX_BIN:-${default_mediamtx}}"
 edge_service="${WARDY_EDGE_SERVICE_BIN:-${edge_dir}/build/wardy_edge_service}"
 
 for command in "${mediamtx_bin}" gst-inspect-1.0; do
