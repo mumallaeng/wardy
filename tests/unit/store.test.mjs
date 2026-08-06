@@ -55,3 +55,23 @@ test("관리 물품의 Jetson 학습 사진 수를 보존한다", () => {
   const restored = new WardyStore(storage, "training-samples").getState();
   assert.equal(restored.managedItems.find((candidate) => candidate.id === item.id).sampleCount, 4);
 });
+
+test("상황별 알림은 ON과 OFF만 저장한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "notification-toggle");
+  store.setNotificationSetting("fall_suspected", "off");
+  assert.equal(store.getState().settings.notifications.fall_suspected, "off");
+  store.setNotificationSetting("fall_suspected", "on");
+  assert.equal(store.getState().settings.notifications.fall_suspected, "on");
+});
+
+test("기존 알림 강도 값은 ON으로 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.settings.notifications = { fall_suspected: "strong", inactivity: "normal", hazard_detected: "off" };
+  storage.setItem("legacy-notifications", JSON.stringify(initial));
+  const restored = new WardyStore(storage, "legacy-notifications").getState();
+  assert.deepEqual(restored.settings.notifications, {
+    fall_suspected: "on", inactivity: "on", hazard_detected: "off",
+  });
+});

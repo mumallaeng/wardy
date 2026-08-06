@@ -126,7 +126,7 @@ export function createInitialState(): WardyState {
     events: createDemoEvents(),
     settings: {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
-      notifications: { fall_suspected: "strong", inactivity: "normal", hazard_detected: "normal", hazard_proximity: "strong" },
+      notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       jetson: { baseUrl: "" },
     },
     managedItems: [

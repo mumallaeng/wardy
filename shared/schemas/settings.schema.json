@@ -12,7 +12,7 @@
         "showClass": { "type": "boolean" }, "showRole": { "type": "boolean" }, "showName": { "type": "boolean" }, "showPosture": { "type": "boolean" }
       }
     },
-    "notifications": { "type": "object", "additionalProperties": { "enum": ["off", "normal", "strong"] } },
+    "notifications": { "type": "object", "additionalProperties": { "enum": ["off", "on"] } },
     "managed_items": { "type": "array", "items": { "type": "object", "required": ["id", "label", "policy"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "policy": { "enum": ["included", "excluded"] } } } },
     "zones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "x", "y", "width", "height"] } }
   }
