@@ -45,3 +45,13 @@ test("초기화하면 독립된 초기 상태로 돌아간다", () => {
   assert.equal(state.managedItems.length, initialItemCount);
   assert.equal(state.managedItems.some((item) => item.label === "테스트 물품"), false);
 });
+
+test("관리 물품의 Jetson 학습 사진 수를 보존한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "training-samples");
+  store.addManagedItem("주방 칼", "included");
+  const item = store.getState().managedItems.at(-1);
+  store.setManagedItemSampleCount(item.id, 4);
+  const restored = new WardyStore(storage, "training-samples").getState();
+  assert.equal(restored.managedItems.find((candidate) => candidate.id === item.id).sampleCount, 4);
+});

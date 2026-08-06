@@ -122,7 +122,15 @@ export class WardyStore {
 
   addManagedItem(label: string, policy: ManagedItemPolicy): WardyState {
     return this.#commit((state) => {
-      state.managedItems.push({ id: `item-${crypto.randomUUID()}`, label, policy });
+      state.managedItems.push({ id: `item-${crypto.randomUUID()}`, label, policy, sampleCount: 0 });
+    });
+  }
+
+  setManagedItemSampleCount(itemId: string, sampleCount: number): WardyState {
+    return this.#commit((state) => {
+      const item = state.managedItems.find((candidate) => candidate.id === itemId);
+      if (!item) throw new Error(`Unknown managed item: ${itemId}`);
+      item.sampleCount = Math.max(0, Math.trunc(sampleCount));
     });
   }
 

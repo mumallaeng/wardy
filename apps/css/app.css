@@ -151,6 +151,8 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
 .item-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 99px; background: white; }
 .item-chip.is-excluded { color: var(--muted); text-decoration: line-through; background: #f1f2ef; }
 .item-chip button { border: 0; color: inherit; background: transparent; }
+.item-chip .item-capture-button { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--forest); background: white; font-weight: 700; }
+.item-chip .item-capture-button:hover { border-color: var(--forest-2); color: white; background: var(--forest-2); }
 .data-facts { margin: 0; }
 .data-facts div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .data-facts div:last-child { border-bottom: 0; }

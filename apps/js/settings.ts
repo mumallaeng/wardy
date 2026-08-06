@@ -92,19 +92,32 @@ export function renderSubjects(container: HTMLElement, subjects: readonly Subjec
   });
 }
 
-export function renderManagedItems(container: HTMLElement, items: readonly ManagedItem[], onRemove: (id: string) => void): void {
+export function renderManagedItems(
+  container: HTMLElement,
+  items: readonly ManagedItem[],
+  onRemove: (id: string) => void,
+  onCapture: (id: string) => Promise<void> | void,
+): void {
   container.replaceChildren();
   items.forEach((item) => {
     const chip = document.createElement("span");
     chip.className = `item-chip${item.policy === "excluded" ? " is-excluded" : ""}`;
     const label = document.createElement("span");
-    label.textContent = `${item.label} · ${item.policy === "included" ? "관리" : "제외"}`;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "×";
-    button.setAttribute("aria-label", `${item.label} 삭제`);
-    button.addEventListener("click", () => onRemove(item.id));
-    chip.append(label, button);
+    label.textContent = `${item.label} · ${item.policy === "included" ? "관리" : "제외"} · 학습 사진 ${item.sampleCount ?? 0}장`;
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.className = "item-capture-button";
+    capture.textContent = "카메라 촬영";
+    capture.addEventListener("click", async () => {
+      capture.disabled = true;
+      try { await onCapture(item.id); } finally { capture.disabled = false; }
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `${item.label} 삭제`);
+    remove.addEventListener("click", () => onRemove(item.id));
+    chip.append(label, capture, remove);
     container.append(chip);
   });
 }
