@@ -1,0 +1,48 @@
+#include "api/mjpeg_service.hpp"
+
+#include <atomic>
+#include <csignal>
+#include <exception>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+std::atomic_bool stop_requested{false};
+
+void request_stop(int) {
+  stop_requested = true;
+}
+
+int parse_integer(const char* value, const char* name) {
+  try {
+    std::size_t parsed = 0;
+    const int result = std::stoi(value, &parsed);
+    if (value[parsed] != '\0') throw std::invalid_argument("trailing characters");
+    return result;
+  } catch (const std::exception&) {
+    throw std::invalid_argument(std::string{name} + " must be an integer");
+  }
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+  try {
+    wardy::api::MjpegServiceConfig config;
+    if (argc > 1) config.port = parse_integer(argv[1], "port");
+    if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
+    if (argc > 3) config.camera.width = parse_integer(argv[3], "width");
+    if (argc > 4) config.camera.height = parse_integer(argv[4], "height");
+    if (argc > 5) throw std::invalid_argument("usage: wardy_edge_service [port] [device] [width] [height]");
+
+    std::signal(SIGINT, request_stop);
+    std::signal(SIGTERM, request_stop);
+    wardy::api::MjpegService service(config);
+    return service.run(stop_requested);
+  } catch (const std::exception& error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
+}

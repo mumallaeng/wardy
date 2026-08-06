@@ -69,7 +69,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .card { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
 .camera-stage { position: relative; display: grid; place-items: center; min-height: 470px; overflow: hidden; border-radius: 14px; background: #101813; }
-.camera-stage video { display: block; width: 100%; height: 100%; max-height: 620px; object-fit: contain; }
+.camera-stage img { display: block; width: 100%; height: 100%; max-height: 620px; object-fit: contain; }
 .camera-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; }
 .camera-stage.is-zone-drawing canvas { cursor: crosshair; pointer-events: auto; }
 .camera-empty { position: absolute; display: grid; gap: 7px; max-width: 430px; padding: 20px; color: #dce8df; text-align: center; }
