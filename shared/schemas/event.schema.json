@@ -7,7 +7,7 @@
   "required": ["event_id", "event_type", "occurred_at", "first_seen_at", "last_seen_at", "subject_location", "event_status", "reason", "source_results", "media_type"],
   "properties": {
     "event_id": { "type": "string", "minLength": 1 },
-    "event_type": { "enum": ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity", "managed_item_moved", "zone_entry", "zone_dwell", "camera_fault", "detection_fault"] },
+    "event_type": { "enum": ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity", "zone_entry", "zone_dwell", "camera_fault", "detection_fault"] },
     "occurred_at": { "type": "string", "format": "date-time" },
     "first_seen_at": { "type": "string", "format": "date-time" },
     "last_seen_at": { "type": "string", "format": "date-time" },

@@ -19,7 +19,6 @@ export const EVENT_TYPES: Readonly<Record<EventType, string>> = Object.freeze({
   inactivity: "장시간 정지",
   hazard_detected: "위험물 탐지",
   hazard_proximity: "위험물 근접",
-  managed_item_moved: "관리 물품 이동",
   zone_entry: "주의 구역 진입",
   zone_dwell: "주의 구역 장시간 체류",
   camera_fault: "카메라 입력 이상",
