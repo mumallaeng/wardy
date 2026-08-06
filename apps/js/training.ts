@@ -17,6 +17,7 @@ export class TrainingSampleClient {
   }
 
   async capture(item: ManagedItem, baseUrl: string,
+                accessToken: string,
                 fallbackOrigin = globalThis.location?.origin ?? ""): Promise<TrainingSampleResult> {
     const endpoint = trainingSampleUrl(baseUrl, fallbackOrigin);
     const response = await this.fetchImpl(endpoint, {
@@ -26,6 +27,7 @@ export class TrainingSampleClient {
         "X-Wardy-Item-Id": item.id,
         "X-Wardy-Item-Label": encodeURIComponent(item.label),
         "X-Wardy-Item-Policy": item.policy,
+        "X-Wardy-Access-Token": accessToken,
       },
       cache: "no-store",
     });
@@ -47,6 +49,7 @@ export class TrainingSampleClient {
   }
 
   async captureSubject(subject: Subject, baseUrl: string,
+                       accessToken: string,
                        fallbackOrigin = globalThis.location?.origin ?? ""): Promise<TrainingSampleResult> {
     const response = await this.fetchImpl(subjectReferenceUrl(baseUrl, fallbackOrigin), {
       method: "POST",
@@ -55,6 +58,7 @@ export class TrainingSampleClient {
         "X-Wardy-Subject-Id": subject.id,
         "X-Wardy-Subject-Name": encodeURIComponent(subject.name),
         "X-Wardy-Subject-Role": encodeURIComponent(subject.role),
+        "X-Wardy-Access-Token": accessToken,
       },
       cache: "no-store",
     });

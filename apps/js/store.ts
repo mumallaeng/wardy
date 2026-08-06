@@ -38,9 +38,15 @@ function isIdentityReview(value: unknown): boolean {
 function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
+  if (Array.isArray(value.events)) {
+    value.events = value.events.filter(
+      (event) => !isRecord(event) || event.event_type !== "managed_item_moved",
+    );
+  }
   const settings = value.settings;
   if (!isRecord(settings) || !isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
+  delete notifications.managed_item_moved;
   Object.entries(notifications).forEach(([eventType, level]) => {
     if (level === "normal" || level === "strong") notifications[eventType] = "on";
   });
@@ -253,10 +259,10 @@ export class WardyStore {
   addIdentityReview(review: Omit<IdentityReview, "id" | "decision" | "subjectId">): WardyState {
     return this.#commit((state) => {
       state.identityReviews.unshift({
+        ...review,
         id: `review-${crypto.randomUUID()}`,
         decision: "pending",
         subjectId: null,
-        ...review,
       });
     });
   }

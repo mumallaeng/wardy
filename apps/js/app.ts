@@ -50,6 +50,7 @@ const store = new WardyStore(window.localStorage);
 const trainingSamples = new TrainingSampleClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
+let jetsonAccessToken = "";
 
 /**
  * Displays a temporary notification message.
@@ -76,7 +77,7 @@ function openView(viewName: ViewName): void {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLIFrameElement>("#camera"), (zone) => {
+const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLVideoElement>("#camera"), (zone) => {
   store.addZone(zone);
   toast(`'${zone.name}' 구역을 로컬에 저장했습니다.`);
 });
@@ -95,7 +96,7 @@ function setCameraStatus(status: CameraStatus): void {
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
 }
 
-const camera = new JetsonCameraController($<HTMLIFrameElement>("#camera"), setCameraStatus);
+const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
 
 /**
  * Updates the Jetson connection status and related interface elements.
@@ -233,7 +234,7 @@ async function captureManagedItemSample(itemId: string): Promise<void> {
   if (!item) throw new Error(`등록된 물품을 찾을 수 없습니다: ${itemId}`);
   try {
     const result = await trainingSamples.capture(
-      item, state.settings.jetson?.baseUrl ?? "", window.location.origin,
+      item, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
     );
     store.setManagedItemSampleCount(item.id, result.sampleCount);
     toast(`'${item.label}' 학습 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -253,7 +254,7 @@ async function captureSubjectReference(subjectId: string): Promise<void> {
   if (!subject) throw new Error(`등록된 인물을 찾을 수 없습니다: ${subjectId}`);
   try {
     const result = await trainingSamples.captureSubject(
-      subject, state.settings.jetson?.baseUrl ?? "", window.location.origin,
+      subject, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
     );
     store.setSubjectReferenceSampleCount(subject.id, result.sampleCount);
     toast(`'${subject.name}' 식별 기준 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -326,10 +327,10 @@ $$<HTMLButtonElement>('[data-open-view]').forEach((button) => button.addEventLis
 const initialView = location.hash.slice(1);
 if (["dashboard", "events", "data", "settings", "jetson"].includes(initialView)) openView(initialView as ViewName);
 
-$("#start-camera").addEventListener("click", () => {
+$("#start-camera").addEventListener("click", async () => {
   try {
     const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
-    const endpoint = camera.start(baseUrl, window.location.origin);
+    const endpoint = await camera.start(baseUrl, jetsonAccessToken, window.location.origin);
     toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
   } catch (error) {
     setCameraStatus("fault");
@@ -417,6 +418,7 @@ $("#reset-local-data").addEventListener("click", () => { if (window.confirm("현
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const rawBaseUrl = $<HTMLInputElement>("#jetson-base-url").value;
+  jetsonAccessToken = $<HTMLInputElement>("#jetson-access-token").value;
   try {
     if (rawBaseUrl.trim()) normalizeJetsonBaseUrl(rawBaseUrl);
     store.setJetsonBaseUrl(rawBaseUrl);

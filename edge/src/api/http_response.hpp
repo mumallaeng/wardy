@@ -5,35 +5,37 @@
 
 namespace wardy::api {
 
-inline std::string common_headers() {
-  return "Access-Control-Allow-Origin: *\r\n"
+inline std::string common_headers(const std::string& allowed_origin) {
+  return "Access-Control-Allow-Origin: " + allowed_origin + "\r\n"
+         "Vary: Origin\r\n"
          "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-         "Access-Control-Allow-Headers: Accept, Content-Type, X-Wardy-Item-Id, X-Wardy-Item-Label, X-Wardy-Item-Policy, X-Wardy-Subject-Id, X-Wardy-Subject-Name, X-Wardy-Subject-Role\r\n"
+         "Access-Control-Allow-Headers: Accept, Content-Type, X-Wardy-Access-Token, X-Wardy-Item-Id, X-Wardy-Item-Label, X-Wardy-Item-Policy, X-Wardy-Subject-Id, X-Wardy-Subject-Name, X-Wardy-Subject-Role\r\n"
          "Cache-Control: no-store\r\n";
 }
 
 inline std::string json_response(int status, const std::string& reason,
-                                 const std::string& body) {
+                                 const std::string& body,
+                                 const std::string& allowed_origin) {
   return "HTTP/1.1 " + std::to_string(status) + " " + reason + "\r\n" +
-         common_headers() + "Content-Type: application/json; charset=utf-8\r\n" +
+         common_headers(allowed_origin) + "Content-Type: application/json; charset=utf-8\r\n" +
          "Content-Length: " + std::to_string(body.size()) + "\r\n"
          "Connection: close\r\n\r\n" + body;
 }
 
-inline std::string health_response(bool camera_connected) {
+inline std::string health_response(bool camera_connected, const std::string& allowed_origin) {
   const std::string body =
       std::string{"{\"service\":\"wardy-edge\",\"version\":\"0.1.0\",\"camera\":\""} +
       (camera_connected ? "connected" : "fault") + "\"}";
-  return json_response(200, "OK", body);
+  return json_response(200, "OK", body, allowed_origin);
 }
 
-inline std::string options_response() {
-  return "HTTP/1.1 204 No Content\r\n" + common_headers() +
+inline std::string options_response(const std::string& allowed_origin) {
+  return "HTTP/1.1 204 No Content\r\n" + common_headers(allowed_origin) +
          "Content-Length: 0\r\nConnection: close\r\n\r\n";
 }
 
-inline std::string mjpeg_headers() {
-  return "HTTP/1.1 200 OK\r\n" + common_headers() +
+inline std::string mjpeg_headers(const std::string& allowed_origin) {
+  return "HTTP/1.1 200 OK\r\n" + common_headers(allowed_origin) +
          "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
          "Connection: close\r\n\r\n";
 }

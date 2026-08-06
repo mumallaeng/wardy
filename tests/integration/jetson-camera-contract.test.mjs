@@ -38,11 +38,14 @@ test("Jetson WebRTC는 H264 hardware encode와 UDP ICE gateway를 사용한다",
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
   assert.match(launcher, /nvv4l2h264enc/);
   assert.match(launcher, /video\/x-h264,profile=baseline/);
-  assert.match(launcher, /rtsp:\/\/127\.0\.0\.1:8554\/wardy/);
+  assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
   assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
   assert.match(gateway, /webrtcAddress: :8889/);
   assert.match(gateway, /webrtcLocalUDPAddress: :8189/);
   assert.match(gateway, /webrtcLocalTCPAddress: ""/);
+  assert.doesNotMatch(gateway, /webrtcAllowOrigins: \["\*"\]/);
+  assert.match(gateway, /user: wardy-publisher/);
+  assert.match(gateway, /user: wardy-viewer/);
 });
 
 test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있다", async () => {
@@ -75,8 +78,11 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
   assert.match(source, /save_camera_state\(state, "connected"/);
   assert.match(source, /save_camera_state\(state, "fault"/);
   const captureFunction = source.slice(source.indexOf("void capture_frames"));
-  const captureLoop = captureFunction.slice(captureFunction.indexOf("while (state->running)"), captureFunction.indexOf("camera.close()"));
-  assert.doesNotMatch(captureLoop, /save_system_state|save_camera_state/);
+  const frameLoop = captureFunction.slice(
+    captureFunction.indexOf("while (state->running) {", captureFunction.indexOf("camera.open()")),
+    captureFunction.indexOf("camera.close()"),
+  );
+  assert.doesNotMatch(frameLoop, /save_system_state|save_camera_state/);
 });
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
@@ -86,6 +92,8 @@ test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장�
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
   assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+  assert.match(source, /x-wardy-access-token/);
+  assert.match(source, /origin_allowed/);
 });
 
 test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", async () => {

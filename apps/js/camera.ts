@@ -16,34 +16,131 @@ export function jetsonWebRtcStreamUrl(value: string, fallbackOrigin = ""): strin
   return url.toString();
 }
 
-export class JetsonCameraController {
-  private readonly frame: HTMLIFrameElement;
-  private readonly onStatusChange: ((status: CameraStatus) => void) | undefined;
+export function jetsonWhepUrl(value: string, fallbackOrigin = ""): string {
+  const url = new URL(normalizeJetsonBaseUrl(value, fallbackOrigin));
+  url.port = "8889";
+  url.pathname = "/wardy/whep";
+  url.search = "";
+  return url.toString();
+}
 
-  constructor(frame: HTMLIFrameElement, onStatusChange?: (status: CameraStatus) => void) {
-    this.frame = frame;
+function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const onChange = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      peer.removeEventListener("icegatheringstatechange", onChange);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onChange);
+  });
+}
+
+export class JetsonCameraController {
+  private readonly video: HTMLVideoElement;
+  private readonly onStatusChange: ((status: CameraStatus) => void) | undefined;
+  private peer: RTCPeerConnection | null = null;
+  private resourceUrl: string | null = null;
+  private authorization = "";
+  private abortController: AbortController | null = null;
+  private generation = 0;
+
+  constructor(video: HTMLVideoElement, onStatusChange?: (status: CameraStatus) => void) {
+    this.video = video;
     this.onStatusChange = onStatusChange;
   }
 
-  start(baseUrl: string, fallbackOrigin = globalThis.location?.origin ?? ""): string {
-    const endpoint = jetsonWebRtcStreamUrl(baseUrl, fallbackOrigin);
-    this.stop();
-    this.onStatusChange?.("connecting");
+  async start(baseUrl: string, accessToken: string,
+              fallbackOrigin = globalThis.location?.origin ?? ""): Promise<string> {
+    if (!accessToken.trim()) throw new Error("Jetson 접근 토큰을 입력해 주세요.");
+    this.stop("connecting");
+    const generation = this.generation;
+    const endpoint = jetsonWhepUrl(baseUrl, fallbackOrigin);
+    this.authorization = `Basic ${btoa(`wardy-viewer:${accessToken}`)}`;
+    const peer = new RTCPeerConnection();
+    this.peer = peer;
+    const abortController = new AbortController();
+    this.abortController = abortController;
+    const timeout = globalThis.setTimeout(() => abortController.abort(), 5000);
+    let peerReady = false;
+    let videoPlaying = false;
+    const fail = () => {
+      globalThis.clearTimeout(readinessTimeout);
+      if (generation === this.generation) this.stop("fault");
+    };
+    const readinessTimeout = globalThis.setTimeout(() => {
+      fail();
+    }, 8000);
+    const updateReady = () => {
+      if (generation === this.generation && peerReady && videoPlaying) {
+        globalThis.clearTimeout(readinessTimeout);
+        this.onStatusChange?.("connected");
+      }
+    };
 
-    this.frame.onload = () => {
-      this.onStatusChange?.("connected");
+    peer.addTransceiver("video", { direction: "recvonly" });
+    peer.addEventListener("track", (event) => {
+      this.video.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+      void this.video.play().catch(fail);
+    });
+    peer.addEventListener("connectionstatechange", () => {
+      if (generation !== this.generation) return;
+      peerReady = peer.connectionState === "connected";
+      if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
+        fail();
+      } else {
+        updateReady();
+      }
+    });
+    this.video.onplaying = () => {
+      videoPlaying = true;
+      updateReady();
     };
-    this.frame.onerror = () => {
-      this.onStatusChange?.("fault");
-    };
-    this.frame.src = endpoint;
-    return endpoint;
+    this.video.onerror = fail;
+
+    try {
+      await peer.setLocalDescription(await peer.createOffer());
+      await waitForIceGathering(peer);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: this.authorization, "Content-Type": "application/sdp" },
+        body: peer.localDescription?.sdp ?? "",
+        signal: abortController.signal,
+      });
+      if (!response.ok) throw new Error(`WebRTC 연결 요청이 HTTP ${response.status}로 실패했습니다.`);
+      const location = response.headers.get("location");
+      this.resourceUrl = location ? new URL(location, endpoint).toString() : null;
+      await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
+      return endpoint;
+    } catch (error) {
+      globalThis.clearTimeout(readinessTimeout);
+      if (generation === this.generation) this.stop("fault");
+      throw error;
+    } finally {
+      globalThis.clearTimeout(timeout);
+    }
   }
 
   stop(status: CameraStatus = "idle"): void {
-    this.frame.onload = null;
-    this.frame.onerror = null;
-    this.frame.removeAttribute("src");
+    this.generation += 1;
+    const resourceUrl = this.resourceUrl;
+    const authorization = this.authorization;
+    this.resourceUrl = null;
+    this.authorization = "";
+    if (resourceUrl) {
+      void fetch(resourceUrl, {
+        method: "DELETE",
+        headers: { Authorization: authorization, "If-Match": "*" },
+      }).catch(() => undefined);
+    }
+    this.abortController?.abort();
+    this.abortController = null;
+    this.video.onplaying = null;
+    this.video.onerror = null;
+    this.video.pause();
+    this.video.srcObject = null;
+    this.peer?.close();
+    this.peer = null;
     this.onStatusChange?.(status);
   }
 }

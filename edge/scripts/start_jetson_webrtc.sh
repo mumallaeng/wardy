@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 edge_dir="$(cd "${script_dir}/.." && pwd)"
@@ -19,6 +20,9 @@ camera_height="${WARDY_CAMERA_HEIGHT:-480}"
 camera_fps="${WARDY_CAMERA_FPS:-30}"
 webrtc_bitrate="${WARDY_WEBRTC_BITRATE:-2000000}"
 keyframe_interval="${WARDY_WEBRTC_KEYFRAME_INTERVAL:-15}"
+ui_origin="${WARDY_UI_ORIGIN:-}"
+access_token="${WARDY_ACCESS_TOKEN:-}"
+publish_token="${WARDY_PUBLISH_TOKEN:-}"
 bundled_mediamtx="${edge_dir}/tools/mediamtx"
 if [[ -x "${bundled_mediamtx}" ]]; then
   default_mediamtx="${bundled_mediamtx}"
@@ -27,6 +31,15 @@ else
 fi
 mediamtx_bin="${WARDY_MEDIAMTX_BIN:-${default_mediamtx}}"
 edge_service="${WARDY_EDGE_SERVICE_BIN:-${edge_dir}/build/wardy_edge_service}"
+
+if [[ -z "${ui_origin}" || -z "${access_token}" || -z "${publish_token}" ]]; then
+  echo "WARDY_UI_ORIGIN, WARDY_ACCESS_TOKEN, and WARDY_PUBLISH_TOKEN are required" >&2
+  exit 1
+fi
+if [[ ! "${access_token}" =~ ^[A-Za-z0-9._~-]+$ || ! "${publish_token}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+  echo "Wardy tokens may contain only URL-safe unreserved characters" >&2
+  exit 1
+fi
 
 for command in "${mediamtx_bin}" gst-inspect-1.0; do
   if ! command -v "${command}" >/dev/null 2>&1; then
@@ -51,9 +64,15 @@ fi
 camera_source="${WARDY_CAMERA_SOURCE:-v4l2src device=${camera_device} ! video/x-raw,width=${camera_width},height=${camera_height},framerate=${camera_fps}/1}"
 export WARDY_CAMERA_PIPELINE="${camera_source} ! tee name=wardy_camera \
 wardy_camera. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1 sync=false \
-wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! videoconvert ! nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! nvv4l2h264enc control-rate=1 bitrate=${webrtc_bitrate} iframeinterval=${keyframe_interval} insert-sps-pps=1 preset-level=1 ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://127.0.0.1:8554/wardy protocols=tcp latency=0"
+wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! videoconvert ! nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! nvv4l2h264enc control-rate=1 bitrate=${webrtc_bitrate} iframeinterval=${keyframe_interval} insert-sps-pps=1 preset-level=1 ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://wardy-publisher:${publish_token}@127.0.0.1:8554/wardy protocols=tcp latency=0"
 
 mkdir -p "${edge_dir}/db" "${edge_dir}/data/training"
+chmod 0700 "${edge_dir}/db" "${edge_dir}/data" "${edge_dir}/data/training"
+
+export MTX_WEBRTCALLOWORIGINS="${ui_origin}"
+export MTX_AUTHINTERNALUSERS_0_PASS="${publish_token}"
+export MTX_AUTHINTERNALUSERS_1_PASS="${access_token}"
+export MTX_AUTHINTERNALUSERS_1_IPS="0.0.0.0/0,::/0"
 
 "${mediamtx_bin}" "${edge_dir}/config/mediamtx.yml" &
 mediamtx_pid=$!
@@ -63,10 +82,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+rtsp_ready=false
 for _ in {1..50}; do
   if (exec 3<>/dev/tcp/127.0.0.1/8554) 2>/dev/null; then
     exec 3>&-
-    break
+    if kill -0 "${mediamtx_pid}" 2>/dev/null; then
+      rtsp_ready=true
+      break
+    fi
   fi
   if ! kill -0 "${mediamtx_pid}" 2>/dev/null; then
     echo "MediaMTX stopped before opening the RTSP listener" >&2
@@ -74,6 +97,10 @@ for _ in {1..50}; do
   fi
   sleep 0.1
 done
+if [[ "${rtsp_ready}" != true ]]; then
+  echo "MediaMTX did not open the RTSP listener within 5 seconds" >&2
+  exit 1
+fi
 
 cd "${repo_dir}"
 "${edge_service}" 8787 0 "${camera_width}" "${camera_height}" \

@@ -11,3 +11,4 @@
 .env.*
 !.env.example
 !*.env.example
+/edge/config/jetson.env

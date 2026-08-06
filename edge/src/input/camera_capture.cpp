@@ -40,8 +40,9 @@ CameraCapture& CameraCapture::operator=(CameraCapture&&) noexcept = default;
 /**
  * @brief Opens the configured camera device.
  *
- * Closes any currently open device before opening the configured device and
- * applying its frame dimensions, buffer size, and optional frame-rate request.
+ * Closes any currently open device first. A configured GStreamer pipeline takes
+ * precedence and owns its capture properties; otherwise the V4L2 device is
+ * opened and the requested dimensions, buffer size, and frame rate are applied.
  *
  * @throws std::logic_error If called on a moved-from camera capture.
  * @throws std::runtime_error If the camera device cannot be opened.

@@ -41,7 +41,7 @@ export function renderIdentityReviews(
     card.className = "review-card";
     const visual = document.createElement("div");
     visual.className = "review-placeholder";
-    visual.textContent = "로컬 식별 장면";
+    visual.textContent = "미리보기 연결 전";
     const body = document.createElement("div");
     body.className = "review-body";
     const title = document.createElement("strong");
@@ -49,7 +49,7 @@ export function renderIdentityReviews(
       ? `'${review.predictedName}'으로 추정 · ${Math.round((review.confidence ?? 0) * 100)}%`
       : "미등록 인물로 추정";
     const path = document.createElement("small");
-    path.textContent = `${review.capturedAt} · ${review.imagePath}`;
+    path.textContent = `${review.capturedAt} · Jetson 로컬 보관`;
     body.append(title, path);
 
     if (review.decision === "pending") {
@@ -61,32 +61,38 @@ export function renderIdentityReviews(
         option.textContent = `${subject.name} · ${subject.role}`;
         select.append(option);
       });
+      select.disabled = true;
       const actions = document.createElement("div");
       actions.className = "review-actions";
       const confirm = document.createElement("button");
       confirm.type = "button";
       confirm.className = "button button-small";
       confirm.textContent = "선택한 인물";
-      confirm.disabled = !subjects.length;
+      confirm.disabled = true;
       confirm.addEventListener("click", () => onResolve(review.id, "subject", select.value));
       const unknown = document.createElement("button");
       unknown.type = "button";
       unknown.className = "button button-secondary button-small";
       unknown.textContent = "미등록 인물";
+      unknown.disabled = true;
       unknown.addEventListener("click", () => onResolve(review.id, "unknown"));
       const excluded = document.createElement("button");
       excluded.type = "button";
       excluded.className = "text-button";
       excluded.textContent = "학습 제외";
+      excluded.disabled = true;
       excluded.addEventListener("click", () => onResolve(review.id, "excluded"));
       actions.append(confirm, unknown, excluded);
       body.append(select, actions);
+      const notice = document.createElement("small");
+      notice.textContent = "보안된 장면 미리보기 연결 뒤 답변할 수 있습니다.";
+      body.append(notice);
     } else {
       const result = document.createElement("span");
       result.className = "badge";
       const subject = subjects.find((candidate) => candidate.id === review.subjectId);
       result.textContent = review.decision === "subject"
-        ? `답변 완료 · ${subject?.name ?? review.subjectId}`
+        ? `답변 완료 · ${subject?.name ?? "알 수 없는 인물"}`
         : review.decision === "unknown" ? "답변 완료 · 미등록 인물" : "답변 완료 · 학습 제외";
       body.append(result);
     }

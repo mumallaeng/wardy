@@ -129,3 +129,17 @@ test("기존 알림 강도 값은 ON으로 이전한다", () => {
     fall_suspected: "on", inactivity: "on", hazard_detected: "off",
   });
 });
+
+test("제거된 관리 물품 이동 event를 제외하고 기존 상태를 복구한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.careState.status = "warning";
+  initial.events.push({ ...initial.events[0], event_id: "EVT-LEGACY", event_type: "managed_item_moved" });
+  initial.settings.notifications.managed_item_moved = "on";
+  storage.setItem("legacy-managed-item-event", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-managed-item-event").getState();
+  assert.equal(restored.careState.status, "warning");
+  assert.equal(restored.events.some((event) => event.event_id === "EVT-LEGACY"), false);
+  assert.equal("managed_item_moved" in restored.settings.notifications, false);
+});

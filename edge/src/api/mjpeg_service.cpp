@@ -175,6 +175,44 @@ bool send_text(int socket_fd, const std::string& text) {
   return send_all(socket_fd, text.data(), text.size());
 }
 
+bool apply_socket_timeouts(int socket_fd) {
+  const timeval timeout{5, 0};
+  return ::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0 &&
+         ::setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == 0;
+}
+
+std::string json_escape(const std::string& value) {
+  std::ostringstream escaped;
+  escaped << std::hex << std::setfill('0');
+  for (const unsigned char character : value) {
+    switch (character) {
+      case '"': escaped << "\\\""; break;
+      case '\\': escaped << "\\\\"; break;
+      case '\b': escaped << "\\b"; break;
+      case '\f': escaped << "\\f"; break;
+      case '\n': escaped << "\\n"; break;
+      case '\r': escaped << "\\r"; break;
+      case '\t': escaped << "\\t"; break;
+      default:
+        if (character < 0x20) {
+          escaped << "\\u" << std::setw(4) << static_cast<int>(character);
+        } else {
+          escaped << character;
+        }
+    }
+  }
+  return escaped.str();
+}
+
+bool origin_allowed(const std::string& request, const std::string& allowed_origin) {
+  const auto origin = request_header(request, "origin");
+  return !origin || *origin == allowed_origin;
+}
+
+bool authorized(const std::string& request, const std::string& access_token) {
+  return request_header(request, "x-wardy-access-token").value_or("") == access_token;
+}
+
 std::string read_request(int socket_fd) {
   std::string request;
   char buffer[1024];
@@ -216,6 +254,9 @@ std::string capture_training_sample(const std::string& request,
       return !state->running || state->sequence != previous_sequence ||
              !state->camera_error.empty();
     });
+    if (!state->camera_error.empty()) {
+      throw std::runtime_error("Jetson camera fault: " + state->camera_error);
+    }
     if (!captured || state->sequence == previous_sequence || state->jpeg.empty()) {
       throw std::runtime_error("camera sample capture timed out");
     }
@@ -247,16 +288,16 @@ std::string capture_training_sample(const std::string& request,
         sample_id, item_id, relative_path.generic_string(), captured_at,
         state->frame_width, state->frame_height,
     });
+    const std::size_t sample_count = state->database->count_training_samples(item_id);
+    return "{\"sample_id\":\"" + sample_id + "\",\"image_path\":\"" +
+           relative_path.generic_string() + "\",\"sample_count\":" +
+           std::to_string(sample_count) + "}";
   } catch (...) {
     std::error_code remove_error;
     std::filesystem::remove(absolute_path, remove_error);
     throw;
   }
 
-  const std::size_t sample_count = state->database->count_training_samples(item_id);
-  return "{\"sample_id\":\"" + sample_id + "\",\"image_path\":\"" +
-         relative_path.generic_string() + "\",\"sample_count\":" +
-         std::to_string(sample_count) + "}";
 }
 
 std::string capture_subject_reference(const std::string& request,
@@ -289,6 +330,9 @@ std::string capture_subject_reference(const std::string& request,
       return !state->running || state->sequence != previous_sequence ||
              !state->camera_error.empty();
     });
+    if (!state->camera_error.empty()) {
+      throw std::runtime_error("Jetson camera fault: " + state->camera_error);
+    }
     if (!captured || state->sequence == previous_sequence || state->jpeg.empty()) {
       throw std::runtime_error("camera subject reference capture timed out");
     }
@@ -320,20 +364,21 @@ std::string capture_subject_reference(const std::string& request,
         sample_id, subject_id, relative_path.generic_string(), captured_at,
         state->frame_width, state->frame_height,
     });
+    const std::size_t sample_count =
+        state->database->count_subject_reference_samples(subject_id);
+    return "{\"sample_id\":\"" + sample_id + "\",\"image_path\":\"" +
+           relative_path.generic_string() + "\",\"sample_count\":" +
+           std::to_string(sample_count) + "}";
   } catch (...) {
     std::error_code remove_error;
     std::filesystem::remove(absolute_path, remove_error);
     throw;
   }
 
-  const std::size_t sample_count =
-      state->database->count_subject_reference_samples(subject_id);
-  return "{\"sample_id\":\"" + sample_id + "\",\"image_path\":\"" +
-         relative_path.generic_string() + "\",\"sample_count\":" +
-         std::to_string(sample_count) + "}";
 }
 
-void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state) {
+void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state,
+                  const std::string& allowed_origin) {
   const StreamClientRegistration registration(state);
   {
     std::unique_lock lock(state->mutex);
@@ -342,12 +387,13 @@ void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state) {
     });
     if (state->jpeg.empty()) {
       send_text(socket_fd, json_response(503, "Service Unavailable",
-                                         "{\"error\":\"Jetson camera is unavailable\"}"));
+                                         "{\"error\":\"Jetson camera is unavailable\"}",
+                                         allowed_origin));
       return;
     }
   }
 
-  if (!send_text(socket_fd, mjpeg_headers())) return;
+  if (!send_text(socket_fd, mjpeg_headers(allowed_origin))) return;
 
   std::size_t last_sequence = 0;
   while (state->running) {
@@ -371,87 +417,121 @@ void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state) {
   }
 }
 
-void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state) {
+void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
+                   const MjpegServiceConfig config) {
+  if (!apply_socket_timeouts(socket_fd)) {
+    ::close(socket_fd);
+    return;
+  }
   const std::string request = read_request(socket_fd);
   if (request.rfind("OPTIONS ", 0) == 0) {
-    send_text(socket_fd, options_response());
+    if (origin_allowed(request, config.allowed_origin)) {
+      send_text(socket_fd, options_response(config.allowed_origin));
+    } else {
+      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Origin denied\"}",
+                                         config.allowed_origin));
+    }
   } else if (request.rfind("GET /api/health ", 0) == 0) {
-    send_text(socket_fd, health_response(state->camera_connected));
+    send_text(socket_fd, health_response(state->camera_connected, config.allowed_origin));
   } else if (request.rfind("GET /api/camera/stream ", 0) == 0) {
-    serve_stream(socket_fd, state);
+    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
+      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+                                         config.allowed_origin));
+    } else {
+      serve_stream(socket_fd, state, config.allowed_origin);
+    }
   } else if (request.rfind("POST /api/training/items/sample ", 0) == 0) {
-    try {
+    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
+      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+                                         config.allowed_origin));
+    } else try {
       send_text(socket_fd, json_response(201, "Created",
-                                         capture_training_sample(request, state)));
+                                         capture_training_sample(request, state), config.allowed_origin));
     } catch (const std::invalid_argument& error) {
       send_text(socket_fd, json_response(400, "Bad Request",
-                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+                                         "{\"error\":\"" + json_escape(error.what()) + "\"}",
+                                         config.allowed_origin));
     } catch (const std::exception& error) {
       send_text(socket_fd, json_response(503, "Service Unavailable",
-                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+                                         "{\"error\":\"" + json_escape(error.what()) + "\"}",
+                                         config.allowed_origin));
     }
   } else if (request.rfind("POST /api/training/subjects/reference ", 0) == 0) {
-    try {
+    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
+      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+                                         config.allowed_origin));
+    } else try {
       send_text(socket_fd, json_response(201, "Created",
-                                         capture_subject_reference(request, state)));
+                                         capture_subject_reference(request, state), config.allowed_origin));
     } catch (const std::invalid_argument& error) {
       send_text(socket_fd, json_response(400, "Bad Request",
-                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+                                         "{\"error\":\"" + json_escape(error.what()) + "\"}",
+                                         config.allowed_origin));
     } catch (const std::exception& error) {
       send_text(socket_fd, json_response(503, "Service Unavailable",
-                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+                                         "{\"error\":\"" + json_escape(error.what()) + "\"}",
+                                         config.allowed_origin));
     }
   } else {
-    send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Not found\"}"));
+    send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Not found\"}",
+                                       config.allowed_origin));
   }
   ::close(socket_fd);
 }
 
 void capture_frames(const MjpegServiceConfig& config,
                     const std::shared_ptr<StreamState>& state) {
-  try {
-    input::CameraCapture camera(config.camera);
-    camera.open();
-    state->camera_connected = true;
-    save_camera_state(state, "connected", "Jetson camera frame input is ready");
-    cv::Mat frame;
-    const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
-                                              config.jpeg_quality};
-    auto next_preview_at = std::chrono::steady_clock::now();
-    while (state->running) {
-      if (!camera.read(frame)) {
-        throw std::runtime_error("failed to read a frame from the Jetson camera");
-      }
-      state->frame_width = frame.cols;
-      state->frame_height = frame.rows;
-      if (state->stream_clients == 0 && state->sample_capture_requests == 0) continue;
-
-      const auto now = std::chrono::steady_clock::now();
-      if (now < next_preview_at) continue;
-      next_preview_at = now + std::chrono::milliseconds(100);
-
-      std::vector<unsigned char> encoded;
-      if (!cv::imencode(".jpg", frame, encoded, encode_parameters)) {
-        throw std::runtime_error("failed to encode the Jetson camera frame");
-      }
+  while (state->running) {
+    try {
+      input::CameraCapture camera(config.camera);
+      camera.open();
       {
         std::lock_guard lock(state->mutex);
-        state->jpeg = std::move(encoded);
-        ++state->sequence;
+        state->camera_error.clear();
       }
-      state->sample_capture_requests = 0;
+      state->camera_connected = true;
+      save_camera_state(state, "connected", "Jetson camera frame input is ready");
+      cv::Mat frame;
+      const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
+                                                config.jpeg_quality};
+      auto next_preview_at = std::chrono::steady_clock::now();
+      while (state->running) {
+        if (!camera.read(frame)) {
+          throw std::runtime_error("failed to read a frame from the Jetson camera");
+        }
+        state->frame_width = frame.cols;
+        state->frame_height = frame.rows;
+        const int served_requests = state->sample_capture_requests.load();
+        if (state->stream_clients == 0 && served_requests == 0) continue;
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now < next_preview_at) continue;
+        next_preview_at = now + std::chrono::milliseconds(100);
+
+        std::vector<unsigned char> encoded;
+        if (!cv::imencode(".jpg", frame, encoded, encode_parameters)) {
+          throw std::runtime_error("failed to encode the Jetson camera frame");
+        }
+        {
+          std::lock_guard lock(state->mutex);
+          state->jpeg = std::move(encoded);
+          ++state->sequence;
+        }
+        state->sample_capture_requests.fetch_sub(served_requests);
+        state->frame_ready.notify_all();
+      }
+      camera.close();
+    } catch (const std::exception& error) {
+      state->camera_connected = false;
+      {
+        std::lock_guard lock(state->mutex);
+        state->camera_error = error.what();
+      }
       state->frame_ready.notify_all();
+      save_camera_state(state, "fault", error.what());
+      std::cerr << "Jetson camera error: " << error.what() << '\n';
+      if (state->running) std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    camera.close();
-  } catch (const std::exception& error) {
-    state->camera_connected = false;
-    {
-      std::lock_guard lock(state->mutex);
-      state->camera_error = error.what();
-    }
-    state->frame_ready.notify_all();
-    save_camera_state(state, "fault", error.what());
-    std::cerr << "Jetson camera error: " << error.what() << '\n';
   }
 }
 
@@ -486,6 +566,12 @@ void MjpegServiceConfig::validate() const {
   if (jpeg_quality < 1 || jpeg_quality > 100) throw std::invalid_argument("jpeg quality must be between 1 and 100");
   if (database_path.empty()) throw std::invalid_argument("database path must not be empty");
   if (training_data_path.empty()) throw std::invalid_argument("training data path must not be empty");
+  if (allowed_origin.empty()) throw std::invalid_argument("allowed UI origin must not be empty");
+  if (allowed_origin.find_first_of("\r\n") != std::string::npos ||
+      (allowed_origin.rfind("http://", 0) != 0 && allowed_origin.rfind("https://", 0) != 0)) {
+    throw std::invalid_argument("allowed UI origin must be an HTTP(S) origin");
+  }
+  if (access_token.empty()) throw std::invalid_argument("WARDY_ACCESS_TOKEN must not be empty");
 }
 
 MjpegService::MjpegService(MjpegServiceConfig config) : config_(std::move(config)) {
@@ -512,7 +598,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
 
     const int client_fd = ::accept(server_fd, nullptr, nullptr);
     if (client_fd >= 0) {
-      std::thread(handle_client, client_fd, state).detach();
+      std::thread(handle_client, client_fd, state, config_).detach();
     }
   }
 

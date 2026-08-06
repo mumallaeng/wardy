@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$JetsonHost
+  [string]$JetsonHost,
+  [Parameter(Mandatory = $true)]
+  [string]$AccessToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +14,9 @@ if ($health.service -ne "wardy-edge" -or $health.camera -ne "connected") {
   throw "Jetson health response is not ready: $($health | ConvertTo-Json -Compress)"
 }
 
-$webrtcPage = Invoke-WebRequest -Uri $webrtcUrl -Method Get -TimeoutSec 5 -UseBasicParsing
+$credentialBytes = [Text.Encoding]::ASCII.GetBytes("wardy-viewer:${AccessToken}")
+$authorization = "Basic $([Convert]::ToBase64String($credentialBytes))"
+$webrtcPage = Invoke-WebRequest -Uri $webrtcUrl -Method Get -Headers @{ Authorization = $authorization } -TimeoutSec 5 -UseBasicParsing
 if ($webrtcPage.StatusCode -ne 200) {
   throw "WebRTC handshake page returned HTTP $($webrtcPage.StatusCode)"
 }

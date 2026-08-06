@@ -31,7 +31,7 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
   assert.match(html, /\/api\/health/);
   assert.match(html, /:8889\/wardy/);
-  assert.match(html, /<iframe id="camera"/);
+  assert.match(html, /<video id="camera"/);
   assert.match(html, /WebRTC\/UDP/);
   assert.match(html, /event·state 동기화<\/dt><dd>WebSocket 후속 통합/);
   assert.match(html, /\/dev\/video0/);
@@ -43,8 +43,10 @@ test("카메라 화면은 브라우저 장치 대신 Jetson WebRTC stream만 사
   const sources = await Promise.all(entries.filter((entry) => entry.endsWith(".ts")).map((entry) => readFile(path.join(root, "apps/js", entry), "utf8")));
   const joined = sources.join("\n");
   assert.match(joined, /8889/);
-  assert.match(joined, /\/wardy/);
-  assert.doesNotMatch(joined, /getUserMedia|mediaDevices|MediaStream|srcObject/);
+  assert.match(joined, /\/wardy\/whep/);
+  assert.match(joined, /RTCPeerConnection/);
+  assert.match(joined, /X-Wardy-Access-Token/);
+  assert.doesNotMatch(joined, /getUserMedia|navigator\.mediaDevices/);
 });
 
 test("브라우저 application source는 TypeScript만 사용한다", async () => {

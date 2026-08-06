@@ -35,6 +35,12 @@ int main(int argc, char* argv[]) {
     if (const char* pipeline = std::getenv("WARDY_CAMERA_PIPELINE")) {
       config.camera.gstreamer_pipeline = pipeline;
     }
+    if (const char* allowed_origin = std::getenv("WARDY_UI_ORIGIN")) {
+      config.allowed_origin = allowed_origin;
+    }
+    if (const char* access_token = std::getenv("WARDY_ACCESS_TOKEN")) {
+      config.access_token = access_token;
+    }
     if (argc > 1) config.port = parse_integer(argv[1], "port");
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
     if (argc > 3) config.camera.width = parse_integer(argv[3], "width");
