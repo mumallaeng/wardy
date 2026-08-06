@@ -127,7 +127,7 @@ void SqliteStore::initialize() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-    INSERT INTO schema_metadata(key, value) VALUES('schema_version', '1')
+    INSERT INTO schema_metadata(key, value) VALUES('schema_version', '2')
       ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
     CREATE TABLE IF NOT EXISTS events (
@@ -166,6 +166,27 @@ void SqliteStore::initialize() {
       reason TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS managed_items (
+      item_id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      policy TEXT NOT NULL CHECK(policy IN ('included','excluded')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS training_samples (
+      sample_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL REFERENCES managed_items(item_id) ON DELETE CASCADE,
+      image_path TEXT NOT NULL UNIQUE,
+      captured_at TEXT NOT NULL,
+      width INTEGER NOT NULL CHECK(width > 0),
+      height INTEGER NOT NULL CHECK(height > 0),
+      source TEXT NOT NULL DEFAULT 'jetson_camera',
+      split TEXT NOT NULL DEFAULT 'unassigned'
+    );
+    CREATE INDEX IF NOT EXISTS training_samples_item_idx
+      ON training_samples(item_id, captured_at DESC);
   )SQL");
 }
 
@@ -312,6 +333,58 @@ std::optional<SystemStateRecord> SqliteStore::load_system_state() const {
       column_text(statement.get(), 2), column_text(statement.get(), 3),
       column_text(statement.get(), 4), column_text(statement.get(), 5),
   };
+}
+
+void SqliteStore::upsert_managed_item(const ManagedItemRecord& item) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO managed_items(item_id, label, policy, created_at, updated_at)
+    VALUES(?,?,?,?,?)
+    ON CONFLICT(item_id) DO UPDATE SET
+      label=excluded.label, policy=excluded.policy, updated_at=excluded.updated_at;
+  )SQL");
+  bind_text(statement.get(), 1, item.item_id);
+  bind_text(statement.get(), 2, item.label);
+  bind_text(statement.get(), 3, item.policy);
+  bind_text(statement.get(), 4, item.created_at);
+  bind_text(statement.get(), 5, item.updated_at);
+  require_done(impl_->database, statement.get());
+}
+
+void SqliteStore::add_training_sample(const TrainingSampleRecord& sample) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO training_samples(sample_id, item_id, image_path, captured_at, width, height)
+    VALUES(?,?,?,?,?,?);
+  )SQL");
+  bind_text(statement.get(), 1, sample.sample_id);
+  bind_text(statement.get(), 2, sample.item_id);
+  bind_text(statement.get(), 3, sample.image_path);
+  bind_text(statement.get(), 4, sample.captured_at);
+  sqlite3_bind_int(statement.get(), 5, sample.width);
+  sqlite3_bind_int(statement.get(), 6, sample.height);
+  require_done(impl_->database, statement.get());
+}
+
+std::size_t SqliteStore::count_training_samples(const std::string& item_id) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database,
+                      "SELECT COUNT(*) FROM training_samples WHERE item_id = ?;");
+  bind_text(statement.get(), 1, item_id);
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  }
+  return static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 0));
+}
+
+std::string SqliteStore::schema_version() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database,
+                      "SELECT value FROM schema_metadata WHERE key = 'schema_version';");
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  }
+  return column_text(statement.get(), 0);
 }
 
 std::string SqliteStore::journal_mode() const {

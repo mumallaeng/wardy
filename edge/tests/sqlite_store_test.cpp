@@ -6,6 +6,7 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
+  assert(store.schema_version() == "2");
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -48,5 +49,16 @@ int main() {
   assert(restored.has_value());
   assert(restored->care_state == "warning");
   assert(restored->camera_state == "connected");
+
+  const wardy::storage::ManagedItemRecord item{
+      "item-knife", "주방 칼", "included",
+      "2026-08-06T12:02:00+09:00", "2026-08-06T12:02:00+09:00",
+  };
+  store.upsert_managed_item(item);
+  store.add_training_sample({
+      "sample-001", item.item_id, "items/item-knife/images/sample-001.jpg",
+      "2026-08-06T12:03:00+09:00", 640, 480,
+  });
+  assert(store.count_training_samples(item.item_id) == 1);
   return 0;
 }

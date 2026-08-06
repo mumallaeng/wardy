@@ -12,7 +12,8 @@ int main(int argc, char* argv[]) {
     wardy::storage::SqliteStore store(path);
     store.initialize();
     std::cout << "database_ready path=" << store.path()
-              << " schema_version=1 journal_mode=" << store.journal_mode() << '\n';
+              << " schema_version=" << store.schema_version()
+              << " journal_mode=" << store.journal_mode() << '\n';
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "database_probe_error: " << error.what() << '\n';
