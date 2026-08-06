@@ -1,5 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
-import type { CareStatus, EventType, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CareStatus, EventType, IdentityReview, IdentityReviewDecision, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -109,6 +109,7 @@ export class WardyStore {
       const parsed = JSON.parse(stored);
       if (!isWardyState(parsed)) return createInitialState();
       const state = parsed as WardyState;
+      state.identityReviews ??= [];
       const notifications = state.settings.notifications as Record<string, NotificationSetting | "normal" | "strong">;
       Object.entries(notifications).forEach(([eventType, value]) => {
         notifications[eventType] = value === "off" ? "off" : "on";
@@ -218,7 +219,36 @@ export class WardyStore {
 
   addSubject(name: string, role: string): WardyState {
     return this.#commit((state) => {
-      state.subjects.push({ id: `subject-${crypto.randomUUID()}`, name, role, createdAt: new Date().toISOString() });
+      state.subjects.push({ id: `subject-${crypto.randomUUID()}`, name, role, createdAt: new Date().toISOString(), referenceSampleCount: 0 });
+    });
+  }
+
+  setSubjectReferenceSampleCount(subjectId: string, sampleCount: number): WardyState {
+    return this.#commit((state) => {
+      const subject = state.subjects.find((candidate) => candidate.id === subjectId);
+      if (!subject) throw new Error(`Unknown subject: ${subjectId}`);
+      subject.referenceSampleCount = Math.max(0, Math.trunc(sampleCount));
+    });
+  }
+
+  addIdentityReview(review: Omit<IdentityReview, "id" | "decision" | "subjectId">): WardyState {
+    return this.#commit((state) => {
+      state.identityReviews.unshift({
+        id: `review-${crypto.randomUUID()}`,
+        decision: "pending",
+        subjectId: null,
+        ...review,
+      });
+    });
+  }
+
+  resolveIdentityReview(reviewId: string, decision: IdentityReviewDecision,
+                        subjectId: string | null = null): WardyState {
+    return this.#commit((state) => {
+      const review = state.identityReviews.find((candidate) => candidate.id === reviewId);
+      if (!review) throw new Error(`Unknown identity review: ${reviewId}`);
+      review.decision = decision;
+      review.subjectId = decision === "subject" ? subjectId : null;
     });
   }
 

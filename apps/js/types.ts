@@ -70,6 +70,18 @@ export interface TrainingSampleResult {
   sampleCount: number;
 }
 
+export type IdentityReviewDecision = "pending" | "subject" | "unknown" | "excluded";
+
+export interface IdentityReview {
+  id: string;
+  imagePath: string;
+  capturedAt: string;
+  predictedName: string | null;
+  confidence: number | null;
+  decision: IdentityReviewDecision;
+  subjectId: string | null;
+}
+
 export interface ZoneRect {
   x: number;
   y: number;
@@ -87,6 +99,7 @@ export interface Subject {
   name: string;
   role: string;
   createdAt: string;
+  referenceSampleCount?: number;
 }
 
 export interface WardyState {
@@ -101,6 +114,7 @@ export interface WardyState {
   managedItems: ManagedItem[];
   zones: Zone[];
   subjects: Subject[];
+  identityReviews: IdentityReview[];
 }
 
 export interface Detection {

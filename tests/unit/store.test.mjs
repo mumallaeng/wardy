@@ -79,6 +79,25 @@ test("관리 물품의 Jetson 학습 사진 수를 보존한다", () => {
   assert.equal(restored.managedItems.find((candidate) => candidate.id === item.id).sampleCount, 4);
 });
 
+test("인물 기준 사진 수와 식별 검토 답변을 로컬에 저장한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "identity-feedback");
+  const subject = store.getState().subjects[0];
+  store.setSubjectReferenceSampleCount(subject.id, 4);
+  store.addIdentityReview({
+    imagePath: "identity/review-1.jpg",
+    capturedAt: "2026-08-06T12:00:00Z",
+    predictedName: "조정민",
+    confidence: 0.55,
+  });
+  const review = store.getState().identityReviews[0];
+  store.resolveIdentityReview(review.id, "subject", subject.id);
+  const restored = new WardyStore(storage, "identity-feedback").getState();
+  assert.equal(restored.subjects[0].referenceSampleCount, 4);
+  assert.equal(restored.identityReviews[0].decision, "subject");
+  assert.equal(restored.identityReviews[0].subjectId, subject.id);
+});
+
 test("상황별 알림은 ON과 OFF만 저장한다", () => {
   const storage = new MemoryStorage();
   const store = new WardyStore(storage, "notification-toggle");

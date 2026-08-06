@@ -98,8 +98,14 @@ function removeButton(label: string, onClick: () => void): HTMLButtonElement {
  *
  * @param subjects - The subjects to display.
  * @param onRemove - Called with a subject ID when its removal control is activated.
+ * @param onCapture - Called with a subject ID when its reference capture control is activated.
  */
-export function renderSubjects(container: HTMLElement, subjects: readonly Subject[], onRemove: (id: string) => void): void {
+export function renderSubjects(
+  container: HTMLElement,
+  subjects: readonly Subject[],
+  onRemove: (id: string) => void,
+  onCapture: (id: string) => Promise<void> | void,
+): void {
   container.replaceChildren();
   subjects.forEach((subject) => {
     const item = document.createElement("div");
@@ -108,9 +114,20 @@ export function renderSubjects(container: HTMLElement, subjects: readonly Subjec
     const title = document.createElement("strong");
     title.textContent = subject.name;
     const meta = document.createElement("small");
-    meta.textContent = `${subject.role} · ${subject.id}`;
+    meta.textContent = `${subject.role} · 기준 사진 ${subject.referenceSampleCount ?? 0}장 · ${subject.id}`;
     copy.append(title, meta);
-    item.append(copy, removeButton(subject.name, () => onRemove(subject.id)));
+    const actions = document.createElement("div");
+    actions.className = "inline-actions";
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.className = "button button-secondary button-small";
+    capture.textContent = "기준 사진 촬영";
+    capture.addEventListener("click", async () => {
+      capture.disabled = true;
+      try { await onCapture(subject.id); } finally { capture.disabled = false; }
+    });
+    actions.append(capture, removeButton(subject.name, () => onRemove(subject.id)));
+    item.append(copy, actions);
     container.append(item);
   });
 }
