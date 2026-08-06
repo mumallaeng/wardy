@@ -42,6 +42,23 @@ struct SystemStateRecord {
   std::string updated_at;
 };
 
+struct ManagedItemRecord {
+  std::string item_id;
+  std::string label;
+  std::string policy;
+  std::string created_at;
+  std::string updated_at;
+};
+
+struct TrainingSampleRecord {
+  std::string sample_id;
+  std::string item_id;
+  std::string image_path;
+  std::string captured_at;
+  int width = 0;
+  int height = 0;
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -60,6 +77,10 @@ class SqliteStore {
                            const std::string& changed_at);
   void save_system_state(const SystemStateRecord& state);
   [[nodiscard]] std::optional<SystemStateRecord> load_system_state() const;
+  void upsert_managed_item(const ManagedItemRecord& item);
+  void add_training_sample(const TrainingSampleRecord& sample);
+  [[nodiscard]] std::size_t count_training_samples(const std::string& item_id) const;
+  [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;
 
