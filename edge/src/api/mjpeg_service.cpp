@@ -2,6 +2,7 @@
 
 #include "api/http_response.hpp"
 #include "input/camera_capture.hpp"
+#include "storage/sqlite_store.hpp"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -17,13 +18,16 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <ctime>
 #include <cstring>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -35,12 +39,38 @@ struct StreamState {
   std::atomic_bool running{true};
   std::atomic_bool camera_connected{false};
   std::atomic_int stream_clients{0};
+  std::shared_ptr<storage::SqliteStore> database;
   std::mutex mutex;
   std::condition_variable frame_ready;
   std::vector<unsigned char> jpeg;
   std::size_t sequence = 0;
   std::string camera_error;
 };
+
+std::string utc_now() {
+  const std::time_t now = std::time(nullptr);
+  std::tm value{};
+#if defined(_WIN32)
+  gmtime_s(&value, &now);
+#else
+  gmtime_r(&now, &value);
+#endif
+  std::ostringstream stream;
+  stream << std::put_time(&value, "%Y-%m-%dT%H:%M:%SZ");
+  return stream.str();
+}
+
+void save_camera_state(const std::shared_ptr<StreamState>& state,
+                       const std::string& camera_state,
+                       const std::string& reason) noexcept {
+  try {
+    state->database->save_system_state({
+        std::nullopt, camera_state, "disconnected", "ready", reason, utc_now(),
+    });
+  } catch (const std::exception& error) {
+    std::cerr << "SQLite state error: " << error.what() << '\n';
+  }
+}
 
 class StreamClientRegistration {
  public:
@@ -145,6 +175,7 @@ void capture_frames(const MjpegServiceConfig& config,
     input::CameraCapture camera(config.camera);
     camera.open();
     state->camera_connected = true;
+    save_camera_state(state, "connected", "Jetson camera frame input is ready");
     cv::Mat frame;
     const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
                                               config.jpeg_quality};
@@ -178,6 +209,7 @@ void capture_frames(const MjpegServiceConfig& config,
       state->camera_error = error.what();
     }
     state->frame_ready.notify_all();
+    save_camera_state(state, "fault", error.what());
     std::cerr << "Jetson camera error: " << error.what() << '\n';
   }
 }
@@ -211,6 +243,7 @@ void MjpegServiceConfig::validate() const {
   camera.validate();
   if (port < 1 || port > 65535) throw std::invalid_argument("port must be between 1 and 65535");
   if (jpeg_quality < 1 || jpeg_quality > 100) throw std::invalid_argument("jpeg quality must be between 1 and 100");
+  if (database_path.empty()) throw std::invalid_argument("database path must not be empty");
 }
 
 MjpegService::MjpegService(MjpegServiceConfig config) : config_(std::move(config)) {
@@ -219,7 +252,10 @@ MjpegService::MjpegService(MjpegServiceConfig config) : config_(std::move(config
 
 int MjpegService::run(const std::atomic_bool& stop_requested) {
   const auto state = std::make_shared<StreamState>();
+  state->database = std::make_shared<storage::SqliteStore>(config_.database_path);
+  state->database->initialize();
   const int server_fd = open_server_socket(config_.port);
+  save_camera_state(state, "connecting", "Jetson camera connection is starting");
   std::thread capture_thread(capture_frames, std::cref(config_), state);
   std::cout << "Wardy edge service listening on 0.0.0.0:" << config_.port << '\n';
 
@@ -241,6 +277,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->frame_ready.notify_all();
   ::close(server_fd);
   if (capture_thread.joinable()) capture_thread.join();
+  save_camera_state(state, "idle", "Wardy edge service stopped");
   return 0;
 }
 

@@ -32,3 +32,14 @@ test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한�
   assert.match(source, /cv::imencode/);
   assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
 });
+
+test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /SqliteStore/);
+  assert.match(source, /save_camera_state\(state, "connecting"/);
+  assert.match(source, /save_camera_state\(state, "connected"/);
+  assert.match(source, /save_camera_state\(state, "fault"/);
+  const captureFunction = source.slice(source.indexOf("void capture_frames"));
+  const captureLoop = captureFunction.slice(captureFunction.indexOf("while (state->running)"), captureFunction.indexOf("camera.close()"));
+  assert.doesNotMatch(captureLoop, /save_system_state|save_camera_state/);
+});

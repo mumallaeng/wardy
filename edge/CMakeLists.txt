@@ -64,7 +64,7 @@ if(OpenCV_FOUND)
     src/api/wardy_edge_service.cpp
   )
   target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(wardy_edge_service PRIVATE wardy_camera Threads::Threads ${OpenCV_LIBS})
+  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_storage Threads::Threads ${OpenCV_LIBS})
   target_compile_options(wardy_edge_service PRIVATE -Wall -Wextra -Wpedantic)
 else()
   message(STATUS "OpenCV core/videoio/imgcodecs not found: camera library, probe, and edge service are skipped")
