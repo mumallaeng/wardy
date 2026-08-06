@@ -22,7 +22,7 @@ function isStringOrNull(value: unknown): value is string | null {
 function isWardyEvent(value: unknown): value is WardyEvent {
   if (!isRecord(value)) return false;
   return typeof value.event_id === "string"
-    && typeof value.event_type === "string" && value.event_type in EVENT_TYPES
+    && typeof value.event_type === "string" && Object.hasOwn(EVENT_TYPES, value.event_type)
     && typeof value.occurred_at === "string"
     && typeof value.first_seen_at === "string"
     && typeof value.last_seen_at === "string"
@@ -32,8 +32,8 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && isStringOrNull(value.object_id)
     && isStringOrNull(value.object_class)
     && isStringOrNull(value.zone_id)
-    && typeof value.care_status === "string" && value.care_status in CARE_STATUS
-    && typeof value.event_status === "string" && value.event_status in EVENT_STATUS
+    && typeof value.care_status === "string" && Object.hasOwn(CARE_STATUS, value.care_status)
+    && typeof value.event_status === "string" && Object.hasOwn(EVENT_STATUS, value.event_status)
     && isStringOrNull(value.confirmed_at)
     && isStringOrNull(value.released_at)
     && isStringOrNull(value.false_detection_at)
@@ -51,7 +51,7 @@ function isWardyState(value: unknown): value is WardyState {
   const careState = value.careState;
   const settings = value.settings;
   if (!isRecord(careState)
-    || typeof careState.status !== "string" || !(careState.status in CARE_STATUS)
+    || typeof careState.status !== "string" || !Object.hasOwn(CARE_STATUS, careState.status)
     || typeof careState.reason !== "string"
     || typeof careState.updatedAt !== "string"
     || careState.source !== "manual_ui"
@@ -62,7 +62,7 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
     || !isRecord(settings.notifications)
-    || !Object.entries(settings.notifications).every(([key, level]) => key in EVENT_TYPES && ["off", "normal", "strong"].includes(String(level)))
+    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "normal", "strong"].includes(String(level)))
     || !isRecord(settings.jetson)
     || typeof settings.jetson.baseUrl !== "string") return false;
 
