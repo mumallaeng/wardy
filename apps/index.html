@@ -105,14 +105,14 @@
     </section>
 
     <section class="view" data-view-panel="settings">
-      <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>설정과 등록 정보는 현재 브라우저의 로컬 저장소에만 보관됩니다.</p></div><button class="button button-danger" id="reset-local-data">로컬 데모 데이터 초기화</button></div>
+      <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>화면 설정과 등록 목록은 현재 브라우저에, 기준·학습 사진과 운영 metadata는 연결된 Jetson에 로컬 저장됩니다.</p></div><button class="button button-danger" id="reset-local-data">로컬 데모 데이터 초기화</button></div>
       <div class="settings-grid">
         <section class="card"><div class="card-heading"><div><span class="section-kicker">OVERLAY</span><h2>카메라 표시 항목</h2></div></div><div class="setting-list" id="overlay-settings"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 인물 등록</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">로컬 등록</button></form><div class="list" id="subject-list"></div><p class="helper">등록 뒤 '기준 사진 촬영'으로 정면·좌·우·거리 변화 사진을 모읍니다. 사진과 metadata는 Jetson 로컬에 저장되며 embedding 생성과 모델 학습은 포함하지 않습니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">MANAGED ITEMS</span><h2>관리·제외 물품</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="물품 이름"><select name="policy"><option value="included">관리 대상</option><option value="excluded">이벤트 제외</option></select><button class="button" type="submit">물품 등록</button></form><div class="chip-list" id="item-list"></div><p class="helper">물품을 등록한 뒤 여러 거리·각도·조명에서 '카메라 촬영'을 눌러 Jetson 로컬 학습 사진을 모읍니다. 실제 모델 학습은 Notebook 단계에서 진행합니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>알림 설정</h2></div></div><div class="setting-list" id="notification-settings"></div></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 cloud</dt><dd>사용하지 않음</dd></div><div><dt>UI demo·설정</dt><dd>브라우저 localStorage</dd></div><div><dt>운영 처리 대상</dt><dd>로컬 Jetson</dd></div><div><dt>이벤트 자료</dt><dd>연결 후 Jetson 로컬 저장</dd></div></dl></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 cloud</dt><dd>사용하지 않음</dd></div><div><dt>UI demo·설정</dt><dd>브라우저 localStorage</dd></div><div><dt>기준·학습 사진</dt><dd>Jetson 로컬 파일</dd></div><div><dt>운영 metadata</dt><dd>Jetson SQLite</dd></div><div><dt>이벤트 자료</dt><dd>연결 후 Jetson 로컬 저장</dd></div></dl></section>
       </div>
     </section>
 
