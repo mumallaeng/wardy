@@ -87,3 +87,10 @@ test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장�
   assert.match(source, /std::filesystem::path\("items"\)/);
   assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
 });
+
+test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /POST \/api\/training\/subjects\/reference/);
+  assert.match(source, /add_subject_reference_sample/);
+  assert.match(source, /std::filesystem::path\("subjects"\)/);
+});

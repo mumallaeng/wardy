@@ -127,7 +127,7 @@ void SqliteStore::initialize() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-    INSERT INTO schema_metadata(key, value) VALUES('schema_version', '2')
+    INSERT INTO schema_metadata(key, value) VALUES('schema_version', '3')
       ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
     CREATE TABLE IF NOT EXISTS events (
@@ -187,6 +187,26 @@ void SqliteStore::initialize() {
     );
     CREATE INDEX IF NOT EXISTS training_samples_item_idx
       ON training_samples(item_id, captured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS subjects (
+      subject_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS subject_reference_samples (
+      sample_id TEXT PRIMARY KEY,
+      subject_id TEXT NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
+      image_path TEXT NOT NULL UNIQUE,
+      captured_at TEXT NOT NULL,
+      width INTEGER NOT NULL CHECK(width > 0),
+      height INTEGER NOT NULL CHECK(height > 0),
+      source TEXT NOT NULL DEFAULT 'jetson_camera'
+    );
+    CREATE INDEX IF NOT EXISTS subject_reference_samples_subject_idx
+      ON subject_reference_samples(subject_id, captured_at DESC);
   )SQL");
 }
 
@@ -371,6 +391,51 @@ std::size_t SqliteStore::count_training_samples(const std::string& item_id) cons
   Statement statement(impl_->database,
                       "SELECT COUNT(*) FROM training_samples WHERE item_id = ?;");
   bind_text(statement.get(), 1, item_id);
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  }
+  return static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 0));
+}
+
+void SqliteStore::upsert_subject(const SubjectRecord& subject) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO subjects(subject_id, name, role, created_at, updated_at)
+    VALUES(?,?,?,?,?)
+    ON CONFLICT(subject_id) DO UPDATE SET
+      name=excluded.name, role=excluded.role, updated_at=excluded.updated_at;
+  )SQL");
+  bind_text(statement.get(), 1, subject.subject_id);
+  bind_text(statement.get(), 2, subject.name);
+  bind_text(statement.get(), 3, subject.role);
+  bind_text(statement.get(), 4, subject.created_at);
+  bind_text(statement.get(), 5, subject.updated_at);
+  require_done(impl_->database, statement.get());
+}
+
+void SqliteStore::add_subject_reference_sample(
+    const SubjectReferenceSampleRecord& sample) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO subject_reference_samples(
+      sample_id, subject_id, image_path, captured_at, width, height
+    ) VALUES(?,?,?,?,?,?);
+  )SQL");
+  bind_text(statement.get(), 1, sample.sample_id);
+  bind_text(statement.get(), 2, sample.subject_id);
+  bind_text(statement.get(), 3, sample.image_path);
+  bind_text(statement.get(), 4, sample.captured_at);
+  sqlite3_bind_int(statement.get(), 5, sample.width);
+  sqlite3_bind_int(statement.get(), 6, sample.height);
+  require_done(impl_->database, statement.get());
+}
+
+std::size_t SqliteStore::count_subject_reference_samples(
+    const std::string& subject_id) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  Statement statement(impl_->database,
+                      "SELECT COUNT(*) FROM subject_reference_samples WHERE subject_id = ?;");
+  bind_text(statement.get(), 1, subject_id);
   if (sqlite3_step(statement.get()) != SQLITE_ROW) {
     throw std::runtime_error(sqlite3_errmsg(impl_->database));
   }

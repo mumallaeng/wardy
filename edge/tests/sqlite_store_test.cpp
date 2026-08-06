@@ -6,7 +6,7 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "2");
+  assert(store.schema_version() == "3");
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -60,5 +60,17 @@ int main() {
       "2026-08-06T12:03:00+09:00", 640, 480,
   });
   assert(store.count_training_samples(item.item_id) == 1);
+
+  const wardy::storage::SubjectRecord subject{
+      "subject-care-01", "돌봄 대상", "돌봄 대상",
+      "2026-08-06T12:04:00+09:00", "2026-08-06T12:04:00+09:00",
+  };
+  store.upsert_subject(subject);
+  store.add_subject_reference_sample({
+      "subject-sample-001", subject.subject_id,
+      "subjects/subject-care-01/reference/subject-sample-001.jpg",
+      "2026-08-06T12:05:00+09:00", 640, 480,
+  });
+  assert(store.count_subject_reference_samples(subject.subject_id) == 1);
   return 0;
 }
