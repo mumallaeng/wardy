@@ -59,6 +59,23 @@ struct TrainingSampleRecord {
   int height = 0;
 };
 
+struct SubjectRecord {
+  std::string subject_id;
+  std::string name;
+  std::string role;
+  std::string created_at;
+  std::string updated_at;
+};
+
+struct SubjectReferenceSampleRecord {
+  std::string sample_id;
+  std::string subject_id;
+  std::string image_path;
+  std::string captured_at;
+  int width = 0;
+  int height = 0;
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -80,6 +97,10 @@ class SqliteStore {
   void upsert_managed_item(const ManagedItemRecord& item);
   void add_training_sample(const TrainingSampleRecord& sample);
   [[nodiscard]] std::size_t count_training_samples(const std::string& item_id) const;
+  void upsert_subject(const SubjectRecord& subject);
+  void add_subject_reference_sample(const SubjectReferenceSampleRecord& sample);
+  [[nodiscard]] std::size_t count_subject_reference_samples(
+      const std::string& subject_id) const;
   [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;

@@ -259,6 +259,80 @@ std::string capture_training_sample(const std::string& request,
          std::to_string(sample_count) + "}";
 }
 
+std::string capture_subject_reference(const std::string& request,
+                                      const std::shared_ptr<StreamState>& state) {
+  const std::string subject_id =
+      request_header(request, "x-wardy-subject-id").value_or("");
+  const std::string name = percent_decode(
+      request_header(request, "x-wardy-subject-name").value_or(""));
+  const std::string role = percent_decode(
+      request_header(request, "x-wardy-subject-role").value_or(""));
+  if (!safe_item_id(subject_id)) throw std::invalid_argument("invalid subject ID");
+  if (name.empty() || name.size() > 120) {
+    throw std::invalid_argument("invalid subject name");
+  }
+  if (role.empty() || role.size() > 120) {
+    throw std::invalid_argument("invalid subject role");
+  }
+  if (!state->camera_connected) throw std::runtime_error("Jetson camera is unavailable");
+
+  std::vector<unsigned char> jpeg;
+  std::size_t previous_sequence = 0;
+  {
+    std::lock_guard lock(state->mutex);
+    previous_sequence = state->sequence;
+  }
+  ++state->sample_capture_requests;
+  {
+    std::unique_lock lock(state->mutex);
+    const bool captured = state->frame_ready.wait_for(lock, std::chrono::seconds(3), [&] {
+      return !state->running || state->sequence != previous_sequence ||
+             !state->camera_error.empty();
+    });
+    if (!captured || state->sequence == previous_sequence || state->jpeg.empty()) {
+      throw std::runtime_error("camera subject reference capture timed out");
+    }
+    jpeg = state->jpeg;
+  }
+
+  const std::string captured_at = utc_now();
+  const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+  const std::string sample_id = "subject-sample-" + std::to_string(timestamp) + "-" +
+                                std::to_string(++state->sample_counter);
+  const std::filesystem::path relative_path = std::filesystem::path("subjects") /
+      subject_id / "reference" / (sample_id + ".jpg");
+  const std::filesystem::path absolute_path = state->training_data_path / relative_path;
+  std::filesystem::create_directories(absolute_path.parent_path());
+  {
+    std::ofstream output(absolute_path, std::ios::binary);
+    if (!output) throw std::runtime_error("failed to create the subject reference file");
+    output.write(reinterpret_cast<const char*>(jpeg.data()),
+                 static_cast<std::streamsize>(jpeg.size()));
+    if (!output) throw std::runtime_error("failed to write the subject reference file");
+  }
+
+  try {
+    state->database->upsert_subject({
+        subject_id, name, role, captured_at, captured_at,
+    });
+    state->database->add_subject_reference_sample({
+        sample_id, subject_id, relative_path.generic_string(), captured_at,
+        state->frame_width, state->frame_height,
+    });
+  } catch (...) {
+    std::error_code remove_error;
+    std::filesystem::remove(absolute_path, remove_error);
+    throw;
+  }
+
+  const std::size_t sample_count =
+      state->database->count_subject_reference_samples(subject_id);
+  return "{\"sample_id\":\"" + sample_id + "\",\"image_path\":\"" +
+         relative_path.generic_string() + "\",\"sample_count\":" +
+         std::to_string(sample_count) + "}";
+}
+
 void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state) {
   const StreamClientRegistration registration(state);
   {
@@ -309,6 +383,17 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state) {
     try {
       send_text(socket_fd, json_response(201, "Created",
                                          capture_training_sample(request, state)));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+    } catch (const std::exception& error) {
+      send_text(socket_fd, json_response(503, "Service Unavailable",
+                                         "{\"error\":\"" + std::string(error.what()) + "\"}"));
+    }
+  } else if (request.rfind("POST /api/training/subjects/reference ", 0) == 0) {
+    try {
+      send_text(socket_fd, json_response(201, "Created",
+                                         capture_subject_reference(request, state)));
     } catch (const std::invalid_argument& error) {
       send_text(socket_fd, json_response(400, "Bad Request",
                                          "{\"error\":\"" + std::string(error.what()) + "\"}"));
