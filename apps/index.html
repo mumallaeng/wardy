@@ -41,9 +41,9 @@
         <section class="card camera-card">
           <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><button class="text-button" id="stop-camera" disabled>중지</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
           <div class="camera-stage" id="camera-stage">
-            <img id="camera" alt="Jetson에 연결된 카메라 영상">
+            <iframe id="camera" title="Jetson WebRTC 카메라 영상" allow="autoplay; fullscreen; picture-in-picture"></iframe>
             <canvas id="overlay" aria-label="탐지 결과와 주의 구역 표시"></canvas>
-            <div class="camera-empty" id="camera-empty"><strong>Jetson 카메라가 연결되지 않았습니다</strong><span>Jetson edge service가 `/dev/video0`을 V4L2로 읽어 제공하는 stream을 표시합니다.</span></div>
+            <div class="camera-empty" id="camera-empty"><strong>Jetson 카메라가 연결되지 않았습니다</strong><span>Jetson이 `/dev/video0`을 V4L2로 읽어 WebRTC/UDP stream으로 제공합니다.</span></div>
             <span class="demo-watermark" id="demo-watermark" hidden>UI 표시 예시 · AI 결과 아님</span>
           </div>
           <div class="overlay-switches" aria-label="탐지 표시 설정">
@@ -104,8 +104,8 @@
       <div class="page-heading"><div><p class="eyebrow">JETSON SERVICE</p><h1>Jetson 연결</h1><p>가정 내부 network의 Jetson Wardy service 상태를 확인합니다. 이 연결은 AI 추론을 구현하거나 실행하지 않습니다.</p></div><button class="button button-secondary" id="check-jetson" type="button">연결 다시 확인</button></div>
       <div class="connection-grid">
         <section class="card"><div class="card-heading"><div><span class="section-kicker">ENDPOINT</span><h2>서비스 주소</h2></div><span class="badge" id="jetson-badge">확인 전</span></div><form id="jetson-form" class="stack-form"><label>Jetson base URL<input id="jetson-base-url" type="url" inputmode="url" autocomplete="url" placeholder="예: http://jetson.local:8787"></label><button class="button" type="submit">저장하고 연결 확인</button></form><p class="helper">비워 두면 현재 UI를 제공한 주소를 사용합니다. 다른 장치에서 접속할 때는 Jetson의 LAN 주소와 service port를 입력합니다.</p></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">HEALTH CHECK</span><h2>연결 확인 결과</h2></div></div><div class="connection-result" id="jetson-result" aria-live="polite">연결 확인을 실행해 주세요.</div><dl class="data-facts"><div><dt>현재 기준 주소</dt><dd id="jetson-resolved-url">—</dd></div><div><dt>확인 endpoint</dt><dd><code>/api/health</code></dd></div><div><dt>카메라 endpoint</dt><dd><code>/api/camera/stream</code></dd></div><div><dt>event·state 동기화</dt><dd>후속 통합</dd></div><div><dt>AI 실행</dt><dd>포함하지 않음</dd></div></dl></section>
-        <section class="card wide-card boundary-card"><div><span class="section-kicker">CURRENT BOUNDARY</span><h2>현재 연결 범위</h2></div><p>Jetson edge service가 수업과 같은 `/dev/video0`·V4L2 방식으로 USB webcam을 읽고 MJPEG preview를 제공합니다. camera inference, tracking, event rule과 실시간 event·state 수신은 아직 연결하지 않습니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">HEALTH CHECK</span><h2>연결 확인 결과</h2></div></div><div class="connection-result" id="jetson-result" aria-live="polite">연결 확인을 실행해 주세요.</div><dl class="data-facts"><div><dt>현재 기준 주소</dt><dd id="jetson-resolved-url">—</dd></div><div><dt>확인 endpoint</dt><dd><code>:8787/api/health</code></dd></div><div><dt>카메라 endpoint</dt><dd><code>:8889/wardy</code></dd></div><div><dt>영상 전송</dt><dd>WebRTC/UDP</dd></div><div><dt>event·state 동기화</dt><dd>WebSocket 후속 통합</dd></div><div><dt>AI 실행</dt><dd>포함하지 않음</dd></div></dl></section>
+        <section class="card wide-card boundary-card"><div><span class="section-kicker">CURRENT BOUNDARY</span><h2>현재 연결 범위</h2></div><p>Jetson이 수업과 같은 `/dev/video0`·V4L2 방식으로 USB webcam을 한 번만 읽고, 로컬 C++ 처리 frame과 H.264 WebRTC/UDP preview를 분기합니다. Windows browser는 같은 LAN에서 Jetson의 WebRTC endpoint에 직접 연결합니다. camera inference, tracking, event rule과 실시간 event·state 수신은 아직 연결하지 않습니다.</p></section>
       </div>
     </section>
 

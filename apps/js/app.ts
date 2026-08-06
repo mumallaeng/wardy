@@ -94,7 +94,7 @@ function setCameraStatus(status: CameraStatus): void {
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
 }
 
-const camera = new JetsonCameraController($<HTMLImageElement>("#camera"), setCameraStatus);
+const camera = new JetsonCameraController($<HTMLIFrameElement>("#camera"), setCameraStatus);
 
 /**
  * Updates the Jetson connection status and related interface elements.
@@ -286,7 +286,7 @@ $("#start-camera").addEventListener("click", () => {
   try {
     const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
     const endpoint = camera.start(baseUrl, window.location.origin);
-    toast(`Jetson 카메라 stream에 연결합니다: ${endpoint}`);
+    toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
   } catch (error) {
     setCameraStatus("fault");
     toast(errorMessage(error));

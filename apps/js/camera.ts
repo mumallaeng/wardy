@@ -2,38 +2,48 @@ import type { CameraStatus } from "./types.ts";
 
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
 
-export function jetsonCameraStreamUrl(value: string, fallbackOrigin = ""): string {
-  return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/camera/stream`;
+export function jetsonWebRtcStreamUrl(value: string, fallbackOrigin = ""): string {
+  const url = new URL(normalizeJetsonBaseUrl(value, fallbackOrigin));
+  url.port = "8889";
+  url.pathname = "/wardy";
+  url.search = new URLSearchParams({
+    controls: "false",
+    muted: "true",
+    autoplay: "true",
+    playsInline: "true",
+    disablepictureinpicture: "true",
+  }).toString();
+  return url.toString();
 }
 
 export class JetsonCameraController {
-  private readonly image: HTMLImageElement;
+  private readonly frame: HTMLIFrameElement;
   private readonly onStatusChange: ((status: CameraStatus) => void) | undefined;
 
-  constructor(image: HTMLImageElement, onStatusChange?: (status: CameraStatus) => void) {
-    this.image = image;
+  constructor(frame: HTMLIFrameElement, onStatusChange?: (status: CameraStatus) => void) {
+    this.frame = frame;
     this.onStatusChange = onStatusChange;
   }
 
   start(baseUrl: string, fallbackOrigin = globalThis.location?.origin ?? ""): string {
-    const endpoint = jetsonCameraStreamUrl(baseUrl, fallbackOrigin);
+    const endpoint = jetsonWebRtcStreamUrl(baseUrl, fallbackOrigin);
     this.stop();
     this.onStatusChange?.("connecting");
 
-    this.image.onload = () => {
+    this.frame.onload = () => {
       this.onStatusChange?.("connected");
     };
-    this.image.onerror = () => {
+    this.frame.onerror = () => {
       this.onStatusChange?.("fault");
     };
-    this.image.src = endpoint;
+    this.frame.src = endpoint;
     return endpoint;
   }
 
   stop(status: CameraStatus = "idle"): void {
-    this.image.onload = null;
-    this.image.onerror = null;
-    this.image.removeAttribute("src");
+    this.frame.onload = null;
+    this.frame.onerror = null;
+    this.frame.removeAttribute("src");
     this.onStatusChange?.(status);
   }
 }
