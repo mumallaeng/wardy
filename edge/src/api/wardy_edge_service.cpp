@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <csignal>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <stdexcept>
@@ -31,6 +32,9 @@ int parse_integer(const char* value, const char* name) {
 int main(int argc, char* argv[]) {
   try {
     wardy::api::MjpegServiceConfig config;
+    if (const char* pipeline = std::getenv("WARDY_CAMERA_PIPELINE")) {
+      config.camera.gstreamer_pipeline = pipeline;
+    }
     if (argc > 1) config.port = parse_integer(argv[1], "port");
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
     if (argc > 3) config.camera.width = parse_integer(argv[3], "width");

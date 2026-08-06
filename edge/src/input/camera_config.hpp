@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <string>
 
 namespace wardy::input {
 
@@ -10,6 +11,7 @@ struct CameraConfig {
   int height = 480;
   int buffer_size = 1;
   double requested_fps = 0.0;
+  std::string gstreamer_pipeline;
 
   void validate() const {
     if (device_index < 0) {

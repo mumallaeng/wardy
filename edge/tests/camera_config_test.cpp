@@ -9,6 +9,7 @@ int main() {
   assert(config.width == 640);
   assert(config.height == 480);
   assert(config.buffer_size == 1);
+  assert(config.gstreamer_pipeline.empty());
   config.validate();
 
   config.device_index = -1;
