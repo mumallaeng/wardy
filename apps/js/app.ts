@@ -76,7 +76,7 @@ function openView(viewName: ViewName): void {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLVideoElement>("#camera"), (zone) => {
+const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLIFrameElement>("#camera"), (zone) => {
   store.addZone(zone);
   toast(`'${zone.name}' 구역을 로컬에 저장했습니다.`);
 });

@@ -39,6 +39,18 @@ test("상속된 enum key가 포함된 저장 상태를 거부한다", () => {
   assert.notEqual(restored.events[0].care_status, "toString");
 });
 
+test("잘못된 식별 검토 배열이 포함된 저장 상태를 거부한다", () => {
+  const storage = new MemoryStorage();
+  const modified = new WardyStore(null).getState();
+  modified.careState.status = "warning";
+  modified.identityReviews = "invalid";
+  storage.setItem("invalid-review-state", JSON.stringify(modified));
+
+  const restored = new WardyStore(storage, "invalid-review-state").getState();
+  assert.equal(restored.careState.status, "normal");
+  assert.deepEqual(restored.identityReviews, []);
+});
+
 test("이벤트 확인, 오탐, 미디어 삭제 상태를 갱신한다", () => {
   const store = new WardyStore(new MemoryStorage());
   const [first, second] = store.getState().events;

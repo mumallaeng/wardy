@@ -11,18 +11,39 @@ type StoreListener = (state: WardyState) => void;
 
 const clone = <T>(value: T): T => structuredClone(value);
 
-/**
- * Determines whether a value has the required structure for Wardy state.
- *
- * @param value - The value to validate
- * @returns `true` if the value has version 1, an events array, and settings; `false` otherwise.
- */
+/** Returns whether a value is a non-array object record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
+}
+
+function isOptionalCount(value: unknown): boolean {
+  return value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0);
+}
+
+function isIdentityReview(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string"
+    && typeof value.imagePath === "string"
+    && typeof value.capturedAt === "string"
+    && isStringOrNull(value.predictedName)
+    && (value.confidence === null || (typeof value.confidence === "number" && Number.isFinite(value.confidence)))
+    && ["pending", "subject", "unknown", "excluded"].includes(String(value.decision))
+    && isStringOrNull(value.subjectId);
+}
+
+function migratePersistedState(value: unknown): void {
+  if (!isRecord(value)) return;
+  if (value.identityReviews === undefined) value.identityReviews = [];
+  const settings = value.settings;
+  if (!isRecord(settings) || !isRecord(settings.notifications)) return;
+  const notifications = settings.notifications;
+  Object.entries(notifications).forEach(([eventType, level]) => {
+    if (level === "normal" || level === "strong") notifications[eventType] = "on";
+  });
 }
 
 function isWardyEvent(value: unknown): value is WardyEvent {
@@ -67,19 +88,22 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
     || !isRecord(settings.notifications)
-    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on", "normal", "strong"].includes(String(level)))
+    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
     || !isRecord(settings.jetson)
     || typeof settings.jetson.baseUrl !== "string") return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
     && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
-      && typeof item.id === "string" && typeof item.label === "string" && ["included", "excluded"].includes(String(item.policy)))
+      && typeof item.id === "string" && typeof item.label === "string"
+      && ["included", "excluded"].includes(String(item.policy)) && isOptionalCount(item.sampleCount))
     && Array.isArray(value.zones) && value.zones.every((zone) => isRecord(zone)
       && typeof zone.id === "string" && typeof zone.name === "string"
       && [zone.x, zone.y, zone.width, zone.height].every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)))
     && Array.isArray(value.subjects) && value.subjects.every((subject) => isRecord(subject)
       && typeof subject.id === "string" && typeof subject.name === "string"
-      && typeof subject.role === "string" && typeof subject.createdAt === "string");
+      && typeof subject.role === "string" && typeof subject.createdAt === "string"
+      && isOptionalCount(subject.referenceSampleCount))
+    && Array.isArray(value.identityReviews) && value.identityReviews.every(isIdentityReview);
 }
 
 export class MemoryStorage implements StorageLike {
@@ -106,15 +130,10 @@ export class WardyStore {
     try {
       const stored = this.storage?.getItem(this.key);
       if (!stored) return createInitialState();
-      const parsed = JSON.parse(stored);
+      const parsed: unknown = JSON.parse(stored);
+      migratePersistedState(parsed);
       if (!isWardyState(parsed)) return createInitialState();
-      const state = parsed as WardyState;
-      state.identityReviews ??= [];
-      const notifications = state.settings.notifications as Record<string, NotificationSetting | "normal" | "strong">;
-      Object.entries(notifications).forEach(([eventType, value]) => {
-        notifications[eventType] = value === "off" ? "off" : "on";
-      });
-      return state;
+      return parsed;
     } catch {
       return createInitialState();
     }
