@@ -17,6 +17,7 @@
     <nav class="nav-tabs" aria-label="주요 화면">
       <button class="nav-tab is-active" data-view="dashboard">대시보드</button>
       <button class="nav-tab" data-view="events">이벤트 기록</button>
+      <button class="nav-tab" data-view="data">데이터 작업실</button>
       <button class="nav-tab" data-view="settings">설정</button>
       <button class="nav-tab" data-view="jetson">Jetson 연결</button>
     </nav>
@@ -88,11 +89,26 @@
       </section>
     </section>
 
+    <section class="view" data-view-panel="data">
+      <div class="page-heading"><div><p class="eyebrow">LOCAL DATA WORKSPACE</p><h1>데이터 작업실</h1><p>식별 기준 자료와 사용자 검토 결과를 로컬에 모아 다음 Notebook 데이터셋으로 전달합니다.</p></div><div class="heading-actions"><button class="button button-secondary" id="add-review-demo">검토 UI 예시 추가</button><button class="button" id="export-identity-feedback">식별 feedback 내보내기</button></div></div>
+      <div class="system-strip" aria-label="데이터 작업 흐름">
+        <div><small>1. 수집</small><strong>camera·파일</strong></div>
+        <div><small>2. 검수</small><strong>인물·미등록·제외</strong></div>
+        <div><small>3. version</small><strong>manifest 생성</strong></div>
+        <div><small>4. 학습</small><strong>Notebook에서 실행</strong></div>
+      </div>
+      <div class="workspace-grid">
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT REFERENCES</span><h2>돌봄 인물 기준 자료</h2></div><button class="text-button" data-open-view="settings">인물 등록으로 이동</button></div><p>등록된 인물마다 정면·좌·우·거리 변화 사진을 Jetson camera로 수집합니다.</p><div class="list" id="data-subject-list"></div></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">DATASET BOUNDARY</span><h2>학습 연결 범위</h2></div></div><dl class="data-facts"><div><dt>Wardy UI</dt><dd>수집·검토·manifest</dd></div><div><dt>Jetson</dt><dd>사진·SQLite metadata</dd></div><div><dt>Notebook</dt><dd>전처리·학습·평가</dd></div><div><dt>즉시 재학습</dt><dd>사용하지 않음</dd></div></dl></section>
+      </div>
+      <section class="card"><div class="card-heading"><div><span class="section-kicker">IDENTITY REVIEW</span><h2>식별 검토 갤러리</h2></div><span class="badge" id="review-count">0건 대기</span></div><p class="helper">M-02가 낮은 확신 또는 미등록으로 남긴 장면에 답합니다. 답변은 다음 Notebook 학습용 feedback이며 현재 실행 중인 모델은 바뀌지 않습니다.</p><div class="review-gallery" id="identity-review-gallery"></div></section>
+    </section>
+
     <section class="view" data-view-panel="settings">
       <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>설정과 등록 정보는 현재 브라우저의 로컬 저장소에만 보관됩니다.</p></div><button class="button button-danger" id="reset-local-data">로컬 데모 데이터 초기화</button></div>
       <div class="settings-grid">
         <section class="card"><div class="card-heading"><div><span class="section-kicker">OVERLAY</span><h2>카메라 표시 항목</h2></div></div><div class="setting-list" id="overlay-settings"></div></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>역할 등록 UI</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">로컬 등록</button></form><div class="list" id="subject-list"></div><p class="helper">이 화면은 이름·역할 metadata만 관리합니다. 얼굴 embedding과 식별 모델은 포함하지 않습니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 인물 등록</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">로컬 등록</button></form><div class="list" id="subject-list"></div><p class="helper">등록 뒤 '기준 사진 촬영'으로 정면·좌·우·거리 변화 사진을 모읍니다. 사진과 metadata는 Jetson 로컬에 저장되며 embedding 생성과 모델 학습은 포함하지 않습니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">MANAGED ITEMS</span><h2>관리·제외 물품</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="물품 이름"><select name="policy"><option value="included">관리 대상</option><option value="excluded">이벤트 제외</option></select><button class="button" type="submit">물품 등록</button></form><div class="chip-list" id="item-list"></div><p class="helper">물품을 등록한 뒤 여러 거리·각도·조명에서 '카메라 촬영'을 눌러 Jetson 로컬 학습 사진을 모읍니다. 실제 모델 학습은 Notebook 단계에서 진행합니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>알림 설정</h2></div></div><div class="setting-list" id="notification-settings"></div></section>

@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 
 test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", async () => {
   const html = await readFile(path.join(root, "apps/index.html"), "utf8");
-  for (const view of ["dashboard", "events", "settings", "jetson"]) {
+  for (const view of ["dashboard", "events", "data", "settings", "jetson"]) {
     assert.match(html, new RegExp(`data-view-panel=["']${view}["']`));
   }
   for (const id of ["start-camera", "event-table-body", "jetson-form", "check-jetson"]) {
@@ -16,11 +16,15 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /AI 미연결/);
   assert.match(html, /AI 결과 아님/);
   assert.match(html, /카메라 표시 항목/);
-  assert.match(html, /역할 등록 UI/);
+  assert.match(html, /돌봄 인물 등록/);
   assert.match(html, /알림 설정/);
   assert.doesNotMatch(html, /상황별 알림/);
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
+  assert.match(html, /데이터 작업실/);
+  assert.match(html, /식별 검토 갤러리/);
+  assert.match(html, /기준 사진 촬영/);
+  assert.match(html, /현재 실행 중인 모델은 바뀌지 않습니다/);
   assert.doesNotMatch(html, /사람 위 표시 항목|돌봄 대상자 등록 UI/);
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
   assert.match(html, /\/api\/health/);

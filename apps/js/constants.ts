@@ -136,6 +136,7 @@ export function createInitialState(): WardyState {
     ],
     zones: [],
     subjects: [{ id: "subject-demo-01", name: "조정민", role: "돌봄 대상", createdAt: new Date().toISOString() }],
+    identityReviews: [],
   };
 }
 
