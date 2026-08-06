@@ -22,7 +22,7 @@ export class CameraController {
       this.onStatusChange?.("connected");
       return this.stream;
     } catch (error) {
-      this.onStatusChange?.("fault");
+      this.stop("fault");
       throw error;
     }
   }
