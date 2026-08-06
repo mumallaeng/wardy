@@ -8,12 +8,23 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
   const store = new WardyStore(storage, "test-state");
 
   store.setCareState("warning", "수동 점검");
-  store.setOverlaySetting("identifiedName", false);
+  store.setOverlaySetting("showName", false);
 
   const restored = new WardyStore(storage, "test-state").getState();
   assert.equal(restored.careState.status, "warning");
   assert.equal(restored.careState.reason, "수동 점검");
-  assert.equal(restored.settings.overlay.identifiedName, false);
+  assert.equal(restored.settings.overlay.showName, false);
+});
+
+test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
+  const storage = new MemoryStorage();
+  storage.setItem("broken-state", JSON.stringify({ version: 1, events: [], settings: {} }));
+
+  const restored = new WardyStore(storage, "broken-state").getState();
+  assert.equal(restored.careState.status, "normal");
+  assert.ok(restored.managedItems.length > 0);
+  assert.ok(Array.isArray(restored.zones));
+  assert.ok(Array.isArray(restored.subjects));
 });
 
 test("이벤트 확인, 오탐, 미디어 삭제 상태를 갱신한다", () => {

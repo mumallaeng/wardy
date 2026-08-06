@@ -1,4 +1,4 @@
-import { CARE_STATUS, createInitialState } from "./constants.ts";
+import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
 import type { CareStatus, EventType, ManagedItemPolicy, NotificationLevel, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 interface StorageLike {
@@ -11,10 +11,70 @@ type StoreListener = (state: WardyState) => void;
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isWardyEvent(value: unknown): value is WardyEvent {
+  if (!isRecord(value)) return false;
+  return typeof value.event_id === "string"
+    && typeof value.event_type === "string" && value.event_type in EVENT_TYPES
+    && typeof value.occurred_at === "string"
+    && typeof value.first_seen_at === "string"
+    && typeof value.last_seen_at === "string"
+    && isStringOrNull(value.subject_id)
+    && isStringOrNull(value.subject_name)
+    && isStringOrNull(value.subject_location)
+    && isStringOrNull(value.object_id)
+    && isStringOrNull(value.object_class)
+    && isStringOrNull(value.zone_id)
+    && typeof value.care_status === "string" && value.care_status in CARE_STATUS
+    && typeof value.event_status === "string" && value.event_status in EVENT_STATUS
+    && isStringOrNull(value.confirmed_at)
+    && isStringOrNull(value.released_at)
+    && isStringOrNull(value.false_detection_at)
+    && typeof value.reason === "string"
+    && Array.isArray(value.source_results)
+    && value.source_results.every((result) => isRecord(result) && typeof result.source === "string" && typeof result.note === "string")
+    && ["none", "image", "video"].includes(String(value.media_type))
+    && isStringOrNull(value.media_path)
+    && isStringOrNull(value.media_started_at)
+    && isStringOrNull(value.media_ended_at);
+}
+
 function isWardyState(value: unknown): value is WardyState {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<WardyState>;
-  return candidate.version === 1 && Array.isArray(candidate.events) && Boolean(candidate.settings);
+  if (!isRecord(value) || value.version !== 1) return false;
+  const careState = value.careState;
+  const settings = value.settings;
+  if (!isRecord(careState)
+    || typeof careState.status !== "string" || !(careState.status in CARE_STATUS)
+    || typeof careState.reason !== "string"
+    || typeof careState.updatedAt !== "string"
+    || careState.source !== "manual_ui"
+    || !isRecord(settings)
+    || !isRecord(settings.overlay)
+    || typeof settings.overlay.showClass !== "boolean"
+    || typeof settings.overlay.showRole !== "boolean"
+    || typeof settings.overlay.showName !== "boolean"
+    || typeof settings.overlay.showPosture !== "boolean"
+    || !isRecord(settings.notifications)
+    || !Object.entries(settings.notifications).every(([key, level]) => key in EVENT_TYPES && ["off", "normal", "strong"].includes(String(level)))
+    || !isRecord(settings.jetson)
+    || typeof settings.jetson.baseUrl !== "string") return false;
+
+  return Array.isArray(value.events) && value.events.every(isWardyEvent)
+    && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
+      && typeof item.id === "string" && typeof item.label === "string" && ["included", "excluded"].includes(String(item.policy)))
+    && Array.isArray(value.zones) && value.zones.every((zone) => isRecord(zone)
+      && typeof zone.id === "string" && typeof zone.name === "string"
+      && [zone.x, zone.y, zone.width, zone.height].every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)))
+    && Array.isArray(value.subjects) && value.subjects.every((subject) => isRecord(subject)
+      && typeof subject.id === "string" && typeof subject.name === "string"
+      && typeof subject.role === "string" && typeof subject.createdAt === "string");
 }
 
 export class MemoryStorage implements StorageLike {

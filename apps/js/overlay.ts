@@ -10,9 +10,17 @@ interface Drawing {
   end: Point;
 }
 
+interface ContentRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export class OverlayController {
   private readonly canvas: HTMLCanvasElement;
   private readonly container: HTMLElement;
+  private readonly video: HTMLVideoElement;
   private readonly context: CanvasRenderingContext2D;
   private readonly onZoneCreated: (zone: ZoneRect) => void;
   private detections: readonly Detection[] = [];
@@ -21,15 +29,18 @@ export class OverlayController {
   private drawing: Drawing | null = null;
   private readonly resizeObserver: ResizeObserver;
 
-  constructor(canvas: HTMLCanvasElement, container: HTMLElement, onZoneCreated: (zone: ZoneRect) => void) {
+  constructor(canvas: HTMLCanvasElement, container: HTMLElement, video: HTMLVideoElement, onZoneCreated: (zone: ZoneRect) => void) {
     this.canvas = canvas;
     this.container = container;
+    this.video = video;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("2D canvas를 초기화할 수 없습니다.");
     this.context = context;
     this.onZoneCreated = onZoneCreated;
     this.resizeObserver = new ResizeObserver(() => this.draw());
     this.resizeObserver.observe(container);
+    video.addEventListener("loadedmetadata", () => this.draw());
+    video.addEventListener("resize", () => this.draw());
     canvas.addEventListener("pointerdown", (event) => this.#pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.#pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.#pointerUp(event));
@@ -40,9 +51,32 @@ export class OverlayController {
   setSettings(settings: OverlaySettings): void { this.settings = { ...settings }; this.draw(); }
   beginZoneDrawing(): void { this.container.classList.add("is-zone-drawing"); }
 
+  #contentRect(): ContentRect {
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const videoRect = this.video.getBoundingClientRect();
+    const sourceWidth = this.video.videoWidth;
+    const sourceHeight = this.video.videoHeight;
+    if (sourceWidth <= 0 || sourceHeight <= 0 || videoRect.width <= 0 || videoRect.height <= 0) {
+      return { x: 0, y: 0, width: canvasRect.width, height: canvasRect.height };
+    }
+    const scale = Math.min(videoRect.width / sourceWidth, videoRect.height / sourceHeight);
+    const width = sourceWidth * scale;
+    const height = sourceHeight * scale;
+    return {
+      x: videoRect.left - canvasRect.left + (videoRect.width - width) / 2,
+      y: videoRect.top - canvasRect.top + (videoRect.height - height) / 2,
+      width,
+      height,
+    };
+  }
+
   #point(event: PointerEvent): Point {
-    const rect = this.canvas.getBoundingClientRect();
-    return { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)), y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) };
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const content = this.#contentRect();
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - canvasRect.left - content.x) / Math.max(1, content.width))),
+      y: Math.min(1, Math.max(0, (event.clientY - canvasRect.top - content.y) / Math.max(1, content.height))),
+    };
   }
   #pointerDown(event: PointerEvent): void {
     if (!this.container.classList.contains("is-zone-drawing")) return;
@@ -73,13 +107,17 @@ export class OverlayController {
     const ctx = this.context;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.lineJoin = "round";
-    this.zones.forEach((zone) => this.#drawZone(zone, dpr));
-    if (this.drawing) this.#drawZone({ x: Math.min(this.drawing.start.x, this.drawing.end.x), y: Math.min(this.drawing.start.y, this.drawing.end.y), width: Math.abs(this.drawing.end.x - this.drawing.start.x), height: Math.abs(this.drawing.end.y - this.drawing.start.y), name: "새 구역" }, dpr, true);
-    this.detections.forEach((detection) => this.#drawDetection(detection, dpr));
+    const content = this.#contentRect();
+    this.zones.forEach((zone) => this.#drawZone(zone, dpr, content));
+    if (this.drawing) this.#drawZone({ x: Math.min(this.drawing.start.x, this.drawing.end.x), y: Math.min(this.drawing.start.y, this.drawing.end.y), width: Math.abs(this.drawing.end.x - this.drawing.start.x), height: Math.abs(this.drawing.end.y - this.drawing.start.y), name: "새 구역" }, dpr, content, true);
+    this.detections.forEach((detection) => this.#drawDetection(detection, dpr, content));
   }
 
-  #drawZone(zone: ZoneRect, dpr: number, draft = false): void {
-    const x = zone.x * this.canvas.width, y = zone.y * this.canvas.height, width = zone.width * this.canvas.width, height = zone.height * this.canvas.height;
+  #drawZone(zone: ZoneRect, dpr: number, content: ContentRect, draft = false): void {
+    const x = (content.x + zone.x * content.width) * dpr;
+    const y = (content.y + zone.y * content.height) * dpr;
+    const width = zone.width * content.width * dpr;
+    const height = zone.height * content.height * dpr;
     this.context.save();
     this.context.strokeStyle = draft ? "#ffffff" : "#62b88f";
     this.context.fillStyle = draft ? "rgba(255,255,255,.08)" : "rgba(52,139,99,.13)";
@@ -94,9 +132,12 @@ export class OverlayController {
     this.context.restore();
   }
 
-  #drawDetection(detection: Detection, dpr: number): void {
+  #drawDetection(detection: Detection, dpr: number, content: ContentRect): void {
     const [nx, ny, nw, nh] = detection.box;
-    const x = nx * this.canvas.width, y = ny * this.canvas.height, width = nw * this.canvas.width, height = nh * this.canvas.height;
+    const x = (content.x + nx * content.width) * dpr;
+    const y = (content.y + ny * content.height) * dpr;
+    const width = nw * content.width * dpr;
+    const height = nh * content.height * dpr;
     const labels = [];
     if (this.settings.showClass && detection.className) labels.push(detection.className);
     if (this.settings.showRole && detection.role) labels.push(detection.role);
