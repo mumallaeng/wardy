@@ -5,6 +5,7 @@
 /edge/db/*.sqlite-shm
 /edge/db/*.sqlite-wal
 /edge/data/
+/edge/tools/
 /node_modules/
 .env
 .env.*

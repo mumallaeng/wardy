@@ -52,6 +52,22 @@ test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있
   assert.match(service, /WARDY_CAMERA_PIPELINE/);
 });
 
+test("Jetson MediaMTX 설치는 고정 ARM64 release checksum을 검증한다", async () => {
+  const installer = await readFile(path.join(root, "edge/scripts/install_mediamtx.sh"), "utf8");
+  assert.match(installer, /WARDY_MEDIAMTX_VERSION:-1\.18\.2/);
+  assert.match(installer, /linux_arm64/);
+  assert.match(installer, /checksums\.sha256/);
+  assert.match(installer, /sha256sum --check --status/);
+});
+
+test("Windows 연결 점검은 Jetson health와 WebRTC endpoint를 확인한다", async () => {
+  const checker = await readFile(path.join(root, "edge/scripts/test_windows_connection.ps1"), "utf8");
+  assert.match(checker, /:8787\/api\/health/);
+  assert.match(checker, /:8889\/wardy/);
+  assert.match(checker, /UDP port 8189/);
+  assert.doesNotMatch(checker, /SSH|macOS/);
+});
+
 test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
   assert.match(source, /SqliteStore/);
