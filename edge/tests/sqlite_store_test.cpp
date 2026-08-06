@@ -1,6 +1,25 @@
 #include "storage/sqlite_store.hpp"
 
+#undef NDEBUG
 #include <cassert>
+#include <filesystem>
+#include <sqlite3.h>
+#include <string>
+
+namespace {
+
+void create_version_database(const std::filesystem::path& path, int version) {
+  sqlite3* database = nullptr;
+  assert(sqlite3_open(path.string().c_str(), &database) == SQLITE_OK);
+  const std::string sql =
+      "CREATE TABLE schema_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+      "INSERT INTO schema_metadata(key, value) VALUES('schema_version', '" +
+      std::to_string(version) + "');";
+  assert(sqlite3_exec(database, sql.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK);
+  assert(sqlite3_close(database) == SQLITE_OK);
+}
+
+}  // namespace
 
 int main() {
   wardy::storage::SqliteStore store(":memory:");
@@ -72,5 +91,20 @@ int main() {
       "2026-08-06T12:05:00+09:00", 640, 480,
   });
   assert(store.count_subject_reference_samples(subject.subject_id) == 1);
+
+  for (const int version : {1, 2}) {
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("wardy-schema-v" + std::to_string(version) + ".sqlite");
+    std::filesystem::remove(path);
+    create_version_database(path, version);
+    {
+      wardy::storage::SqliteStore migrated(path.string());
+      migrated.initialize();
+      assert(migrated.schema_version() == "3");
+      assert(migrated.count_training_samples("missing") == 0);
+      assert(migrated.count_subject_reference_samples("missing") == 0);
+    }
+    std::filesystem::remove(path);
+  }
   return 0;
 }

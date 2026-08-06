@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -85,6 +86,7 @@ struct SqliteStore::Impl {
 
   std::string path;
   sqlite3* database = nullptr;
+  mutable std::mutex mutex;
 };
 
 SqliteStore::SqliteStore(std::string database_path)
@@ -99,6 +101,7 @@ SqliteStore& SqliteStore::operator=(SqliteStore&&) noexcept = default;
 
 void SqliteStore::initialize() {
   if (!impl_) throw std::logic_error("cannot initialize a moved-from SQLite store");
+  const std::lock_guard lock(impl_->mutex);
   if (impl_->database) return;
 
   if (impl_->path != ":memory:") {
@@ -127,8 +130,34 @@ void SqliteStore::initialize() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-    INSERT INTO schema_metadata(key, value) VALUES('schema_version', '3')
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+  )SQL");
+
+  int stored_version = 0;
+  {
+    Statement statement(impl_->database,
+                        "SELECT value FROM schema_metadata WHERE key = 'schema_version';");
+    const int result = sqlite3_step(statement.get());
+    if (result == SQLITE_ROW) {
+      const std::string value = column_text(statement.get(), 0);
+      try {
+        std::size_t parsed = 0;
+        stored_version = std::stoi(value, &parsed);
+        if (parsed != value.size()) throw std::invalid_argument("trailing schema version");
+      } catch (const std::exception&) {
+        throw std::runtime_error("invalid SQLite schema version: " + value);
+      }
+    } else if (result != SQLITE_DONE) {
+      throw std::runtime_error(sqlite3_errmsg(impl_->database));
+    }
+  }
+  if (stored_version < 0 || stored_version > 3) {
+    throw std::runtime_error("unsupported SQLite schema version: " +
+                             std::to_string(stored_version));
+  }
+
+  execute(impl_->database, "BEGIN IMMEDIATE;");
+  try {
+    execute(impl_->database, R"SQL(
 
     CREATE TABLE IF NOT EXISTS events (
       event_id TEXT PRIMARY KEY,
@@ -207,11 +236,23 @@ void SqliteStore::initialize() {
     );
     CREATE INDEX IF NOT EXISTS subject_reference_samples_subject_idx
       ON subject_reference_samples(subject_id, captured_at DESC);
-  )SQL");
+    )SQL");
+    if (stored_version < 3) {
+      execute(impl_->database, R"SQL(
+        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '3')
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+      )SQL");
+    }
+    execute(impl_->database, "COMMIT;");
+  } catch (...) {
+    try { execute(impl_->database, "ROLLBACK;"); } catch (...) {}
+    throw;
+  }
 }
 
 void SqliteStore::upsert_event(const EventRecord& event) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO events (
       event_id, event_type, occurred_at, first_seen_at, last_seen_at,
@@ -262,6 +303,7 @@ void SqliteStore::upsert_event(const EventRecord& event) {
 std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
                                                    std::size_t offset) const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   validate_limit(limit, "limit");
   validate_limit(offset, "offset");
   Statement statement(impl_->database, R"SQL(
@@ -277,19 +319,30 @@ std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
   std::vector<EventRecord> events;
   int result = SQLITE_ROW;
   while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
-    events.push_back({
-        column_text(statement.get(), 0),  column_text(statement.get(), 1),
-        column_text(statement.get(), 2),  column_text(statement.get(), 3),
-        column_text(statement.get(), 4),  optional_column_text(statement.get(), 5),
-        optional_column_text(statement.get(), 6), column_text(statement.get(), 7),
-        optional_column_text(statement.get(), 8), optional_column_text(statement.get(), 9),
-        optional_column_text(statement.get(), 10), optional_column_text(statement.get(), 11),
-        column_text(statement.get(), 12), optional_column_text(statement.get(), 13),
-        optional_column_text(statement.get(), 14), optional_column_text(statement.get(), 15),
-        column_text(statement.get(), 16), column_text(statement.get(), 17),
-        column_text(statement.get(), 18), optional_column_text(statement.get(), 19),
-        optional_column_text(statement.get(), 20), optional_column_text(statement.get(), 21),
-    });
+    EventRecord event;
+    event.event_id = column_text(statement.get(), 0);
+    event.event_type = column_text(statement.get(), 1);
+    event.occurred_at = column_text(statement.get(), 2);
+    event.first_seen_at = column_text(statement.get(), 3);
+    event.last_seen_at = column_text(statement.get(), 4);
+    event.subject_id = optional_column_text(statement.get(), 5);
+    event.subject_name = optional_column_text(statement.get(), 6);
+    event.subject_location = column_text(statement.get(), 7);
+    event.object_id = optional_column_text(statement.get(), 8);
+    event.object_class = optional_column_text(statement.get(), 9);
+    event.zone_id = optional_column_text(statement.get(), 10);
+    event.care_status = optional_column_text(statement.get(), 11);
+    event.event_status = column_text(statement.get(), 12);
+    event.confirmed_at = optional_column_text(statement.get(), 13);
+    event.released_at = optional_column_text(statement.get(), 14);
+    event.false_detection_at = optional_column_text(statement.get(), 15);
+    event.reason = column_text(statement.get(), 16);
+    event.source_results_json = column_text(statement.get(), 17);
+    event.media_type = column_text(statement.get(), 18);
+    event.media_path = optional_column_text(statement.get(), 19);
+    event.media_started_at = optional_column_text(statement.get(), 20);
+    event.media_ended_at = optional_column_text(statement.get(), 21);
+    events.push_back(std::move(event));
   }
   if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
   return events;
@@ -299,6 +352,7 @@ bool SqliteStore::update_event_status(const std::string& event_id,
                                       const std::string& event_status,
                                       const std::string& changed_at) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     UPDATE events SET
       event_status = ?,
@@ -321,6 +375,7 @@ bool SqliteStore::update_event_status(const std::string& event_id,
 
 void SqliteStore::save_system_state(const SystemStateRecord& state) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO system_state(singleton_id, care_state, camera_state, detection_state,
                              event_state, reason, updated_at)
@@ -341,6 +396,7 @@ void SqliteStore::save_system_state(const SystemStateRecord& state) {
 
 std::optional<SystemStateRecord> SqliteStore::load_system_state() const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     SELECT care_state, camera_state, detection_state, event_state, reason, updated_at
     FROM system_state WHERE singleton_id = 1;
@@ -357,6 +413,7 @@ std::optional<SystemStateRecord> SqliteStore::load_system_state() const {
 
 void SqliteStore::upsert_managed_item(const ManagedItemRecord& item) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO managed_items(item_id, label, policy, created_at, updated_at)
     VALUES(?,?,?,?,?)
@@ -373,6 +430,7 @@ void SqliteStore::upsert_managed_item(const ManagedItemRecord& item) {
 
 void SqliteStore::add_training_sample(const TrainingSampleRecord& sample) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO training_samples(sample_id, item_id, image_path, captured_at, width, height)
     VALUES(?,?,?,?,?,?);
@@ -388,6 +446,7 @@ void SqliteStore::add_training_sample(const TrainingSampleRecord& sample) {
 
 std::size_t SqliteStore::count_training_samples(const std::string& item_id) const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database,
                       "SELECT COUNT(*) FROM training_samples WHERE item_id = ?;");
   bind_text(statement.get(), 1, item_id);
@@ -399,6 +458,7 @@ std::size_t SqliteStore::count_training_samples(const std::string& item_id) cons
 
 void SqliteStore::upsert_subject(const SubjectRecord& subject) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO subjects(subject_id, name, role, created_at, updated_at)
     VALUES(?,?,?,?,?)
@@ -416,6 +476,7 @@ void SqliteStore::upsert_subject(const SubjectRecord& subject) {
 void SqliteStore::add_subject_reference_sample(
     const SubjectReferenceSampleRecord& sample) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO subject_reference_samples(
       sample_id, subject_id, image_path, captured_at, width, height
@@ -433,6 +494,7 @@ void SqliteStore::add_subject_reference_sample(
 std::size_t SqliteStore::count_subject_reference_samples(
     const std::string& subject_id) const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database,
                       "SELECT COUNT(*) FROM subject_reference_samples WHERE subject_id = ?;");
   bind_text(statement.get(), 1, subject_id);
@@ -444,6 +506,7 @@ std::size_t SqliteStore::count_subject_reference_samples(
 
 std::string SqliteStore::schema_version() const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database,
                       "SELECT value FROM schema_metadata WHERE key = 'schema_version';");
   if (sqlite3_step(statement.get()) != SQLITE_ROW) {
@@ -454,6 +517,7 @@ std::string SqliteStore::schema_version() const {
 
 std::string SqliteStore::journal_mode() const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, "PRAGMA journal_mode;");
   if (sqlite3_step(statement.get()) != SQLITE_ROW) {
     throw std::runtime_error(sqlite3_errmsg(impl_->database));
@@ -461,6 +525,9 @@ std::string SqliteStore::journal_mode() const {
   return column_text(statement.get(), 0);
 }
 
-const std::string& SqliteStore::path() const noexcept { return impl_->path; }
+const std::string& SqliteStore::path() const noexcept {
+  static const std::string empty;
+  return impl_ ? impl_->path : empty;
+}
 
 }  // namespace wardy::storage

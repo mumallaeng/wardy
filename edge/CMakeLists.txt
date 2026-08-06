@@ -13,8 +13,8 @@ find_package(SQLite3 REQUIRED)
 add_library(wardy_storage STATIC
   src/storage/sqlite_store.cpp
 )
-target_include_directories(wardy_storage PUBLIC src ${SQLite3_INCLUDE_DIRS})
-target_link_libraries(wardy_storage PUBLIC ${SQLite3_LIBRARIES})
+target_include_directories(wardy_storage PUBLIC src)
+target_link_libraries(wardy_storage PUBLIC SQLite3::SQLite3)
 target_compile_options(wardy_storage PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(wardy_db_probe
