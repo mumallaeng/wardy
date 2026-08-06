@@ -34,11 +34,27 @@ namespace {
 struct StreamState {
   std::atomic_bool running{true};
   std::atomic_bool camera_connected{false};
+  std::atomic_int stream_clients{0};
   std::mutex mutex;
   std::condition_variable frame_ready;
   std::vector<unsigned char> jpeg;
   std::size_t sequence = 0;
   std::string camera_error;
+};
+
+class StreamClientRegistration {
+ public:
+  explicit StreamClientRegistration(const std::shared_ptr<StreamState>& state)
+      : state_(state) {
+    ++state_->stream_clients;
+  }
+  ~StreamClientRegistration() { --state_->stream_clients; }
+
+  StreamClientRegistration(const StreamClientRegistration&) = delete;
+  StreamClientRegistration& operator=(const StreamClientRegistration&) = delete;
+
+ private:
+  std::shared_ptr<StreamState> state_;
 };
 
 bool send_all(int socket_fd, const void* data, std::size_t size) {
@@ -72,6 +88,7 @@ std::string read_request(int socket_fd) {
 }
 
 void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state) {
+  const StreamClientRegistration registration(state);
   {
     std::unique_lock lock(state->mutex);
     state->frame_ready.wait_for(lock, std::chrono::seconds(3), [&] {
@@ -131,10 +148,17 @@ void capture_frames(const MjpegServiceConfig& config,
     cv::Mat frame;
     const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
                                               config.jpeg_quality};
+    auto next_preview_at = std::chrono::steady_clock::now();
     while (state->running) {
       if (!camera.read(frame)) {
         throw std::runtime_error("failed to read a frame from the Jetson camera");
       }
+      if (state->stream_clients == 0) continue;
+
+      const auto now = std::chrono::steady_clock::now();
+      if (now < next_preview_at) continue;
+      next_preview_at = now + std::chrono::milliseconds(100);
+
       std::vector<unsigned char> encoded;
       if (!cv::imencode(".jpg", frame, encoded, encode_parameters)) {
         throw std::runtime_error("failed to encode the Jetson camera frame");

@@ -24,3 +24,11 @@ test("카메라 입력 모듈은 AI 추론 구현을 포함하지 않는다", as
     assert.doesNotMatch(source, /TensorRT|onnx|inference|detect|model/i, file);
   }
 });
+
+test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /stream_clients == 0/);
+  assert.match(source, /milliseconds\(100\)/);
+  assert.match(source, /cv::imencode/);
+  assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
+});
