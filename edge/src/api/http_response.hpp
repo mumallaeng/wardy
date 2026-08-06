@@ -7,8 +7,8 @@ namespace wardy::api {
 
 inline std::string common_headers() {
   return "Access-Control-Allow-Origin: *\r\n"
-         "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-         "Access-Control-Allow-Headers: Accept, Content-Type\r\n"
+         "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+         "Access-Control-Allow-Headers: Accept, Content-Type, X-Wardy-Item-Id, X-Wardy-Item-Label, X-Wardy-Item-Policy\r\n"
          "Cache-Control: no-store\r\n";
 }
 

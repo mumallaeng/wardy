@@ -12,6 +12,7 @@ struct MjpegServiceConfig {
   int port = 8787;
   int jpeg_quality = 80;
   std::string database_path = "edge/db/wardy.sqlite";
+  std::string training_data_path = "edge/data/training";
 
   void validate() const;
 };
