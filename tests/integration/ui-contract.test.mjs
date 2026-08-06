@@ -17,6 +17,8 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /AI 결과 아님/);
   assert.match(html, /카메라 표시 항목/);
   assert.match(html, /역할 등록 UI/);
+  assert.match(html, /알림 설정/);
+  assert.doesNotMatch(html, /상황별 알림/);
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
   assert.doesNotMatch(html, /사람 위 표시 항목|돌봄 대상자 등록 UI/);
