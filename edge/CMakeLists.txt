@@ -14,9 +14,17 @@ add_executable(camera_config_test
 target_include_directories(camera_config_test PRIVATE src)
 add_test(NAME camera_config_test COMMAND camera_config_test)
 
-find_package(OpenCV QUIET COMPONENTS core videoio)
+add_executable(http_response_test
+  tests/http_response_test.cpp
+)
+target_include_directories(http_response_test PRIVATE src)
+add_test(NAME http_response_test COMMAND http_response_test)
+
+find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)
+  find_package(Threads REQUIRED)
+
   add_library(wardy_camera STATIC
     src/input/camera_capture.cpp
   )
@@ -29,6 +37,14 @@ if(OpenCV_FOUND)
   )
   target_link_libraries(wardy_camera_probe PRIVATE wardy_camera)
   target_compile_options(wardy_camera_probe PRIVATE -Wall -Wextra -Wpedantic)
+
+  add_executable(wardy_edge_service
+    src/api/mjpeg_service.cpp
+    src/api/wardy_edge_service.cpp
+  )
+  target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(wardy_edge_service PRIVATE wardy_camera Threads::Threads ${OpenCV_LIBS})
+  target_compile_options(wardy_edge_service PRIVATE -Wall -Wextra -Wpedantic)
 else()
-  message(STATUS "OpenCV core/videoio not found: camera library and probe are skipped")
+  message(STATUS "OpenCV core/videoio/imgcodecs not found: camera library, probe, and edge service are skipped")
 endif()

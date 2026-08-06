@@ -1,5 +1,5 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES, createDemoEvent } from "./constants.ts";
-import { CameraController } from "./camera.ts";
+import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import { OverlayController } from "./overlay.ts";
@@ -92,7 +92,7 @@ function setCameraStatus(status: CameraStatus): void {
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
 }
 
-const camera = new CameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
+const camera = new JetsonCameraController($<HTMLImageElement>("#camera"), setCameraStatus);
 
 /**
  * Updates the Jetson connection status and related interface elements.
@@ -257,11 +257,17 @@ $$<HTMLButtonElement>('[data-open-view]').forEach((button) => button.addEventLis
 const initialView = location.hash.slice(1);
 if (["dashboard", "events", "settings", "jetson"].includes(initialView)) openView(initialView as ViewName);
 
-$("#start-camera").addEventListener("click", async () => {
-  try { await camera.start(); toast("카메라 영상을 로컬 화면에 표시합니다."); }
-  catch (error) { toast(error instanceof DOMException && error.name === "NotAllowedError" ? "카메라 권한이 허용되지 않았습니다." : errorMessage(error)); }
+$("#start-camera").addEventListener("click", () => {
+  try {
+    const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
+    const endpoint = camera.start(baseUrl, window.location.origin);
+    toast(`Jetson 카메라 stream에 연결합니다: ${endpoint}`);
+  } catch (error) {
+    setCameraStatus("fault");
+    toast(errorMessage(error));
+  }
 });
-$("#stop-camera").addEventListener("click", () => { camera.stop(); toast("카메라를 중지했습니다."); });
+$("#stop-camera").addEventListener("click", () => { camera.stop(); toast("Jetson 카메라 stream 연결을 중지했습니다."); });
 $("#toggle-demo-overlay").addEventListener("click", (event: Event) => {
   demoOverlayEnabled = !demoOverlayEnabled;
   overlay.setDetections(demoOverlayEnabled ? DEMO_DETECTIONS : []);
