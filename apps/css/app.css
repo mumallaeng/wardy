@@ -69,7 +69,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .card { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
 .camera-stage { position: relative; display: grid; place-items: center; min-height: 470px; overflow: hidden; border-radius: 14px; background: #101813; }
-.camera-stage img { display: block; width: 100%; height: 100%; max-height: 620px; object-fit: contain; }
+.camera-stage iframe { display: block; width: 100%; min-height: 470px; height: 100%; max-height: 620px; border: 0; background: #101813; }
 .camera-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; }
 .camera-stage.is-zone-drawing canvas { cursor: crosshair; pointer-events: auto; }
 .camera-empty { position: absolute; display: grid; gap: 7px; max-width: 430px; padding: 20px; color: #dce8df; text-align: center; }
@@ -190,6 +190,7 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
   .page-heading { align-items: flex-start; flex-direction: column; }
   .heading-actions, .heading-actions .button { width: 100%; }
   .camera-stage { min-height: 310px; }
+  .camera-stage iframe { min-height: 310px; }
   .card { padding: 16px; border-radius: 14px; }
   .system-strip, .summary-grid { grid-template-columns: 1fr 1fr; }
   .filters, .inline-form { grid-template-columns: 1fr; }
