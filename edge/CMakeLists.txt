@@ -8,6 +8,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+find_package(SQLite3 REQUIRED)
+
+add_library(wardy_storage STATIC
+  src/storage/sqlite_store.cpp
+)
+target_include_directories(wardy_storage PUBLIC src ${SQLite3_INCLUDE_DIRS})
+target_link_libraries(wardy_storage PUBLIC ${SQLite3_LIBRARIES})
+target_compile_options(wardy_storage PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(wardy_db_probe
+  src/storage/database_probe.cpp
+)
+target_link_libraries(wardy_db_probe PRIVATE wardy_storage)
+target_compile_options(wardy_db_probe PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(sqlite_store_test
+  tests/sqlite_store_test.cpp
+)
+target_link_libraries(sqlite_store_test PRIVATE wardy_storage)
+add_test(NAME sqlite_store_test COMMAND sqlite_store_test)
+
 add_executable(camera_config_test
   tests/camera_config_test.cpp
 )

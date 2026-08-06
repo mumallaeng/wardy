@@ -1,4 +1,7 @@
 /build/
 /dist/
 /edge/build/
+/edge/db/*.sqlite
+/edge/db/*.sqlite-shm
+/edge/db/*.sqlite-wal
 /node_modules/
