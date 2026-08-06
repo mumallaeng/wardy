@@ -4,4 +4,5 @@
 /edge/db/*.sqlite
 /edge/db/*.sqlite-shm
 /edge/db/*.sqlite-wal
+/edge/data/
 /node_modules/

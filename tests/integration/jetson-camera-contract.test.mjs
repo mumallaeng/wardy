@@ -43,3 +43,12 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
   const captureLoop = captureFunction.slice(captureFunction.indexOf("while (state->running)"), captureFunction.indexOf("camera.close()"));
   assert.doesNotMatch(captureLoop, /save_system_state|save_camera_state/);
 });
+
+test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /POST \/api\/training\/items\/sample/);
+  assert.match(source, /sample_capture_requests/);
+  assert.match(source, /add_training_sample/);
+  assert.match(source, /std::filesystem::path\("items"\)/);
+  assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+});
