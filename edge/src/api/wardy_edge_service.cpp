@@ -35,7 +35,8 @@ int main(int argc, char* argv[]) {
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
     if (argc > 3) config.camera.width = parse_integer(argv[3], "width");
     if (argc > 4) config.camera.height = parse_integer(argv[4], "height");
-    if (argc > 5) throw std::invalid_argument("usage: wardy_edge_service [port] [device] [width] [height]");
+    if (argc > 5) config.database_path = argv[5];
+    if (argc > 6) throw std::invalid_argument("usage: wardy_edge_service [port] [device] [width] [height] [database]");
 
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 #include "input/camera_config.hpp"
 
@@ -10,6 +11,7 @@ struct MjpegServiceConfig {
   input::CameraConfig camera;
   int port = 8787;
   int jpeg_quality = 80;
+  std::string database_path = "edge/db/wardy.sqlite";
 
   void validate() const;
 };
