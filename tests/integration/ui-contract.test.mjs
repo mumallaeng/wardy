@@ -15,6 +15,9 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   }
   assert.match(html, /AI 미연결/);
   assert.match(html, /AI 결과 아님/);
+  assert.match(html, /카메라 표시 항목/);
+  assert.match(html, /역할 등록 UI/);
+  assert.doesNotMatch(html, /사람 위 표시 항목|돌봄 대상자 등록 UI/);
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
   assert.match(html, /\/api\/health/);
   assert.match(html, /\/api\/camera\/stream/);
