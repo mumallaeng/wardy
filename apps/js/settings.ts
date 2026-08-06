@@ -150,7 +150,7 @@ export function renderManagedItems(
     const chip = document.createElement("span");
     chip.className = `item-chip${item.policy === "excluded" ? " is-excluded" : ""}`;
     const label = document.createElement("span");
-    label.textContent = `${item.label} · ${item.policy === "included" ? "관리" : "제외"} · 학습 사진 ${item.sampleCount ?? 0}장`;
+    label.textContent = `${item.label} · ${item.policy === "included" ? "위험물 탐지" : "event 제외"} · 학습 사진 ${item.sampleCount ?? 0}장`;
     const capture = document.createElement("button");
     capture.type = "button";
     capture.className = "item-capture-button";

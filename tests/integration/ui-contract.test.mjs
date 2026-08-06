@@ -25,6 +25,8 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /식별 검토 갤러리/);
   assert.match(html, /기준 사진 촬영/);
   assert.match(html, /현재 실행 중인 모델은 바뀌지 않습니다/);
+  assert.match(html, /위험물·제외 물건/);
+  assert.doesNotMatch(html, /관리 물품 이동|의료기기 탐지/);
   assert.doesNotMatch(html, /사람 위 표시 항목|돌봄 대상자 등록 UI/);
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
   assert.match(html, /\/api\/health/);

@@ -5,7 +5,6 @@ export type EventType =
   | "inactivity"
   | "hazard_detected"
   | "hazard_proximity"
-  | "managed_item_moved"
   | "zone_entry"
   | "zone_dwell"
   | "camera_fault"
