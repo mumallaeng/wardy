@@ -481,23 +481,32 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
 
 void capture_frames(const MjpegServiceConfig& config,
                     const std::shared_ptr<StreamState>& state) {
+  auto retry_delay = std::chrono::seconds(1);
+  constexpr auto maximum_retry_delay = std::chrono::seconds(30);
+  std::string last_reported_error;
   while (state->running) {
     try {
       input::CameraCapture camera(config.camera);
       camera.open();
-      {
-        std::lock_guard lock(state->mutex);
-        state->camera_error.clear();
-      }
-      state->camera_connected = true;
-      save_camera_state(state, "connected", "Jetson camera frame input is ready");
       cv::Mat frame;
       const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
                                                 config.jpeg_quality};
       auto next_preview_at = std::chrono::steady_clock::now();
+      bool connected_reported = false;
       while (state->running) {
         if (!camera.read(frame)) {
           throw std::runtime_error("failed to read a frame from the Jetson camera");
+        }
+        if (!connected_reported) {
+          {
+            std::lock_guard lock(state->mutex);
+            state->camera_error.clear();
+          }
+          state->camera_connected = true;
+          save_camera_state(state, "connected", "Jetson camera frame input is ready");
+          retry_delay = std::chrono::seconds(1);
+          last_reported_error.clear();
+          connected_reported = true;
         }
         state->frame_width = frame.cols;
         state->frame_height = frame.rows;
@@ -528,9 +537,13 @@ void capture_frames(const MjpegServiceConfig& config,
         state->camera_error = error.what();
       }
       state->frame_ready.notify_all();
-      save_camera_state(state, "fault", error.what());
-      std::cerr << "Jetson camera error: " << error.what() << '\n';
-      if (state->running) std::this_thread::sleep_for(std::chrono::seconds(1));
+      if (last_reported_error != error.what()) {
+        last_reported_error = error.what();
+        save_camera_state(state, "fault", error.what());
+        std::cerr << "Jetson camera error: " << error.what() << '\n';
+      }
+      if (state->running) std::this_thread::sleep_for(retry_delay);
+      retry_delay = std::min(retry_delay * 2, maximum_retry_delay);
     }
   }
 }
@@ -547,7 +560,7 @@ int open_server_socket(int port) {
 
   sockaddr_in address{};
   address.sin_family = AF_INET;
-  address.sin_addr.s_addr = htonl(INADDR_ANY);
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   address.sin_port = htons(static_cast<std::uint16_t>(port));
   if (::bind(socket_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0 ||
       ::listen(socket_fd, 8) < 0) {
@@ -586,7 +599,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
   std::thread capture_thread(capture_frames, std::cref(config_), state);
-  std::cout << "Wardy edge service listening on 0.0.0.0:" << config_.port << '\n';
+  std::cout << "Wardy edge service listening on 127.0.0.1:" << config_.port << '\n';
 
   while (!stop_requested) {
     fd_set read_set;

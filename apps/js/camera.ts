@@ -4,7 +4,6 @@ import { normalizeJetsonBaseUrl } from "./jetson.ts";
 
 export function jetsonWebRtcStreamUrl(value: string, fallbackOrigin = ""): string {
   const url = new URL(normalizeJetsonBaseUrl(value, fallbackOrigin));
-  url.port = "8889";
   url.pathname = "/wardy";
   url.search = new URLSearchParams({
     controls: "false",
@@ -18,7 +17,6 @@ export function jetsonWebRtcStreamUrl(value: string, fallbackOrigin = ""): strin
 
 export function jetsonWhepUrl(value: string, fallbackOrigin = ""): string {
   const url = new URL(normalizeJetsonBaseUrl(value, fallbackOrigin));
-  url.port = "8889";
   url.pathname = "/wardy/whep";
   url.search = "";
   return url.toString();
@@ -50,13 +48,22 @@ export class JetsonCameraController {
     this.onStatusChange = onStatusChange;
   }
 
-  async start(baseUrl: string, accessToken: string,
+  async start(baseUrl: string, viewerToken: string,
               fallbackOrigin = globalThis.location?.origin ?? ""): Promise<string> {
-    if (!accessToken.trim()) throw new Error("Jetson 접근 토큰을 입력해 주세요.");
+    if (!viewerToken.trim()) throw new Error("Jetson 카메라 토큰을 입력해 주세요.");
     this.stop("connecting");
     const generation = this.generation;
-    const endpoint = jetsonWhepUrl(baseUrl, fallbackOrigin);
-    this.authorization = `Basic ${btoa(`wardy-viewer:${accessToken}`)}`;
+    let endpoint: string;
+    try {
+      endpoint = jetsonWhepUrl(baseUrl, fallbackOrigin);
+      if (new URL(endpoint).protocol !== "https:") {
+        throw new Error("인증된 카메라 연결에는 https가 필요합니다.");
+      }
+      this.authorization = `Basic ${btoa(`wardy-viewer:${viewerToken}`)}`;
+    } catch (error) {
+      this.stop("fault");
+      throw error;
+    }
     const peer = new RTCPeerConnection();
     this.peer = peer;
     const abortController = new AbortController();
@@ -109,7 +116,15 @@ export class JetsonCameraController {
       });
       if (!response.ok) throw new Error(`WebRTC 연결 요청이 HTTP ${response.status}로 실패했습니다.`);
       const location = response.headers.get("location");
-      this.resourceUrl = location ? new URL(location, endpoint).toString() : null;
+      if (location) {
+        const resource = new URL(location, endpoint);
+        const publicEndpoint = new URL(endpoint);
+        resource.protocol = publicEndpoint.protocol;
+        resource.host = publicEndpoint.host;
+        this.resourceUrl = resource.toString();
+      } else {
+        this.resourceUrl = null;
+      }
       await peer.setRemoteDescription({ type: "answer", sdp: await response.text() });
       return endpoint;
     } catch (error) {

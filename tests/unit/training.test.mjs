@@ -5,9 +5,10 @@ import { TrainingSampleClient, subjectReferenceUrl, trainingSampleUrl } from "..
 
 test("Jetson training sample endpoint를 만든다", () => {
   assert.equal(
-    trainingSampleUrl("http://jetson.local:8787/"),
-    "http://jetson.local:8787/api/training/items/sample",
+    trainingSampleUrl("https://jetson.local:8443/"),
+    "https://jetson.local:8443/api/training/items/sample",
   );
+  assert.throws(() => trainingSampleUrl("http://jetson.local:8787/"), /HTTPS/);
 });
 
 test("등록 물품 정보를 보내고 저장된 sample 수를 반환한다", async () => {
@@ -20,10 +21,10 @@ test("등록 물품 정보를 보내고 저장된 sample 수를 반환한다", a
   });
   const result = await client.capture(
     { id: "item-1", label: "주방 칼", policy: "included" },
-    "http://jetson.local:8787",
+    "https://jetson.local:8443",
     "test-access-token",
   );
-  assert.equal(calls[0].url, "http://jetson.local:8787/api/training/items/sample");
+  assert.equal(calls[0].url, "https://jetson.local:8443/api/training/items/sample");
   assert.equal(calls[0].options.method, "POST");
   assert.equal(calls[0].options.headers["X-Wardy-Item-Label"], encodeURIComponent("주방 칼"));
   assert.equal(calls[0].options.headers["X-Wardy-Access-Token"], "test-access-token");
@@ -33,8 +34,8 @@ test("등록 물품 정보를 보내고 저장된 sample 수를 반환한다", a
 });
 
 test("돌봄 인물 기준 사진을 Jetson 로컬 endpoint에 저장한다", async () => {
-  assert.equal(subjectReferenceUrl("http://jetson.local:8787/"),
-    "http://jetson.local:8787/api/training/subjects/reference");
+  assert.equal(subjectReferenceUrl("https://jetson.local:8443/"),
+    "https://jetson.local:8443/api/training/subjects/reference");
   const calls = [];
   const client = new TrainingSampleClient(async (url, options) => {
     calls.push({ url, options });
@@ -46,7 +47,7 @@ test("돌봄 인물 기준 사진을 Jetson 로컬 endpoint에 저장한다", as
   });
   const result = await client.captureSubject({
     id: "subject-1", name: "조정민", role: "돌봄 대상", createdAt: "2026-08-06T00:00:00Z",
-  }, "http://jetson.local:8787", "test-access-token");
+  }, "https://jetson.local:8443", "test-access-token");
   assert.equal(calls[0].options.headers["X-Wardy-Subject-Name"], encodeURIComponent("조정민"));
   assert.equal(result.sampleCount, 4);
 });

@@ -23,10 +23,11 @@ authInternalUsers:
       - action: pprof
 
 rtsp: true
-rtspAddress: :8554
+rtspAddress: 127.0.0.1:8554
 
 webrtc: true
-webrtcAddress: :8889
+# HTTPS is terminated by Caddy; this listener is loopback-only.
+webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: false
 webrtcAllowOrigins: ["http://localhost:8000"]
 webrtcLocalUDPAddress: :8189

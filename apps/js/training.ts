@@ -9,6 +9,13 @@ export function subjectReferenceUrl(value: string, fallbackOrigin = ""): string 
   return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/training/subjects/reference`;
 }
 
+function requireSecureEndpoint(endpoint: string): string {
+  if (new URL(endpoint).protocol !== "https:") {
+    throw new Error("인증된 Jetson 요청에는 https가 필요합니다.");
+  }
+  return endpoint;
+}
+
 export class TrainingSampleClient {
   private readonly fetchImpl: typeof fetch;
 
@@ -19,7 +26,7 @@ export class TrainingSampleClient {
   async capture(item: ManagedItem, baseUrl: string,
                 accessToken: string,
                 fallbackOrigin = globalThis.location?.origin ?? ""): Promise<TrainingSampleResult> {
-    const endpoint = trainingSampleUrl(baseUrl, fallbackOrigin);
+    const endpoint = requireSecureEndpoint(trainingSampleUrl(baseUrl, fallbackOrigin));
     const response = await this.fetchImpl(endpoint, {
       method: "POST",
       headers: {
@@ -51,7 +58,8 @@ export class TrainingSampleClient {
   async captureSubject(subject: Subject, baseUrl: string,
                        accessToken: string,
                        fallbackOrigin = globalThis.location?.origin ?? ""): Promise<TrainingSampleResult> {
-    const response = await this.fetchImpl(subjectReferenceUrl(baseUrl, fallbackOrigin), {
+    const endpoint = requireSecureEndpoint(subjectReferenceUrl(baseUrl, fallbackOrigin));
+    const response = await this.fetchImpl(endpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",

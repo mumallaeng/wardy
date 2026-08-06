@@ -40,7 +40,7 @@ test("Jetson WebRTC는 H264 hardware encode와 UDP ICE gateway를 사용한다",
   assert.match(launcher, /video\/x-h264,profile=baseline/);
   assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
   assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
-  assert.match(gateway, /webrtcAddress: :8889/);
+  assert.match(gateway, /webrtcAddress: 127\.0\.0\.1:8889/);
   assert.match(gateway, /webrtcLocalUDPAddress: :8189/);
   assert.match(gateway, /webrtcLocalTCPAddress: ""/);
   assert.doesNotMatch(gateway, /webrtcAllowOrigins: \["\*"\]/);
@@ -63,12 +63,31 @@ test("Jetson MediaMTX 설치는 고정 ARM64 release checksum을 검증한다", 
   assert.match(installer, /sha256sum --check --status/);
 });
 
-test("Windows 연결 점검은 Jetson health와 WebRTC endpoint를 확인한다", async () => {
+test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
   const checker = await readFile(path.join(root, "edge/scripts/test_windows_connection.ps1"), "utf8");
-  assert.match(checker, /:8787\/api\/health/);
-  assert.match(checker, /:8889\/wardy/);
-  assert.match(checker, /UDP port 8189/);
+  assert.match(checker, /:8443/);
+  assert.match(checker, /\/api\/health/);
+  assert.match(checker, /\/wardy\/whep/);
+  assert.match(checker, /SecureString/);
+  assert.match(checker, /Origin/);
+  assert.match(checker, /catch/);
+  assert.match(checker, /UDP media on port 8189/);
   assert.doesNotMatch(checker, /SSH|macOS/);
+});
+
+test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", async () => {
+  const caddy = await readFile(path.join(root, "edge/config/Caddyfile"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
+  assert.match(caddy, /auto_https disable_redirects/);
+  assert.match(caddy, /https:\/\/\{\$WARDY_JETSON_HOST\}:8443/);
+  assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
+  assert.match(caddy, /127\.0\.0\.1:8787/);
+  assert.match(caddy, /127\.0\.0\.1:8889/);
+  assert.match(launcher, /chmod 0600/);
+  assert.match(example, /WARDY_ACCESS_TOKEN=/);
+  assert.match(example, /WARDY_VIEWER_TOKEN=/);
+  assert.match(example, /WARDY_PUBLISH_TOKEN=/);
 });
 
 test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
@@ -77,12 +96,10 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
   assert.match(source, /save_camera_state\(state, "connecting"/);
   assert.match(source, /save_camera_state\(state, "connected"/);
   assert.match(source, /save_camera_state\(state, "fault"/);
-  const captureFunction = source.slice(source.indexOf("void capture_frames"));
-  const frameLoop = captureFunction.slice(
-    captureFunction.indexOf("while (state->running) {", captureFunction.indexOf("camera.open()")),
-    captureFunction.indexOf("camera.close()"),
-  );
-  assert.doesNotMatch(frameLoop, /save_system_state|save_camera_state/);
+  assert.match(source, /connected_reported/);
+  assert.match(source, /if \(!connected_reported\)/);
+  assert.match(source, /retry_delay = std::chrono::seconds\(1\)/);
+  assert.match(source, /std::min\(retry_delay \* 2, maximum_retry_delay\)/);
 });
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {

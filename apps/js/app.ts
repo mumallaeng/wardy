@@ -51,6 +51,7 @@ const trainingSamples = new TrainingSampleClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
 let jetsonAccessToken = "";
+let jetsonViewerToken = "";
 
 /**
  * Displays a temporary notification message.
@@ -330,7 +331,7 @@ if (["dashboard", "events", "data", "settings", "jetson"].includes(initialView))
 $("#start-camera").addEventListener("click", async () => {
   try {
     const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
-    const endpoint = await camera.start(baseUrl, jetsonAccessToken, window.location.origin);
+    const endpoint = await camera.start(baseUrl, jetsonViewerToken, window.location.origin);
     toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
   } catch (error) {
     setCameraStatus("fault");
@@ -419,6 +420,7 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
   event.preventDefault();
   const rawBaseUrl = $<HTMLInputElement>("#jetson-base-url").value;
   jetsonAccessToken = $<HTMLInputElement>("#jetson-access-token").value;
+  jetsonViewerToken = $<HTMLInputElement>("#jetson-viewer-token").value;
   try {
     if (rawBaseUrl.trim()) normalizeJetsonBaseUrl(rawBaseUrl);
     store.setJetsonBaseUrl(rawBaseUrl);

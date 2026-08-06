@@ -1,0 +1,13 @@
+{
+	auto_https disable_redirects
+}
+
+https://{$WARDY_JETSON_HOST}:8443 {
+	tls {$WARDY_TLS_CERTIFICATE} {$WARDY_TLS_PRIVATE_KEY}
+
+	@edge_api path /api/*
+	reverse_proxy @edge_api 127.0.0.1:8787
+
+	@webrtc path /wardy /wardy/*
+	reverse_proxy @webrtc 127.0.0.1:8889
+}

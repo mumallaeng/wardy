@@ -119,45 +119,48 @@ void SqliteStore::initialize() {
     throw std::runtime_error(message);
   }
 
-  sqlite3_busy_timeout(impl_->database, 1000);
-  execute(impl_->database, "PRAGMA foreign_keys = ON;");
-  execute(impl_->database, "PRAGMA journal_mode = WAL;");
-  execute(impl_->database, "PRAGMA synchronous = NORMAL;");
-  execute(impl_->database, "PRAGMA cache_size = -2048;");
-  execute(impl_->database, "PRAGMA wal_autocheckpoint = 200;");
-  execute(impl_->database, R"SQL(
+  try {
+    sqlite3_busy_timeout(impl_->database, 1000);
+    execute(impl_->database, "PRAGMA foreign_keys = ON;");
+    execute(impl_->database, "PRAGMA journal_mode = WAL;");
+    execute(impl_->database, "PRAGMA synchronous = NORMAL;");
+    execute(impl_->database, "PRAGMA cache_size = -2048;");
+    execute(impl_->database, "PRAGMA wal_autocheckpoint = 200;");
+    execute(impl_->database, R"SQL(
     CREATE TABLE IF NOT EXISTS schema_metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
   )SQL");
 
-  int stored_version = 0;
-  {
-    Statement statement(impl_->database,
-                        "SELECT value FROM schema_metadata WHERE key = 'schema_version';");
-    const int result = sqlite3_step(statement.get());
-    if (result == SQLITE_ROW) {
-      const std::string value = column_text(statement.get(), 0);
-      try {
-        std::size_t parsed = 0;
-        stored_version = std::stoi(value, &parsed);
-        if (parsed != value.size()) throw std::invalid_argument("trailing schema version");
-      } catch (const std::exception&) {
-        throw std::runtime_error("invalid SQLite schema version: " + value);
+    int stored_version = 0;
+    {
+      Statement statement(
+          impl_->database,
+          "SELECT value FROM schema_metadata WHERE key = 'schema_version';");
+      const int result = sqlite3_step(statement.get());
+      if (result == SQLITE_ROW) {
+        const std::string value = column_text(statement.get(), 0);
+        try {
+          std::size_t parsed = 0;
+          stored_version = std::stoi(value, &parsed);
+          if (parsed != value.size())
+            throw std::invalid_argument("trailing schema version");
+        } catch (const std::exception &) {
+          throw std::runtime_error("invalid SQLite schema version: " + value);
+        }
+      } else if (result != SQLITE_DONE) {
+        throw std::runtime_error(sqlite3_errmsg(impl_->database));
       }
-    } else if (result != SQLITE_DONE) {
-      throw std::runtime_error(sqlite3_errmsg(impl_->database));
     }
-  }
-  if (stored_version < 0 || stored_version > 3) {
-    throw std::runtime_error("unsupported SQLite schema version: " +
-                             std::to_string(stored_version));
-  }
+    if (stored_version < 0 || stored_version > 3) {
+      throw std::runtime_error("unsupported SQLite schema version: " +
+                               std::to_string(stored_version));
+    }
 
-  execute(impl_->database, "BEGIN IMMEDIATE;");
-  try {
-    execute(impl_->database, R"SQL(
+    execute(impl_->database, "BEGIN IMMEDIATE;");
+    try {
+      execute(impl_->database, R"SQL(
 
     CREATE TABLE IF NOT EXISTS events (
       event_id TEXT PRIMARY KEY,
@@ -237,15 +240,20 @@ void SqliteStore::initialize() {
     CREATE INDEX IF NOT EXISTS subject_reference_samples_subject_idx
       ON subject_reference_samples(subject_id, captured_at DESC);
     )SQL");
-    if (stored_version < 3) {
-      execute(impl_->database, R"SQL(
+      if (stored_version < 3) {
+        execute(impl_->database, R"SQL(
         INSERT INTO schema_metadata(key, value) VALUES('schema_version', '3')
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
       )SQL");
+      }
+      execute(impl_->database, "COMMIT;");
+    } catch (...) {
+      try { execute(impl_->database, "ROLLBACK;"); } catch (...) {}
+      throw;
     }
-    execute(impl_->database, "COMMIT;");
   } catch (...) {
-    try { execute(impl_->database, "ROLLBACK;"); } catch (...) {}
+    sqlite3_close(impl_->database);
+    impl_->database = nullptr;
     throw;
   }
 }
