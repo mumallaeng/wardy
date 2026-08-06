@@ -33,6 +33,25 @@ test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한�
   assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
 });
 
+test("Jetson WebRTC는 H264 hardware encode와 UDP ICE gateway를 사용한다", async () => {
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
+  assert.match(launcher, /nvv4l2h264enc/);
+  assert.match(launcher, /video\/x-h264,profile=baseline/);
+  assert.match(launcher, /rtsp:\/\/127\.0\.0\.1:8554\/wardy/);
+  assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
+  assert.match(gateway, /webrtcAddress: :8889/);
+  assert.match(gateway, /webrtcLocalUDPAddress: :8189/);
+  assert.match(gateway, /webrtcLocalTCPAddress: ""/);
+});
+
+test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있다", async () => {
+  const capture = await readFile(path.join(root, "edge/src/input/camera_capture.cpp"), "utf8");
+  const service = await readFile(path.join(root, "edge/src/api/wardy_edge_service.cpp"), "utf8");
+  assert.match(capture, /CAP_GSTREAMER/);
+  assert.match(service, /WARDY_CAMERA_PIPELINE/);
+});
+
 test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
   assert.match(source, /SqliteStore/);

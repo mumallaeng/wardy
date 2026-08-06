@@ -52,6 +52,13 @@ void CameraCapture::open() {
   }
   close();
 
+  if (!impl_->config.gstreamer_pipeline.empty()) {
+    if (!impl_->capture.open(impl_->config.gstreamer_pipeline, cv::CAP_GSTREAMER)) {
+      throw std::runtime_error("failed to open the Jetson GStreamer camera pipeline");
+    }
+    return;
+  }
+
   // The Korcham Jetson labs use a USB webcam at /dev/video0 through V4L2.
   if (!impl_->capture.open(impl_->config.device_index, cv::CAP_V4L2)) {
     throw std::runtime_error("failed to open the Jetson V4L2 camera device");
