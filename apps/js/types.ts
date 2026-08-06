@@ -61,6 +61,13 @@ export interface ManagedItem {
   id: string;
   label: string;
   policy: ManagedItemPolicy;
+  sampleCount?: number;
+}
+
+export interface TrainingSampleResult {
+  sampleId: string;
+  imagePath: string;
+  sampleCount: number;
 }
 
 export interface ZoneRect {

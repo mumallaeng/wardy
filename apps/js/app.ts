@@ -5,6 +5,7 @@ import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import { OverlayController } from "./overlay.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
+import { TrainingSampleClient } from "./training.ts";
 import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, WardyEvent, WardyState } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "settings" | "jetson";
@@ -45,6 +46,7 @@ function errorMessage(error: unknown): string {
 }
 
 const store = new WardyStore(window.localStorage);
+const trainingSamples = new TrainingSampleClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
 
@@ -220,6 +222,26 @@ function renderDashboardOverlayControls(settings: OverlaySettings): void {
 }
 
 /**
+ * Captures a training sample for a registered managed item through the Jetson service.
+ *
+ * @param itemId - The registered managed item ID to capture.
+ */
+async function captureManagedItemSample(itemId: string): Promise<void> {
+  const state = store.getState();
+  const item = state.managedItems.find((candidate) => candidate.id === itemId);
+  if (!item) throw new Error(`등록된 물품을 찾을 수 없습니다: ${itemId}`);
+  try {
+    const result = await trainingSamples.capture(
+      item, state.settings.jetson?.baseUrl ?? "", window.location.origin,
+    );
+    store.setManagedItemSampleCount(item.id, result.sampleCount);
+    toast(`'${item.label}' 학습 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+
+/**
  * Renders the current application state across the Wardy interface.
  *
  * @param state - The application state to display; defaults to the store's current state.
@@ -234,7 +256,10 @@ function render(state: WardyState = store.getState()): void {
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
   renderNotifications($("#notification-settings"), state.settings.notifications, (eventType, value) => store.setNotificationSetting(eventType, value));
   renderSubjects($("#subject-list"), state.subjects, (id) => store.removeSubject(id));
-  renderManagedItems($("#item-list"), state.managedItems, (id) => store.removeManagedItem(id));
+  renderManagedItems(
+    $("#item-list"), state.managedItems,
+    (id) => store.removeManagedItem(id), captureManagedItemSample,
+  );
   renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
   if (document.activeElement !== jetsonInput) jetsonInput.value = state.settings.jetson.baseUrl;
