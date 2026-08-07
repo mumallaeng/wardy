@@ -12,7 +12,20 @@
         "showClass": { "type": "boolean" }, "showRole": { "type": "boolean" }, "showName": { "type": "boolean" }, "showPosture": { "type": "boolean" }
       }
     },
-    "notifications": { "type": "object", "additionalProperties": { "enum": ["off", "normal", "strong"] } },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "fall_suspected": { "enum": ["off", "on"] },
+        "inactivity": { "enum": ["off", "on"] },
+        "hazard_detected": { "enum": ["off", "on"] },
+        "hazard_proximity": { "enum": ["off", "on"] },
+        "zone_entry": { "enum": ["off", "on"] },
+        "zone_dwell": { "enum": ["off", "on"] },
+        "camera_fault": { "enum": ["off", "on"] },
+        "detection_fault": { "enum": ["off", "on"] }
+      },
+      "additionalProperties": false
+    },
     "managed_items": { "type": "array", "items": { "type": "object", "required": ["id", "label", "policy"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "policy": { "enum": ["included", "excluded"] } } } },
     "zones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "x", "y", "width", "height"] } }
   }
