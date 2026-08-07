@@ -10,6 +10,10 @@ if ! command -v openssl >/dev/null 2>&1; then
   echo "openssl is required" >&2
   exit 1
 fi
+if ! command -v flock >/dev/null 2>&1; then
+  echo "flock is required" >&2
+  exit 1
+fi
 if ! command -v sudo >/dev/null 2>&1; then
   echo "sudo is required" >&2
   exit 1
@@ -19,17 +23,44 @@ jetson_host="$1"
 service_user="$(id -un)"
 service_group="$(id -gn)"
 tls_dir="${WARDY_TLS_DIR:-/etc/wardy/tls}"
+tls_parent="$(dirname "${tls_dir}")"
+lock_file="${tls_parent}/.wardy-tls.lock"
 temporary_dir="$(mktemp -d)"
+installed_artifacts=()
 
 cleanup() {
+  exit_status=$?
+  trap - EXIT
+  if (( exit_status != 0 && ${#installed_artifacts[@]} > 0 )); then
+    sudo rm -f -- "${installed_artifacts[@]}"
+  fi
   rm -rf "${temporary_dir}"
+  exit "${exit_status}"
 }
 trap cleanup EXIT
 
-if sudo test -e "${tls_dir}/jetson.crt" || sudo test -e "${tls_dir}/jetson.key"; then
-  echo "TLS files already exist in ${tls_dir}; refusing to replace them" >&2
+sudo install -d -o root -g root -m 0755 "${tls_parent}"
+sudo touch "${lock_file}"
+sudo chown "${service_user}:${service_group}" "${lock_file}"
+chmod 0600 "${lock_file}"
+exec 9>"${lock_file}"
+if ! flock -n 9; then
+  echo "another Wardy TLS installation is already running" >&2
   exit 1
 fi
+
+tls_artifacts=(
+  "${tls_dir}/wardy-ca.key"
+  "${tls_dir}/wardy-ca.crt"
+  "${tls_dir}/jetson.key"
+  "${tls_dir}/jetson.crt"
+)
+for tls_artifact in "${tls_artifacts[@]}"; do
+  if sudo test -e "${tls_artifact}"; then
+    echo "TLS artifact already exists: ${tls_artifact}; refusing to replace the set" >&2
+    exit 1
+  fi
+done
 
 if [[ "${jetson_host}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
   IFS='.' read -r -a address_parts <<< "${jetson_host}"
@@ -92,12 +123,32 @@ openssl x509 -req -sha256 -days 825 \
   -out "${temporary_dir}/jetson.crt" \
   -extfile "${temporary_dir}/server.ext"
 
-sudo install -d -m 0755 "${tls_dir}"
-sudo install -o root -g root -m 0600 "${temporary_dir}/wardy-ca.key" "${tls_dir}/wardy-ca.key"
-sudo install -o root -g root -m 0644 "${temporary_dir}/wardy-ca.crt" "${tls_dir}/wardy-ca.crt"
-sudo install -o "${service_user}" -g "${service_group}" -m 0600 "${temporary_dir}/jetson.key" "${tls_dir}/jetson.key"
-sudo install -o "${service_user}" -g "${service_group}" -m 0644 "${temporary_dir}/jetson.crt" "${tls_dir}/jetson.crt"
-
 openssl verify -CAfile "${temporary_dir}/wardy-ca.crt" "${temporary_dir}/jetson.crt"
+openssl x509 -in "${temporary_dir}/jetson.crt" -noout -checkend 86400 >/dev/null
+
+install_tls_artifact() {
+  local owner="$1"
+  local group="$2"
+  local mode="$3"
+  local source_path="$4"
+  local target_path="$5"
+
+  if sudo install -o "${owner}" -g "${group}" -m "${mode}" "${source_path}" "${target_path}"; then
+    installed_artifacts+=("${target_path}")
+    return
+  fi
+  if sudo test -e "${target_path}"; then
+    installed_artifacts+=("${target_path}")
+  fi
+  return 1
+}
+
+sudo install -d -o root -g root -m 0755 "${tls_dir}"
+install_tls_artifact root root 0600 "${temporary_dir}/wardy-ca.key" "${tls_dir}/wardy-ca.key"
+install_tls_artifact root root 0644 "${temporary_dir}/wardy-ca.crt" "${tls_dir}/wardy-ca.crt"
+install_tls_artifact "${service_user}" "${service_group}" 0600 "${temporary_dir}/jetson.key" "${tls_dir}/jetson.key"
+install_tls_artifact "${service_user}" "${service_group}" 0644 "${temporary_dir}/jetson.crt" "${tls_dir}/jetson.crt"
+
+sudo openssl verify -CAfile "${tls_dir}/wardy-ca.crt" "${tls_dir}/jetson.crt"
 openssl x509 -in "${temporary_dir}/jetson.crt" -noout -subject -ext subjectAltName
 echo "Trust ${tls_dir}/wardy-ca.crt on each Windows browser host"

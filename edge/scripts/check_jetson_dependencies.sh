@@ -40,7 +40,7 @@ if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
   exit 1
 fi
 
-for command_name in cmake c++ git gst-inspect-1.0 openssl pkg-config v4l2-ctl; do
+for command_name in cmake c++ flock git gst-inspect-1.0 openssl pkg-config v4l2-ctl; do
   require_command "${command_name}"
 done
 

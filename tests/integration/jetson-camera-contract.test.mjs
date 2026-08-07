@@ -83,6 +83,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
   }
   assert.match(versions, /^WARDY_CADDY_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(versions, /^WARDY_CADDY_SHA512=[a-f0-9]{128}$/m);
   assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
   assert.match(installer, /apt-get install/);
   assert.match(installer, /install_caddy\.sh/);
@@ -90,10 +91,14 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(installer, /check_jetson_dependencies\.sh/);
   assert.match(caddyInstaller, /linux_arm64/);
   assert.match(caddyInstaller, /sha512sum --check --status/);
+  assert.doesNotMatch(caddyInstaller, /checksums\.txt/);
   assert.match(checker, /nvvidconv/);
   assert.match(checker, /nvv4l2h264enc/);
   assert.match(tlsCreator, /subjectAltName=/);
   assert.match(tlsCreator, /WARDY_TLS_DIR:-\/etc\/wardy\/tls/);
+  assert.match(tlsCreator, /flock -n 9/);
+  assert.match(tlsCreator, /installed_artifacts/);
+  assert.match(tlsCreator, /wardy-ca\.key/);
   assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
 });
 

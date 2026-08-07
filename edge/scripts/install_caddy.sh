@@ -5,13 +5,27 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 edge_dir="$(cd "${script_dir}/.." && pwd)"
 versions_file="${edge_dir}/config/jetson-tool-versions.env"
 declared_version="$(sed -n 's/^WARDY_CADDY_VERSION=//p' "${versions_file}")"
-version="${WARDY_CADDY_VERSION:-${declared_version:-2.11.3}}"
+declared_sha512="$(sed -n 's/^WARDY_CADDY_SHA512=//p' "${versions_file}")"
+if [[ -n "${WARDY_CADDY_VERSION:-}" ]]; then
+  version="${WARDY_CADDY_VERSION}"
+  expected_sha512="${WARDY_CADDY_SHA512:-}"
+  if [[ -z "${expected_sha512}" ]]; then
+    echo "WARDY_CADDY_SHA512 is required when WARDY_CADDY_VERSION is overridden" >&2
+    exit 1
+  fi
+else
+  version="${declared_version:-2.11.3}"
+  expected_sha512="${declared_sha512}"
+fi
 if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "invalid Caddy version: ${version}" >&2
   exit 1
 fi
+if [[ ! "${expected_sha512}" =~ ^[A-Fa-f0-9]{128}$ ]]; then
+  echo "invalid Caddy SHA-512 digest" >&2
+  exit 1
+fi
 archive="caddy_${version}_linux_arm64.tar.gz"
-checksums="caddy_${version}_checksums.txt"
 base_url="https://github.com/caddyserver/caddy/releases/download/v${version}"
 target_dir="${edge_dir}/tools"
 temporary_dir="$(mktemp -d)"
@@ -30,15 +44,8 @@ done
 
 curl --fail --location --proto '=https' --tlsv1.2 \
   --output "${temporary_dir}/${archive}" "${base_url}/${archive}"
-curl --fail --location --proto '=https' --tlsv1.2 \
-  --output "${temporary_dir}/${checksums}" "${base_url}/${checksums}"
-
-expected_line="$(grep "  ${archive}$" "${temporary_dir}/${checksums}" || true)"
-if [[ -z "${expected_line}" ]]; then
-  echo "checksum entry not found for ${archive}" >&2
-  exit 1
-fi
-printf '%s\n' "${expected_line}" | (cd "${temporary_dir}" && sha512sum --check --status)
+printf '%s  %s\n' "${expected_sha512}" "${archive}" |
+  (cd "${temporary_dir}" && sha512sum --check --status)
 
 tar -xzf "${temporary_dir}/${archive}" -C "${temporary_dir}" caddy
 mkdir -p "${target_dir}"
