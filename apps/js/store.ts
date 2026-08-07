@@ -45,14 +45,15 @@ function migratePersistedState(value: unknown): void {
   }
   const settings = value.settings;
   if (!isRecord(settings)) return;
-  if (!isRecord(settings.camera)) settings.camera = { mirrored: false };
-  if (isRecord(settings.jetson)) {
-    if (typeof settings.jetson.accessToken !== "string") settings.jetson.accessToken = "";
-    if (typeof settings.jetson.viewerToken !== "string") settings.jetson.viewerToken = "";
-    if (typeof settings.jetson.baseUrl === "string") {
-      settings.jetson.baseUrl = settings.jetson.baseUrl.replace(/:8189\/?$/, ":8443");
-    }
-  }
+  if (!isRecord(settings.camera)) settings.camera = {};
+  const camera = settings.camera as Record<string, unknown>;
+  if (typeof camera.mirrored !== "boolean") camera.mirrored = false;
+  if (!isRecord(settings.jetson)) settings.jetson = {};
+  const jetson = settings.jetson as Record<string, unknown>;
+  const baseUrl = typeof jetson.baseUrl === "string" ? jetson.baseUrl : "";
+  jetson.baseUrl = baseUrl.replace(/:8189\/?$/, ":8443");
+  delete jetson.accessToken;
+  delete jetson.viewerToken;
   if (!isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
   delete notifications.managed_item_moved;
@@ -107,9 +108,7 @@ function isWardyState(value: unknown): value is WardyState {
     || !isRecord(settings.notifications)
     || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
     || !isRecord(settings.jetson)
-    || typeof settings.jetson.baseUrl !== "string"
-    || typeof settings.jetson.accessToken !== "string"
-    || typeof settings.jetson.viewerToken !== "string") return false;
+    || typeof settings.jetson.baseUrl !== "string") return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
     && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
@@ -151,7 +150,12 @@ export class WardyStore {
       if (!stored) return createInitialState();
       const parsed: unknown = JSON.parse(stored);
       migratePersistedState(parsed);
-      if (!isWardyState(parsed)) return createInitialState();
+      if (!isWardyState(parsed)) {
+        const initial = createInitialState();
+        try { this.storage?.setItem(this.key, JSON.stringify(initial)); } catch { /* In-memory defaults remain usable. */ }
+        return initial;
+      }
+      try { this.storage?.setItem(this.key, JSON.stringify(parsed)); } catch { /* Valid in-memory state remains usable. */ }
       return parsed;
     } catch {
       return createInitialState();
@@ -195,13 +199,9 @@ export class WardyStore {
     return this.#commit((state) => { state.settings.camera.mirrored = Boolean(mirrored); });
   }
 
-  setJetsonConnection(baseUrl: string, accessToken: string, viewerToken: string): WardyState {
+  setJetsonBaseUrl(baseUrl: string): WardyState {
     return this.#commit((state) => {
-      state.settings.jetson = {
-        baseUrl: String(baseUrl ?? "").trim(),
-        accessToken: String(accessToken ?? ""),
-        viewerToken: String(viewerToken ?? ""),
-      };
+      state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() };
     });
   }
 
