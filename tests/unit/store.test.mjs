@@ -9,11 +9,35 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
 
   store.setCareState("warning", "수동 점검");
   store.setOverlaySetting("showName", false);
+  store.setCameraMirrored(true);
+  store.setJetsonConnection("https://jetson.local:8443", "access-token", "viewer-token");
 
   const restored = new WardyStore(storage, "test-state").getState();
   assert.equal(restored.careState.status, "warning");
   assert.equal(restored.careState.reason, "수동 점검");
   assert.equal(restored.settings.overlay.showName, false);
+  assert.equal(restored.settings.camera.mirrored, true);
+  assert.deepEqual(restored.settings.jetson, {
+    baseUrl: "https://jetson.local:8443",
+    accessToken: "access-token",
+    viewerToken: "viewer-token",
+  });
+});
+
+test("기존 Jetson 설정을 자동 연결 형식으로 이전하고 media port를 교정한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  delete initial.settings.camera;
+  initial.settings.jetson = { baseUrl: "https://10.10.20.40:8189" };
+  storage.setItem("legacy-jetson", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-jetson").getState();
+  assert.equal(restored.settings.camera.mirrored, false);
+  assert.deepEqual(restored.settings.jetson, {
+    baseUrl: "https://10.10.20.40:8443",
+    accessToken: "",
+    viewerToken: "",
+  });
 });
 
 test("불완전한 저장 상태는 초기 상태로 복구한다", () => {

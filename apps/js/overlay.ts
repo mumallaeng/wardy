@@ -26,6 +26,7 @@ export class OverlayController {
   private detections: readonly Detection[] = [];
   private zones: readonly Zone[] = [];
   private settings: OverlaySettings = { showClass: true, showRole: true, showName: true, showPosture: true };
+  private mirrored = false;
   private drawing: Drawing | null = null;
   private readonly resizeObserver: ResizeObserver;
 
@@ -53,6 +54,7 @@ export class OverlayController {
   setDetections(detections: readonly Detection[]): void { this.detections = detections; this.draw(); }
   setZones(zones: readonly Zone[]): void { this.zones = zones; this.draw(); }
   setSettings(settings: OverlaySettings): void { this.settings = { ...settings }; this.draw(); }
+  setMirrored(mirrored: boolean): void { this.mirrored = mirrored; this.draw(); }
   beginZoneDrawing(): void { this.container.classList.add("is-zone-drawing"); }
 
   #contentRect(): ContentRect {
@@ -80,8 +82,9 @@ export class OverlayController {
   #point(event: PointerEvent): Point {
     const canvasRect = this.canvas.getBoundingClientRect();
     const content = this.#contentRect();
+    const x = Math.min(1, Math.max(0, (event.clientX - canvasRect.left - content.x) / Math.max(1, content.width)));
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - canvasRect.left - content.x) / Math.max(1, content.width))),
+      x: this.mirrored ? 1 - x : x,
       y: Math.min(1, Math.max(0, (event.clientY - canvasRect.top - content.y) / Math.max(1, content.height))),
     };
   }
@@ -121,7 +124,8 @@ export class OverlayController {
   }
 
   #drawZone(zone: ZoneRect, dpr: number, content: ContentRect, draft = false): void {
-    const x = (content.x + zone.x * content.width) * dpr;
+    const normalizedX = this.mirrored ? 1 - zone.x - zone.width : zone.x;
+    const x = (content.x + normalizedX * content.width) * dpr;
     const y = (content.y + zone.y * content.height) * dpr;
     const width = zone.width * content.width * dpr;
     const height = zone.height * content.height * dpr;
@@ -141,7 +145,8 @@ export class OverlayController {
 
   #drawDetection(detection: Detection, dpr: number, content: ContentRect): void {
     const [nx, ny, nw, nh] = detection.box;
-    const x = (content.x + nx * content.width) * dpr;
+    const normalizedX = this.mirrored ? 1 - nx - nw : nx;
+    const x = (content.x + normalizedX * content.width) * dpr;
     const y = (content.y + ny * content.height) * dpr;
     const width = nw * content.width * dpr;
     const height = nh * content.height * dpr;
