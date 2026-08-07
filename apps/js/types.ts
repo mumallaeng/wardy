@@ -108,6 +108,7 @@ export interface WardyState {
   settings: {
     overlay: OverlaySettings;
     notifications: NotificationSettings;
+    camera: { mirrored: boolean };
     jetson: { baseUrl: string };
   };
   managedItems: ManagedItem[];

@@ -74,6 +74,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
   const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
   const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
   const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
   const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
@@ -133,7 +134,14 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(setup, /cmake --build/);
   assert.match(setup, /check_jetson_dependencies\.sh/);
   assert.match(setup, /--no-start/);
-  assert.match(setup, /exec .*start_jetson_webrtc\.sh/);
+  assert.match(setup, /install_jetson_service\.sh/);
+  const serviceInstaller = await readFile(path.join(root, "edge/scripts/install_jetson_service.sh"), "utf8");
+  assert.match(serviceInstaller, /wardy-edge\.service/);
+  assert.match(serviceInstaller, /systemctl enable/);
+  assert.match(serviceInstaller, /systemctl restart/);
+  assert.match(serviceInstaller, /Restart=on-failure/);
+  assert.match(serviceInstaller, /MTX_WEBRTCLOCALTCPADDRESS=:8189/);
+  assert.match(launcher, /MTX_WEBRTCLOCALTCPADDRESS.*:8189/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {

@@ -29,9 +29,21 @@ function errorMessage(error: unknown): string {
 export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): string {
   const candidate = String(value ?? "").trim() || String(fallbackOrigin ?? "").trim();
   if (!candidate) throw new Error("Jetson 서비스 주소를 입력해 주세요.");
+  const authority = candidate.match(/^https:\/\/([^/?#]+)/i)?.[1] ?? "";
+  const hostPort = authority.slice(authority.lastIndexOf("@") + 1);
+  const explicitPort = hostPort.startsWith("[")
+    ? hostPort.match(/\]:(\d+)$/)?.[1]
+    : hostPort.match(/:(\d+)$/)?.[1];
+  if (explicitPort && explicitPort !== "8443") {
+    throw new Error("Jetson 서비스 주소 port는 8443이어야 합니다. 8189는 WebRTC 전송 전용입니다.");
+  }
   const url = new URL(candidate);
   if (url.protocol !== "https:") throw new Error("Jetson 주소는 HTTPS 형식이어야 합니다.");
   if (url.username || url.password) throw new Error("주소에 계정 정보를 포함할 수 없습니다.");
+  if (!url.port) url.port = "8443";
+  if (url.port !== "8443") {
+    throw new Error("Jetson 서비스 주소 port는 8443이어야 합니다. 8189는 WebRTC 전송 전용입니다.");
+  }
   url.pathname = url.pathname.replace(/\/+$/, "");
   url.search = "";
   url.hash = "";

@@ -1,5 +1,6 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES, createDemoEvent } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
+import { JetsonCredentialStore } from "./credentials.ts";
 import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import { identityFeedbackManifest, renderIdentityReviews } from "./data-workspace.ts";
@@ -47,11 +48,12 @@ function errorMessage(error: unknown): string {
 }
 
 const store = new WardyStore(window.localStorage);
+const credentialStore = new JetsonCredentialStore(window.sessionStorage);
 const trainingSamples = new TrainingSampleClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
-let jetsonAccessToken = "";
-let jetsonViewerToken = "";
+let cameraStatus: CameraStatus = "idle";
+let reconnectTimer: number | null = null;
 
 /**
  * Displays a temporary notification message.
@@ -89,12 +91,16 @@ const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#came
  * @param status - The camera connection state to display.
  */
 function setCameraStatus(status: CameraStatus): void {
+  cameraStatus = status;
   const labels: Record<CameraStatus, string> = { idle: "대기", connecting: "연결 중", connected: "정상", fault: "연결 끊김" };
   $("#camera-status").textContent = labels[status] ?? status;
   $("#camera-dot").className = `status-dot${status === "connected" ? " is-ok" : status === "fault" ? " is-fault" : ""}`;
   $("#camera-empty").hidden = status === "connected";
   $<HTMLButtonElement>("#start-camera").disabled = status === "connected" || status === "connecting";
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
+  if (status === "fault" && credentialStore.get().viewerToken && reconnectTimer === null) {
+    reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true).catch(() => undefined); }, 5000);
+  }
 }
 
 const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
@@ -124,11 +130,34 @@ const jetson = new JetsonConnection({ onStatus: setJetsonStatus });
 /**
  * Checks the configured Jetson Wardy service connection and reports the result to the user.
  */
-async function checkJetsonConnection() {
-  const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
+async function connectConfiguredJetson(startCamera = true): Promise<void> {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  const configured = store.getState().settings.jetson;
+  const credentials = credentialStore.get();
+  if (!configured.baseUrl) return;
   try {
-    await jetson.check(baseUrl, window.location.origin);
-    toast("Jetson Wardy 서비스에 연결했습니다.");
+    await jetson.check(configured.baseUrl, window.location.origin);
+    if (startCamera && credentials.viewerToken && cameraStatus !== "connected" && cameraStatus !== "connecting") {
+      await camera.start(configured.baseUrl, credentials.viewerToken, window.location.origin);
+    }
+  } catch (error) {
+    if (startCamera && reconnectTimer === null) {
+      reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true); }, 5000);
+    }
+    throw error;
+  }
+}
+
+async function checkJetsonConnection(): Promise<void> {
+  try {
+    const cameraConfigured = Boolean(credentialStore.get().viewerToken);
+    await connectConfiguredJetson(true);
+    toast(cameraConfigured
+      ? "Jetson Wardy 서비스와 카메라에 연결했습니다."
+      : "Jetson Wardy 서비스에 연결했습니다. 카메라 연결에는 읽기 토큰이 필요합니다.");
   } catch (error) {
     toast(errorMessage(error));
   }
@@ -231,11 +260,12 @@ function renderDashboardOverlayControls(settings: OverlaySettings): void {
  */
 async function captureManagedItemSample(itemId: string): Promise<void> {
   const state = store.getState();
+  const credentials = credentialStore.get();
   const item = state.managedItems.find((candidate) => candidate.id === itemId);
   if (!item) throw new Error(`등록된 물품을 찾을 수 없습니다: ${itemId}`);
   try {
     const result = await trainingSamples.capture(
-      item, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
+      item, state.settings.jetson?.baseUrl ?? "", credentials.accessToken, window.location.origin,
     );
     store.setManagedItemSampleCount(item.id, result.sampleCount);
     toast(`'${item.label}' 학습 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -251,11 +281,12 @@ async function captureManagedItemSample(itemId: string): Promise<void> {
  */
 async function captureSubjectReference(subjectId: string): Promise<void> {
   const state = store.getState();
+  const credentials = credentialStore.get();
   const subject = state.subjects.find((candidate) => candidate.id === subjectId);
   if (!subject) throw new Error(`등록된 인물을 찾을 수 없습니다: ${subjectId}`);
   try {
     const result = await trainingSamples.captureSubject(
-      subject, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
+      subject, state.settings.jetson?.baseUrl ?? "", credentials.accessToken, window.location.origin,
     );
     store.setSubjectReferenceSampleCount(subject.id, result.sampleCount);
     toast(`'${subject.name}' 식별 기준 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -291,6 +322,11 @@ function render(state: WardyState = store.getState()): void {
   renderEvents(state.events);
   renderDashboardOverlayControls(state.settings.overlay);
   overlay.setSettings(state.settings.overlay);
+  overlay.setMirrored(state.settings.camera.mirrored);
+  $("#camera-stage").classList.toggle("is-mirrored", state.settings.camera.mirrored);
+  const mirrorButton = $<HTMLButtonElement>("#mirror-camera");
+  mirrorButton.setAttribute("aria-pressed", String(state.settings.camera.mirrored));
+  mirrorButton.textContent = state.settings.camera.mirrored ? "거울 모드 끄기" : "거울 모드 켜기";
   overlay.setZones(state.zones);
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
   renderNotifications($("#notification-settings"), state.settings.notifications, (eventType, value) => store.setNotificationSetting(eventType, value));
@@ -309,6 +345,11 @@ function render(state: WardyState = store.getState()): void {
   renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
   if (document.activeElement !== jetsonInput) jetsonInput.value = state.settings.jetson.baseUrl;
+  const accessTokenInput = $<HTMLInputElement>("#jetson-access-token");
+  const viewerTokenInput = $<HTMLInputElement>("#jetson-viewer-token");
+  const credentials = credentialStore.get();
+  if (document.activeElement !== accessTokenInput) accessTokenInput.value = credentials.accessToken;
+  if (document.activeElement !== viewerTokenInput) viewerTokenInput.value = credentials.viewerToken;
   const configured = state.settings.jetson.baseUrl || window.location.origin;
   $("#jetson-resolved-url").textContent = configured;
 }
@@ -331,12 +372,18 @@ if (["dashboard", "events", "data", "settings", "jetson"].includes(initialView))
 $("#start-camera").addEventListener("click", async () => {
   try {
     const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
-    const endpoint = await camera.start(baseUrl, jetsonViewerToken, window.location.origin);
+    const viewerToken = credentialStore.get().viewerToken;
+    const endpoint = await camera.start(baseUrl, viewerToken, window.location.origin);
     toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
   } catch (error) {
     setCameraStatus("fault");
     toast(errorMessage(error));
   }
+});
+$("#mirror-camera").addEventListener("click", () => {
+  const mirrored = !store.getState().settings.camera.mirrored;
+  store.setCameraMirrored(mirrored);
+  toast(mirrored ? "카메라 거울 모드를 켰습니다." : "카메라 거울 모드를 껐습니다.");
 });
 $("#stop-camera").addEventListener("click", () => { camera.stop(); toast("Jetson 카메라 stream 연결을 중지했습니다."); });
 $("#toggle-demo-overlay").addEventListener("click", (event: Event) => {
@@ -414,16 +461,17 @@ $("#export-identity-feedback").addEventListener("click", () => {
   );
   toast("현재 로컬 식별 feedback manifest를 내보냈습니다.");
 });
-$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
+$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const rawBaseUrl = $<HTMLInputElement>("#jetson-base-url").value;
-  jetsonAccessToken = $<HTMLInputElement>("#jetson-access-token").value;
-  jetsonViewerToken = $<HTMLInputElement>("#jetson-viewer-token").value;
+  const accessToken = $<HTMLInputElement>("#jetson-access-token").value;
+  const viewerToken = $<HTMLInputElement>("#jetson-viewer-token").value;
   try {
-    if (rawBaseUrl.trim()) normalizeJetsonBaseUrl(rawBaseUrl);
-    store.setJetsonBaseUrl(rawBaseUrl);
+    const baseUrl = rawBaseUrl.trim() ? normalizeJetsonBaseUrl(rawBaseUrl) : "";
+    credentialStore.set(accessToken, viewerToken);
+    store.setJetsonBaseUrl(baseUrl);
     setJetsonStatus("idle");
     await checkJetsonConnection();
   } catch (error) {
@@ -435,5 +483,7 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
 
 window.addEventListener("beforeunload", () => camera.stop());
+window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);
+void connectConfiguredJetson(true).catch(() => undefined);
