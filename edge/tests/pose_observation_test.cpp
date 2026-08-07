@@ -1,6 +1,10 @@
 #include "analysis/pose_observation.hpp"
 
 #include <array>
+
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -13,12 +17,20 @@ int main() {
   using wardy::analysis::compute_pose_quality;
   using wardy::analysis::kCocoKeypointCount;
   using wardy::analysis::kCocoKeypointNames;
+  using wardy::analysis::make_bounding_box;
   using wardy::analysis::normalize_keypoint;
   using wardy::analysis::posture_name;
 
   static_assert(kCocoKeypointCount == 17);
   assert(std::string_view{kCocoKeypointNames[11]} == "left_hip");
   assert(std::string_view{kCocoKeypointNames[16]} == "right_ankle");
+
+  const wardy::analysis::PoseObservation default_observation{};
+  assert(default_observation.track_id >= 0);
+
+  assert(make_bounding_box({10.0F, 20.0F, 110.0F, 220.0F}).has_value());
+  assert(!make_bounding_box({110.0F, 20.0F, 10.0F, 220.0F}).has_value());
+  assert(!make_bounding_box({10.0F, 220.0F, 110.0F, 20.0F}).has_value());
 
   const BoundingBox box{10.0F, 20.0F, 110.0F, 220.0F};
   const auto normalized = normalize_keypoint(Keypoint{60.0F, 120.0F, 0.9F}, box);

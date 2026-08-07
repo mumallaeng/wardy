@@ -22,7 +22,7 @@
     "timestamp_ms": { "type": "integer", "minimum": 0 },
     "track_id": { "type": "integer", "minimum": 0 },
     "bbox_xyxy": {
-      "description": "Person bounding box in original-frame pixel coordinates.",
+      "description": "Person bounding box in original-frame pixel coordinates. The ingestion boundary must reject x_max <= x_min or y_max <= y_min before normalization.",
       "type": "array",
       "prefixItems": [
         { "type": "number" },

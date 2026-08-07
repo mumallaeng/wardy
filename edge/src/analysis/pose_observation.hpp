@@ -49,13 +49,23 @@ enum class Posture { unknown, standing, sitting, crouching, lying };
 struct PoseObservation {
   std::uint64_t frame_id{0};
   std::uint64_t timestamp_ms{0};
-  std::int64_t track_id{-1};
+  std::int64_t track_id{0};
   BoundingBox person_box{};
   std::array<Keypoint, kCocoKeypointCount> keypoints{};
   float pose_quality{0.0F};
   Posture posture{Posture::unknown};
   float posture_confidence{0.0F};
 };
+
+[[nodiscard]] inline std::optional<BoundingBox> make_bounding_box(
+    const std::array<float, 4>& bbox_xyxy) noexcept {
+  const BoundingBox box{bbox_xyxy[0], bbox_xyxy[1], bbox_xyxy[2],
+                        bbox_xyxy[3]};
+  if (!box.valid()) {
+    return std::nullopt;
+  }
+  return box;
+}
 
 [[nodiscard]] inline std::optional<NormalizedPoint> normalize_keypoint(
     const Keypoint& keypoint, const BoundingBox& box) noexcept {
