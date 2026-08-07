@@ -1,5 +1,6 @@
 {
 	auto_https disable_redirects
+	default_sni {$WARDY_JETSON_HOST}
 }
 
 https://{$WARDY_JETSON_HOST}:8443 {
