@@ -49,6 +49,16 @@ test("누락된 Jetson 설정은 기존 사용자 상태를 유지하며 보완�
   assert.deepEqual(restored.settings.jetson, { baseUrl: "" });
 });
 
+test("경로와 query가 있는 기존 WebRTC port 주소를 서비스 port로 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.settings.jetson.baseUrl = "https://jetson.local:8189/camera?source=saved";
+  storage.setItem("legacy-jetson-path", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-jetson-path").getState();
+  assert.equal(restored.settings.jetson.baseUrl, "https://jetson.local:8443/camera?source=saved");
+});
+
 test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
   const storage = new MemoryStorage();
   storage.setItem("broken-state", JSON.stringify({

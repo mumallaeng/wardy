@@ -35,6 +35,18 @@ function isIdentityReview(value: unknown): boolean {
     && isStringOrNull(value.subjectId);
 }
 
+function migrateJetsonBaseUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.port !== "8189") return value;
+    url.port = "8443";
+    const migrated = url.toString();
+    return url.pathname === "/" && !url.search && !url.hash ? migrated.replace(/\/$/, "") : migrated;
+  } catch {
+    return value;
+  }
+}
+
 function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
@@ -51,7 +63,7 @@ function migratePersistedState(value: unknown): void {
   if (!isRecord(settings.jetson)) settings.jetson = {};
   const jetson = settings.jetson as Record<string, unknown>;
   const baseUrl = typeof jetson.baseUrl === "string" ? jetson.baseUrl : "";
-  jetson.baseUrl = baseUrl.replace(/:8189\/?$/, ":8443");
+  jetson.baseUrl = migrateJetsonBaseUrl(baseUrl);
   delete jetson.accessToken;
   delete jetson.viewerToken;
   if (!isRecord(settings.notifications)) return;
