@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wardy.local/schemas/pose-observation.schema.json",
+  "title": "Wardy Pose Observation",
+  "description": "Frame-level M-03 output for one M-01 person track. Keypoints use COCO-17 order.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "frame_id",
+    "timestamp_ms",
+    "track_id",
+    "bbox_xyxy",
+    "keypoints_xyc",
+    "pose_quality",
+    "posture",
+    "posture_confidence"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "frame_id": { "type": "integer", "minimum": 0 },
+    "timestamp_ms": { "type": "integer", "minimum": 0 },
+    "track_id": { "type": "integer", "minimum": 0 },
+    "bbox_xyxy": {
+      "description": "Person bounding box in original-frame pixel coordinates. The ingestion boundary must reject x_max <= x_min or y_max <= y_min before normalization.",
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "keypoints_xyc": {
+      "description": "COCO-17 order: nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          { "type": "number" },
+          { "type": "number" },
+          { "type": "number", "minimum": 0, "maximum": 1 }
+        ],
+        "minItems": 3,
+        "maxItems": 3
+      },
+      "minItems": 17,
+      "maxItems": 17
+    },
+    "pose_quality": { "type": "number", "minimum": 0, "maximum": 1 },
+    "posture": {
+      "enum": ["standing", "sitting", "crouching", "lying", "unknown"]
+    },
+    "posture_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
