@@ -6,10 +6,11 @@
     "serve": "vite apps --host 0.0.0.0 --port 8000",
     "build": "vite build apps --outDir ../dist --emptyOutDir",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && node --test tests/unit/*.test.mjs tests/integration/*.test.mjs",
+    "test": "npm run typecheck && node --import tsx --test tests/unit/*.test.mjs tests/integration/*.test.mjs",
     "test:edge-camera": "cmake -S edge -B edge/build && cmake --build edge/build && ctest --test-dir edge/build --output-on-failure"
   },
   "devDependencies": {
+    "tsx": "^4.23.9",
     "typescript": "^5.9.3",
     "vite": "^7.1.5"
   }
