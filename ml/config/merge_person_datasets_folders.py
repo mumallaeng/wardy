@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import random
 import zipfile
@@ -22,14 +23,13 @@ class Sample:
     label_text: str
 
 
-def normalized_label(text: str, dataset_id: int) -> tuple[str | None, str | None]:
+def normalized_label(text: str) -> tuple[str | None, str | None]:
     """YOLO 탐지 라벨을 검사하고 모든 클래스를 person=0으로 변경합니다."""
     stripped = text.strip()
     if not stripped:
         return None, 'empty_label'
 
     output_lines: list[str] = []
-    original_ids: list[int] = []
 
     for raw_line in stripped.splitlines():
         parts = raw_line.split()
@@ -37,25 +37,22 @@ def normalized_label(text: str, dataset_id: int) -> tuple[str | None, str | None
             return None, 'not_yolo_detection_5_columns'
 
         try:
-            class_id = int(float(parts[0]))
+            class_id = int(parts[0])
             x_center, y_center, width, height = map(float, parts[1:])
         except ValueError:
             return None, 'non_numeric_label'
+
+        if class_id < 0:
+            return None, 'negative_class_id'
 
         if not all(0.0 <= value <= 1.0 for value in (x_center, y_center, width, height)):
             return None, 'coordinate_out_of_range'
         if width <= 0.0 or height <= 0.0:
             return None, 'non_positive_box'
 
-        original_ids.append(class_id)
         output_lines.append(
             f'0 {x_center:.10g} {y_center:.10g} {width:.10g} {height:.10g}'
         )
-
-    # 기존 7개 데이터 기준 예외 처리입니다.
-    # 다섯 번째 입력 데이터에서 class 4 이외의 비정상 작은 박스가 있던 이미지는 제외합니다.
-    if dataset_id == 5 and any(class_id != 4 for class_id in original_ids):
-        return None, 'dataset5_suspicious_classes'
 
     return '\n'.join(output_lines) + '\n', None
 
@@ -88,14 +85,17 @@ def add_sample(
     image_ref: str,
     label_text: str,
 ) -> None:
-    converted, reason = normalized_label(label_text, dataset_id)
+    converted, reason = normalized_label(label_text)
     if converted is None:
         skipped[(dataset_id, reason or 'unknown')] += 1
         return
 
-    image_suffix = PurePosixPath(image_ref.replace('\\', '/')).suffix.lower()
-    original_stem = PurePosixPath(image_ref.replace('\\', '/')).stem
-    output_name = f'd{dataset_id}_{original_stem}{image_suffix}'
+    normalized_ref = image_ref.replace('\\', '/')
+    image_path = PurePosixPath(normalized_ref)
+    image_suffix = image_path.suffix.lower()
+    original_stem = image_path.stem
+    image_digest = hashlib.sha256(normalized_ref.encode('utf-8')).hexdigest()[:12]
+    output_name = f'd{dataset_id}_{original_stem}_{image_digest}{image_suffix}'
 
     samples.append(
         Sample(
@@ -206,12 +206,18 @@ def assign_splits(samples: list[Sample], seed: int = 42) -> dict[str, str]:
         rng = random.Random(seed + dataset_id)
         rng.shuffle(groups)
         count = len(groups)
+
+        if count < 3:
+            raise ValueError(
+                f'dataset {dataset_id}에는 최소 3개의 증강 그룹이 필요합니다. '
+                f'현재 그룹 수: {count}'
+            )
+
         train_end = round(count * 0.8)
         val_end = train_end + round(count * 0.1)
 
-        if count >= 3:
-            train_end = min(max(train_end, 1), count - 2)
-            val_end = min(max(val_end, train_end + 1), count - 1)
+        train_end = min(max(train_end, 1), count - 2)
+        val_end = min(max(val_end, train_end + 1), count - 1)
 
         for index, group in enumerate(groups):
             if index < train_end:
@@ -269,12 +275,29 @@ def read_image_bytes(sample: Sample, zip_handles: dict[Path, zipfile.ZipFile]) -
     if sample.source_type == 'folder':
         return (sample.source_path / Path(sample.image_ref)).read_bytes()
 
-    archive = zip_handles.setdefault(sample.source_path, zipfile.ZipFile(sample.source_path))
+    archive = zip_handles.get(sample.source_path)
+    if archive is None:
+        archive = zipfile.ZipFile(sample.source_path)
+        zip_handles[sample.source_path] = archive
+
     return archive.read(sample.image_ref)
 
 
 def merge_sources(sources: list[Path], output_zip: Path, seed: int = 42) -> None:
+    resolved_output = output_zip.resolve()
+
+    for source in sources:
+        if (
+            source.is_file()
+            and source.suffix.lower() == '.zip'
+            and source.resolve() == resolved_output
+        ):
+            raise ValueError(
+                f'출력 ZIP은 입력 ZIP과 같을 수 없습니다: {resolved_output}'
+            )
+
     samples, skipped = discover_samples(sources)
+
     if not samples:
         raise RuntimeError(
             '사용 가능한 이미지/라벨 쌍을 찾지 못했습니다. '
