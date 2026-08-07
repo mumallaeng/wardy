@@ -39,6 +39,7 @@ test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 �
   assert.match(launcher, /x264enc tune=zerolatency speed-preset=ultrafast/);
   assert.match(launcher, /threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0/);
   assert.match(launcher, /software_bitrate_kbps/);
+  assert.match(launcher, /webrtc_bitrate % 1000 != 0/);
   assert.doesNotMatch(launcher, /nvv4l2h264enc/);
   assert.match(launcher, /video\/x-h264,profile=baseline/);
   assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
@@ -96,6 +97,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(installer, /apt-get install/);
   assert.match(installer, /nvidia-l4t-core/);
   assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
+  assert.match(installer, /l4t_gstreamer_version.*!=.*l4t_core_version/s);
   assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);
@@ -115,6 +117,10 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(setup, /install_jetson_dependencies\.sh/);
   assert.match(setup, /create_jetson_tls\.sh/);
   assert.match(setup, /openssl rand -hex 32/);
+  assert.match(setup, /certificate_public_key_digest/);
+  assert.match(setup, /private_key_public_digest/);
+  assert.match(setup, /wardy-ca\.crt.*wardy-ca\.key/s);
+  assert.match(setup, /jetson\.crt.*jetson\.key/s);
   assert.match(setup, /replace-with-\*/);
   assert.match(setup, /chmod 0600/);
   assert.match(setup, /cmake --build/);

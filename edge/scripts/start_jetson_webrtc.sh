@@ -86,8 +86,9 @@ if [[ ! -x "${edge_service}" ]]; then
 fi
 
 camera_source="${WARDY_CAMERA_SOURCE:-v4l2src device=${camera_device} ! video/x-raw,width=${camera_width},height=${camera_height},framerate=${camera_fps}/1}"
-if [[ ! "${webrtc_bitrate}" =~ ^[0-9]+$ ]] || (( webrtc_bitrate < 1000 )); then
-  echo "WARDY_WEBRTC_BITRATE must be an integer of at least 1000 bits per second" >&2
+if [[ ! "${webrtc_bitrate}" =~ ^[0-9]+$ ]] ||
+   (( webrtc_bitrate < 1000 || webrtc_bitrate % 1000 != 0 )); then
+  echo "WARDY_WEBRTC_BITRATE must be an integer multiple of 1000 bits per second" >&2
   exit 1
 fi
 software_bitrate_kbps=$((webrtc_bitrate / 1000))

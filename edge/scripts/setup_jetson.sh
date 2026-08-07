@@ -120,6 +120,30 @@ for tls_artifact in "${tls_artifacts[@]}"; do
   fi
 done
 
+certificate_public_key_digest() {
+  sudo openssl x509 -in "$1" -pubkey -noout |
+    openssl pkey -pubin -outform DER |
+    sha256sum |
+    awk '{print $1}'
+}
+
+private_key_public_digest() {
+  sudo openssl pkey -in "$1" -pubout -outform DER |
+    sha256sum |
+    awk '{print $1}'
+}
+
+require_matching_key_pair() {
+  local certificate="$1"
+  local private_key="$2"
+  local pair_name="$3"
+  if [[ "$(certificate_public_key_digest "${certificate}")" !=
+        "$(private_key_public_digest "${private_key}")" ]]; then
+    echo "${pair_name} certificate and private key do not match; refusing to replace them" >&2
+    exit 1
+  fi
+}
+
 if (( tls_artifact_count == 0 )); then
   WARDY_TLS_DIR="${tls_dir}" "${script_dir}/create_jetson_tls.sh" "${jetson_host}"
 elif (( tls_artifact_count == ${#tls_artifacts[@]} )); then
@@ -129,6 +153,10 @@ elif (( tls_artifact_count == ${#tls_artifacts[@]} )); then
   else
     sudo openssl x509 -in "${tls_dir}/jetson.crt" -noout -checkhost "${jetson_host}"
   fi
+  require_matching_key_pair \
+    "${tls_dir}/wardy-ca.crt" "${tls_dir}/wardy-ca.key" "Wardy CA"
+  require_matching_key_pair \
+    "${tls_dir}/jetson.crt" "${tls_dir}/jetson.key" "Jetson TLS"
 else
   echo "incomplete TLS set in ${tls_dir}; refusing to overwrite existing artifacts" >&2
   exit 1
