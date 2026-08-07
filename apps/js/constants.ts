@@ -143,7 +143,7 @@ export function createInitialState(): WardyState {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
       notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       camera: { mirrored: false },
-      jetson: { baseUrl: "", accessToken: "", viewerToken: "" },
+      jetson: { baseUrl: "" },
     },
     managedItems: [
       { id: "item-scissors", label: "가위", policy: "included" },

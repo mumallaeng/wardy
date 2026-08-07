@@ -34,11 +34,9 @@
     },
     "jetson": {
       "type": "object",
-      "required": ["baseUrl", "accessToken", "viewerToken"],
+      "required": ["baseUrl"],
       "properties": {
-        "baseUrl": { "type": "string" },
-        "accessToken": { "type": "string" },
-        "viewerToken": { "type": "string" }
+        "baseUrl": { "type": "string" }
       },
       "additionalProperties": false
     },
