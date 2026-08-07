@@ -100,6 +100,7 @@ mkdir -p "${edge_dir}/db" "${edge_dir}/data/training"
 chmod 0700 "${edge_dir}/db" "${edge_dir}/data" "${edge_dir}/data/training"
 
 export MTX_WEBRTCALLOWORIGINS="${ui_origin}"
+export MTX_WEBRTCLOCALTCPADDRESS="${MTX_WEBRTCLOCALTCPADDRESS:-:8189}"
 export MTX_AUTHINTERNALUSERS_0_PASS="${publish_token}"
 export MTX_AUTHINTERNALUSERS_1_PASS="${viewer_token}"
 export MTX_AUTHINTERNALUSERS_1_IPS="127.0.0.1,::1"
