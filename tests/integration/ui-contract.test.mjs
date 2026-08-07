@@ -84,13 +84,16 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
   }
 });
 
-test("AI 작업 영역은 빈 자리표시자만 유지한다", async () => {
-  const aiDirectories = [
+test("미구현 AI 작업 영역은 빈 자리표시자만 유지한다", async () => {
+  const placeholderDirectories = [
     "ml/config", "ml/notebook", "ml/result/figure", "ml/src/data", "ml/src/evaluation", "ml/src/export", "ml/src/models", "ml/test",
-    "edge/src/inference", "edge/src/tracking", "edge/src/analysis", "edge/src/rules",
+    "edge/src/inference", "edge/src/tracking", "edge/src/rules",
   ];
-  for (const directory of aiDirectories) {
+  for (const directory of placeholderDirectories) {
     const entries = await readdir(path.join(root, directory));
     assert.deepEqual(entries, [".gitkeep"], directory);
   }
+
+  const analysisEntries = await readdir(path.join(root, "edge/src/analysis"));
+  assert.deepEqual(analysisEntries.sort(), [".gitkeep", "pose_observation.hpp"]);
 });
