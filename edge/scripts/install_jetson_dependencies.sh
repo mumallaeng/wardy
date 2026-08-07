@@ -27,6 +27,16 @@ fi
 sudo apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
 
+if ! dpkg-query -W -f='${Version}\n' nvidia-l4t-core >/dev/null 2>&1; then
+  echo "nvidia-l4t-core is required; run this installer on a JetPack-provisioned Jetson" >&2
+  exit 1
+fi
+l4t_core_version="$(dpkg-query -W -f='${Version}\n' nvidia-l4t-core)"
+if ! dpkg-query -W -f='${Status}\n' nvidia-l4t-gstreamer 2>/dev/null | grep -q '^install ok installed$'; then
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    "nvidia-l4t-gstreamer=${l4t_core_version}"
+fi
+
 "${script_dir}/install_caddy.sh"
 "${script_dir}/install_mediamtx.sh"
 "${script_dir}/check_jetson_dependencies.sh"

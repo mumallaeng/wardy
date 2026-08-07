@@ -72,6 +72,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   const packages = await readFile(path.join(root, "edge/config/jetson-apt-packages.txt"), "utf8");
   const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
   const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
+  const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
   const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
   const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
   const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
@@ -84,7 +85,6 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
     "gstreamer1.0-plugins-ugly",
-    "nvidia-l4t-gstreamer",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -94,6 +94,9 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
   assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
   assert.match(installer, /apt-get install/);
+  assert.match(installer, /nvidia-l4t-core/);
+  assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
+  assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);
   assert.match(installer, /check_jetson_dependencies\.sh/);
@@ -109,6 +112,15 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(tlsCreator, /installed_artifacts/);
   assert.match(tlsCreator, /wardy-ca\.key/);
   assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
+  assert.match(setup, /install_jetson_dependencies\.sh/);
+  assert.match(setup, /create_jetson_tls\.sh/);
+  assert.match(setup, /openssl rand -hex 32/);
+  assert.match(setup, /replace-with-\*/);
+  assert.match(setup, /chmod 0600/);
+  assert.match(setup, /cmake --build/);
+  assert.match(setup, /check_jetson_dependencies\.sh/);
+  assert.match(setup, /--no-start/);
+  assert.match(setup, /exec .*start_jetson_webrtc\.sh/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
