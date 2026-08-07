@@ -50,6 +50,7 @@ test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 �
   assert.match(app, /setCameraMirrored/);
   assert.match(app, /connectConfiguredJetson/);
   assert.match(app, /status === "fault".*reconnectTimer/s);
+  assert.match(app, /JetsonCredentialStore\(window\.sessionStorage\)/);
   assert.match(overlay, /setMirrored/);
   assert.match(overlay, /1 - zone\.x - zone\.width/);
 });
