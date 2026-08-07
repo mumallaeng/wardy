@@ -1,13 +1,15 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES, createDemoEvent } from "./constants.ts";
-import { CameraController } from "./camera.ts";
+import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
+import { identityFeedbackManifest, renderIdentityReviews } from "./data-workspace.ts";
 import { OverlayController } from "./overlay.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
+import { TrainingSampleClient } from "./training.ts";
 import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, WardyEvent, WardyState } from "./types.ts";
 
-type ViewName = "dashboard" | "events" | "settings" | "jetson";
+type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
 /**
  * Finds a required element within the specified root node.
@@ -45,8 +47,11 @@ function errorMessage(error: unknown): string {
 }
 
 const store = new WardyStore(window.localStorage);
+const trainingSamples = new TrainingSampleClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
+let jetsonAccessToken = "";
+let jetsonViewerToken = "";
 
 /**
  * Displays a temporary notification message.
@@ -92,7 +97,7 @@ function setCameraStatus(status: CameraStatus): void {
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
 }
 
-const camera = new CameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
+const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
 
 /**
  * Updates the Jetson connection status and related interface elements.
@@ -220,6 +225,62 @@ function renderDashboardOverlayControls(settings: OverlaySettings): void {
 }
 
 /**
+ * Captures a training sample for a registered managed item through the Jetson service.
+ *
+ * @param itemId - The registered managed item ID to capture.
+ */
+async function captureManagedItemSample(itemId: string): Promise<void> {
+  const state = store.getState();
+  const item = state.managedItems.find((candidate) => candidate.id === itemId);
+  if (!item) throw new Error(`등록된 물품을 찾을 수 없습니다: ${itemId}`);
+  try {
+    const result = await trainingSamples.capture(
+      item, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
+    );
+    store.setManagedItemSampleCount(item.id, result.sampleCount);
+    toast(`'${item.label}' 학습 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+
+/**
+ * Captures identity reference data for a registered subject through the Jetson service.
+ *
+ * @param subjectId - The registered subject ID to capture.
+ */
+async function captureSubjectReference(subjectId: string): Promise<void> {
+  const state = store.getState();
+  const subject = state.subjects.find((candidate) => candidate.id === subjectId);
+  if (!subject) throw new Error(`등록된 인물을 찾을 수 없습니다: ${subjectId}`);
+  try {
+    const result = await trainingSamples.captureSubject(
+      subject, state.settings.jetson?.baseUrl ?? "", jetsonAccessToken, window.location.origin,
+    );
+    store.setSubjectReferenceSampleCount(subject.id, result.sampleCount);
+    toast(`'${subject.name}' 식별 기준 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
+  } catch (error) {
+    toast(errorMessage(error));
+  }
+}
+
+/**
+ * Downloads a JSON-serializable value as a local file.
+ *
+ * @param filename - The download filename.
+ * @param value - The value to serialize.
+ */
+function downloadJson(filename: string, value: unknown): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Renders the current application state across the Wardy interface.
  *
  * @param state - The application state to display; defaults to the store's current state.
@@ -233,8 +294,18 @@ function render(state: WardyState = store.getState()): void {
   overlay.setZones(state.zones);
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
   renderNotifications($("#notification-settings"), state.settings.notifications, (eventType, value) => store.setNotificationSetting(eventType, value));
-  renderSubjects($("#subject-list"), state.subjects, (id) => store.removeSubject(id));
-  renderManagedItems($("#item-list"), state.managedItems, (id) => store.removeManagedItem(id));
+  renderSubjects($("#subject-list"), state.subjects, (id) => store.removeSubject(id), captureSubjectReference);
+  renderSubjects($("#data-subject-list"), state.subjects, (id) => store.removeSubject(id), captureSubjectReference);
+  renderIdentityReviews(
+    $("#identity-review-gallery"), state.identityReviews, state.subjects,
+    (reviewId, decision, subjectId) => store.resolveIdentityReview(reviewId, decision, subjectId),
+  );
+  const pendingReviews = state.identityReviews.filter((review) => review.decision === "pending").length;
+  $("#review-count").textContent = `${pendingReviews}건 대기`;
+  renderManagedItems(
+    $("#item-list"), state.managedItems,
+    (id) => store.removeManagedItem(id), captureManagedItemSample,
+  );
   renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
   if (document.activeElement !== jetsonInput) jetsonInput.value = state.settings.jetson.baseUrl;
@@ -255,13 +326,19 @@ $$<HTMLButtonElement>('[data-open-view]').forEach((button) => button.addEventLis
   if (view) openView(view);
 }));
 const initialView = location.hash.slice(1);
-if (["dashboard", "events", "settings", "jetson"].includes(initialView)) openView(initialView as ViewName);
+if (["dashboard", "events", "data", "settings", "jetson"].includes(initialView)) openView(initialView as ViewName);
 
 $("#start-camera").addEventListener("click", async () => {
-  try { await camera.start(); toast("카메라 영상을 로컬 화면에 표시합니다."); }
-  catch (error) { toast(error instanceof DOMException && error.name === "NotAllowedError" ? "카메라 권한이 허용되지 않았습니다." : errorMessage(error)); }
+  try {
+    const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
+    const endpoint = await camera.start(baseUrl, jetsonViewerToken, window.location.origin);
+    toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
+  } catch (error) {
+    setCameraStatus("fault");
+    toast(errorMessage(error));
+  }
 });
-$("#stop-camera").addEventListener("click", () => { camera.stop(); toast("카메라를 중지했습니다."); });
+$("#stop-camera").addEventListener("click", () => { camera.stop(); toast("Jetson 카메라 stream 연결을 중지했습니다."); });
 $("#toggle-demo-overlay").addEventListener("click", (event: Event) => {
   demoOverlayEnabled = !demoOverlayEnabled;
   overlay.setDetections(demoOverlayEnabled ? DEMO_DETECTIONS : []);
@@ -317,19 +394,33 @@ $<HTMLFormElement>("#item-form").addEventListener("submit", (event: SubmitEvent)
 $("#draw-zone").addEventListener("click", () => { openView("dashboard"); overlay.beginZoneDrawing(); toast("카메라 화면에서 주의 구역을 드래그하세요."); });
 
 $("#export-events").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(store.getState().events, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `wardy-events-${new Date().toISOString().slice(0, 10)}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadJson(`wardy-events-${new Date().toISOString().slice(0, 10)}.json`, store.getState().events);
+});
+$("#add-review-demo").addEventListener("click", () => {
+  const sequence = store.getState().identityReviews.length + 1;
+  store.addIdentityReview({
+    imagePath: `demo/identity/review-${String(sequence).padStart(3, "0")}.jpg`,
+    capturedAt: new Date().toISOString(),
+    predictedName: sequence % 2 ? "조정민" : null,
+    confidence: sequence % 2 ? 0.54 : 0.31,
+  });
+  toast("AI 결과가 아닌 식별 검토 UI 예시를 추가했습니다.");
+});
+$("#export-identity-feedback").addEventListener("click", () => {
+  const state = store.getState();
+  downloadJson(
+    `wardy-identity-feedback-${new Date().toISOString().slice(0, 10)}.json`,
+    identityFeedbackManifest(state.identityReviews, state.subjects),
+  );
+  toast("현재 로컬 식별 feedback manifest를 내보냈습니다.");
 });
 $("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const rawBaseUrl = $<HTMLInputElement>("#jetson-base-url").value;
+  jetsonAccessToken = $<HTMLInputElement>("#jetson-access-token").value;
+  jetsonViewerToken = $<HTMLInputElement>("#jetson-viewer-token").value;
   try {
     if (rawBaseUrl.trim()) normalizeJetsonBaseUrl(rawBaseUrl);
     store.setJetsonBaseUrl(rawBaseUrl);
