@@ -80,6 +80,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "libsqlite3-dev",
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
+    "nvidia-l4t-gstreamer",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
