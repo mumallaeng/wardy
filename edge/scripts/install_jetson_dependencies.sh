@@ -36,7 +36,8 @@ l4t_gstreamer_status="$(dpkg-query -W -f='${Status}\n' nvidia-l4t-gstreamer 2>/d
 l4t_gstreamer_version="$(dpkg-query -W -f='${Version}\n' nvidia-l4t-gstreamer 2>/dev/null || true)"
 if [[ "${l4t_gstreamer_status}" != "install ok installed" ||
       "${l4t_gstreamer_version}" != "${l4t_core_version}" ]]; then
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades \
+    --no-install-recommends \
     "nvidia-l4t-gstreamer=${l4t_core_version}"
 fi
 

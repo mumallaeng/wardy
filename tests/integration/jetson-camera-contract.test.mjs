@@ -86,6 +86,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
     "gstreamer1.0-plugins-ugly",
+    "gstreamer1.0-rtsp",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -98,6 +99,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(installer, /nvidia-l4t-core/);
   assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
   assert.match(installer, /l4t_gstreamer_version.*!=.*l4t_core_version/s);
+  assert.match(installer, /--allow-downgrades/);
   assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);
