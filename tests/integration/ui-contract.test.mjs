@@ -33,6 +33,7 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /:8443\/wardy\/whep/);
   assert.match(html, /<video id="camera"/);
   assert.match(html, /id="mirror-camera"/);
+  assert.match(html, /id="start-camera"[^>]*>Jetson 카메라 연결<\/button><button[^>]*id="stop-camera"[^>]*>카메라 연결 중지<\/button>/);
   assert.match(html, /WebRTC\/UDP/);
   assert.match(html, /event·state 동기화<\/dt><dd>WebSocket 후속 통합/);
   assert.match(html, /\/dev\/video0/);

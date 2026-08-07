@@ -28,7 +28,7 @@
     <section class="view is-active" data-view-panel="dashboard">
       <div class="page-heading">
         <div><p class="eyebrow">HOME SAFETY MONITOR</p><h1>현재 안전 확인</h1><p>감지 결과는 의심 상황을 알려주는 보조 정보이며 의료 진단이나 자동 대응 결과가 아닙니다.</p></div>
-        <div class="heading-actions"><button class="button button-secondary" id="demo-event">데모 이벤트 추가</button><button class="button" id="start-camera">Jetson 카메라 연결</button></div>
+        <div class="heading-actions"><button class="button button-secondary" id="demo-event">데모 이벤트 추가</button><button class="button" id="start-camera">Jetson 카메라 연결</button><button class="button button-secondary" id="stop-camera" disabled>카메라 연결 중지</button></div>
       </div>
 
       <div class="system-strip" aria-label="시스템 상태">
@@ -40,7 +40,7 @@
 
       <div class="dashboard-grid">
         <section class="card camera-card">
-          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><button class="text-button" id="mirror-camera" type="button" aria-pressed="false">거울 모드 켜기</button><button class="text-button" id="stop-camera" disabled>중지</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
+          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><button class="text-button" id="mirror-camera" type="button" aria-pressed="false">거울 모드 켜기</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
           <div class="camera-stage" id="camera-stage">
             <video id="camera" title="Jetson WebRTC 카메라 영상" autoplay muted playsinline disablepictureinpicture></video>
             <canvas id="overlay" aria-label="탐지 결과와 주의 구역 표시"></canvas>
