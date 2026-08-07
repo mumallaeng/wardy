@@ -41,6 +41,12 @@ add_executable(http_response_test
 target_include_directories(http_response_test PRIVATE src)
 add_test(NAME http_response_test COMMAND http_response_test)
 
+add_executable(pose_observation_test
+  tests/pose_observation_test.cpp
+)
+target_include_directories(pose_observation_test PRIVATE src)
+add_test(NAME pose_observation_test COMMAND pose_observation_test)
+
 find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)
