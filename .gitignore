@@ -7,7 +7,7 @@
 /edge/data/
 /edge/tools/
 /node_modules/
-
+settings.json
 .env
 .env.*
 !.env.example

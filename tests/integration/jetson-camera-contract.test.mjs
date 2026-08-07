@@ -153,6 +153,7 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
   assert.match(caddy, /auto_https disable_redirects/);
+  assert.match(caddy, /default_sni \{\$WARDY_JETSON_HOST\}/);
   assert.match(caddy, /https:\/\/\{\$WARDY_JETSON_HOST\}:8443/);
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
