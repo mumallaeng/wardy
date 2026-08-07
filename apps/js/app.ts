@@ -96,6 +96,9 @@ function setCameraStatus(status: CameraStatus): void {
   $("#camera-empty").hidden = status === "connected";
   $<HTMLButtonElement>("#start-camera").disabled = status === "connected" || status === "connecting";
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
+  if (status === "fault" && store.getState().settings.jetson.viewerToken && reconnectTimer === null) {
+    reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true).catch(() => undefined); }, 5000);
+  }
 }
 
 const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
@@ -138,7 +141,7 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
       await camera.start(configured.baseUrl, configured.viewerToken, window.location.origin);
     }
   } catch (error) {
-    if (startCamera) {
+    if (startCamera && reconnectTimer === null) {
       reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true); }, 5000);
     }
     throw error;
