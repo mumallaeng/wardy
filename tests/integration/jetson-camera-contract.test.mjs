@@ -37,6 +37,7 @@ test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 �
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
   assert.match(launcher, /x264enc tune=zerolatency speed-preset=ultrafast/);
+  assert.match(launcher, /threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0/);
   assert.match(launcher, /software_bitrate_kbps/);
   assert.doesNotMatch(launcher, /nvv4l2h264enc/);
   assert.match(launcher, /video\/x-h264,profile=baseline/);
