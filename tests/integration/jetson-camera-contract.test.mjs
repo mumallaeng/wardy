@@ -33,10 +33,12 @@ test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한�
   assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
 });
 
-test("Jetson WebRTC는 H264 hardware encode와 UDP ICE gateway를 사용한다", async () => {
+test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
-  assert.match(launcher, /nvv4l2h264enc/);
+  assert.match(launcher, /x264enc tune=zerolatency speed-preset=ultrafast/);
+  assert.match(launcher, /software_bitrate_kbps/);
+  assert.doesNotMatch(launcher, /nvv4l2h264enc/);
   assert.match(launcher, /video\/x-h264,profile=baseline/);
   assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
   assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
@@ -80,6 +82,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "libsqlite3-dev",
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
+    "gstreamer1.0-plugins-ugly",
     "nvidia-l4t-gstreamer",
     "v4l-utils",
   ]) {
@@ -97,7 +100,8 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(caddyInstaller, /sha512sum --check --status/);
   assert.doesNotMatch(caddyInstaller, /checksums\.txt/);
   assert.match(checker, /nvvidconv/);
-  assert.match(checker, /nvv4l2h264enc/);
+  assert.match(checker, /x264enc/);
+  assert.doesNotMatch(checker, /nvv4l2h264enc/);
   assert.match(tlsCreator, /subjectAltName=/);
   assert.match(tlsCreator, /WARDY_TLS_DIR:-\/etc\/wardy\/tls/);
   assert.match(tlsCreator, /flock -n 9/);
