@@ -16,6 +16,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; background: var(--paper); color: var(--ink); font: 15px/1.55 Inter, Pretendard, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 button, input, select { font: inherit; }
@@ -71,6 +72,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
 .camera-stage { position: relative; display: grid; place-items: center; min-height: 470px; overflow: hidden; border-radius: 14px; background: #101813; }
 .camera-stage video { display: block; width: 100%; min-height: 470px; height: 100%; max-height: 620px; border: 0; background: #101813; object-fit: contain; }
+.camera-stage.is-mirrored video { transform: scaleX(-1); }
 .camera-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; }
 .camera-stage.is-zone-drawing canvas { cursor: crosshair; pointer-events: auto; }
 .camera-empty { position: absolute; display: grid; gap: 7px; max-width: 430px; padding: 20px; color: #dce8df; text-align: center; }
