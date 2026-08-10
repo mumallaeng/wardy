@@ -211,7 +211,10 @@ test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한�
   assert.match(media, /event\.media_type == "video"/);
   assert.match(mediaHeader, /before_event\{5000\}/);
   assert.match(mediaHeader, /after_event\{5000\}/);
-  assert.match(media, /ring_\.size\(\) > 60U/);
+  assert.match(media, /ring_\.size\(\) > ring_capacity_/);
+  assert.match(mediaHeader, /max_workers = 2/);
+  assert.match(mediaHeader, /max_pending_events = 16/);
+  assert.match(media, /void EventMediaRecorder::worker_loop\(\)/);
   assert.match(media, /update_event_media/);
   assert.match(api, /const auto media_event_id = event_media_path\(path\)/);
   assert.match(api, /method == "GET" && media_event_id/);

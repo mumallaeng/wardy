@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -20,6 +21,8 @@ struct EventMediaOptions {
   std::chrono::milliseconds before_event{5000};
   std::chrono::milliseconds after_event{5000};
   double frames_per_second = 10.0;
+  std::size_t max_workers = 2;
+  std::size_t max_pending_events = 16;
 };
 
 class EventMediaRecorder {
@@ -44,8 +47,15 @@ class EventMediaRecorder {
     cv::Mat frame;
   };
 
+  struct PendingEvent {
+    storage::EventRecord event;
+    std::chrono::system_clock::time_point scheduled_at;
+  };
+
   void record_image(storage::EventRecord event);
-  void record_video(storage::EventRecord event);
+  void record_video(storage::EventRecord event,
+                    std::chrono::system_clock::time_point trigger);
+  void worker_loop();
   void finish(const storage::EventRecord& event, const std::string& media_type,
               const std::filesystem::path& relative_path,
               const std::chrono::system_clock::time_point& started_at,
@@ -58,9 +68,12 @@ class EventMediaRecorder {
   EventMediaOptions options_;
   std::mutex mutex_;
   std::condition_variable frame_ready_;
+  std::condition_variable work_ready_;
   std::vector<TimedFrame> ring_;
   std::set<std::string> scheduled_;
+  std::deque<PendingEvent> pending_;
   std::vector<std::thread> workers_;
+  std::size_t ring_capacity_ = 0;
   std::size_t frame_sequence_ = 0;
   std::chrono::steady_clock::time_point next_ring_frame_{};
   bool running_ = true;

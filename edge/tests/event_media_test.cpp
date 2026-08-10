@@ -41,8 +41,10 @@ int main() {
   wardy::media::EventMediaOptions options;
   options.ring_interval = std::chrono::milliseconds(5);
   options.before_event = std::chrono::milliseconds(30);
-  options.after_event = std::chrono::milliseconds(60);
+  options.after_event = std::chrono::milliseconds(150);
   options.frames_per_second = 20.0;
+  options.max_workers = 2;
+  options.max_pending_events = 4;
   wardy::media::EventMediaRecorder recorder(root, database, {}, options);
   const cv::Mat frame(48, 64, CV_8UC3, cv::Scalar(20, 80, 160));
   for (int index = 0; index < 8; ++index) {
@@ -51,7 +53,7 @@ int main() {
   }
   recorder.schedule(image_event);
   recorder.schedule(video_event);
-  for (int index = 0; index < 15; ++index) {
+  for (int index = 0; index < 40; ++index) {
     recorder.push_frame(frame);
     std::this_thread::sleep_for(std::chrono::milliseconds(6));
   }
@@ -59,6 +61,8 @@ int main() {
 
   const auto stored_image = database.get_event(image_event.event_id);
   const auto stored_video = database.get_event(video_event.event_id);
+  assert(stored_image.has_value());
+  assert(stored_video.has_value());
   assert(stored_image->media_path.has_value());
   assert(stored_video->media_path.has_value());
   assert(std::filesystem::file_size(root / *stored_image->media_path) > 0U);

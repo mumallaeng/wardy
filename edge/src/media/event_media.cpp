@@ -32,10 +32,28 @@ EventMediaRecorder::EventMediaRecorder(std::filesystem::path root,
       options_(options) {
   if (root_.empty()) throw std::invalid_argument("event media path must not be empty");
   if (options_.ring_interval.count() <= 0 || options_.before_event.count() < 0 ||
-      options_.after_event.count() <= 0 || options_.frames_per_second <= 0.0) {
+      options_.after_event.count() <= 0 || options_.frames_per_second <= 0.0 ||
+      options_.max_workers == 0 || options_.max_pending_events == 0) {
     throw std::invalid_argument("event media timing options are invalid");
   }
+  ring_capacity_ = static_cast<std::size_t>(
+      (options_.before_event.count() + options_.ring_interval.count() - 1) /
+      options_.ring_interval.count()) + 2U;
   std::filesystem::create_directories(root_);
+  workers_.reserve(options_.max_workers);
+  try {
+    for (std::size_t index = 0; index < options_.max_workers; ++index) {
+      workers_.emplace_back([this] { worker_loop(); });
+    }
+  } catch (...) {
+    {
+      std::lock_guard lock(mutex_);
+      running_ = false;
+    }
+    work_ready_.notify_all();
+    for (auto& worker : workers_) if (worker.joinable()) worker.join();
+    throw;
+  }
 }
 
 EventMediaRecorder::~EventMediaRecorder() { stop(); }
@@ -48,23 +66,47 @@ void EventMediaRecorder::push_frame(const cv::Mat& frame) {
   next_ring_frame_ = steady_now + options_.ring_interval;
   ring_.push_back({std::chrono::system_clock::now(), frame.clone()});
   ++frame_sequence_;
-  if (ring_.size() > 60U) ring_.erase(ring_.begin(), ring_.begin() + (ring_.size() - 60U));
+  if (ring_.size() > ring_capacity_) {
+    ring_.erase(ring_.begin(), ring_.begin() + (ring_.size() - ring_capacity_));
+  }
   frame_ready_.notify_all();
 }
 
 void EventMediaRecorder::schedule(const storage::EventRecord& event) {
   if (event.media_type == "none" || event.media_path) return;
-  std::lock_guard lock(mutex_);
-  if (!running_ || !scheduled_.insert(event.event_id).second) return;
-  workers_.emplace_back([this, event] {
-    try {
-      if (event.media_type == "image") record_image(event);
-      else if (event.media_type == "video") record_video(event);
-    } catch (const std::exception& error) {
-      std::cerr << "Event media error for " << event.event_id << ": " << error.what() << '\n';
-      release_schedule(event.event_id);
+  {
+    std::lock_guard lock(mutex_);
+    if (!running_ || scheduled_.count(event.event_id) > 0 ||
+        pending_.size() >= options_.max_pending_events) return;
+    scheduled_.insert(event.event_id);
+    pending_.push_back({event, std::chrono::system_clock::now()});
+  }
+  work_ready_.notify_one();
+}
+
+void EventMediaRecorder::worker_loop() {
+  while (true) {
+    PendingEvent pending;
+    {
+      std::unique_lock lock(mutex_);
+      work_ready_.wait(lock, [&] { return !running_ || !pending_.empty(); });
+      if (!running_) return;
+      pending = std::move(pending_.front());
+      pending_.pop_front();
     }
-  });
+    try {
+      if (pending.event.media_type == "image") record_image(pending.event);
+      else if (pending.event.media_type == "video") {
+        record_video(pending.event, pending.scheduled_at);
+      } else {
+        throw std::invalid_argument("unsupported event media type");
+      }
+    } catch (const std::exception& error) {
+      std::cerr << "Event media error for " << pending.event.event_id << ": "
+                << error.what() << '\n';
+      release_schedule(pending.event.event_id);
+    }
+  }
 }
 
 void EventMediaRecorder::record_image(storage::EventRecord event) {
@@ -88,8 +130,9 @@ void EventMediaRecorder::record_image(storage::EventRecord event) {
   finish(event, "image", relative, selected.captured_at, selected.captured_at);
 }
 
-void EventMediaRecorder::record_video(storage::EventRecord event) {
-  const auto trigger = std::chrono::system_clock::now();
+void EventMediaRecorder::record_video(
+    storage::EventRecord event,
+    const std::chrono::system_clock::time_point trigger) {
   const auto cutoff = trigger - options_.before_event;
   const auto complete_at = trigger + options_.after_event;
   std::vector<TimedFrame> frames;
@@ -155,8 +198,11 @@ void EventMediaRecorder::stop() {
     std::lock_guard lock(mutex_);
     if (!running_) return;
     running_ = false;
+    pending_.clear();
+    scheduled_.clear();
   }
   frame_ready_.notify_all();
+  work_ready_.notify_all();
   for (auto& worker : workers_) if (worker.joinable()) worker.join();
   workers_.clear();
 }
