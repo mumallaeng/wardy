@@ -77,6 +77,23 @@ export class WardyRuntimeClient {
       `/api/events/${encodeURIComponent(eventId)}/${action}`, { method: "POST" });
   }
 
+  async loadEventMedia(baseUrl: string, accessToken: string, fallbackOrigin: string,
+                       eventId: string): Promise<Blob> {
+    if (!accessToken) throw new Error("Jetson 데이터 API 토큰이 필요합니다.");
+    const response = await this.fetchImpl(endpoint(baseUrl,
+      `/api/events/${encodeURIComponent(eventId)}/media`, fallbackOrigin), {
+      headers: { "X-Wardy-Access-Token": accessToken }, cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`이벤트 자료를 불러오지 못했습니다. HTTP ${response.status}`);
+    return response.blob();
+  }
+
+  async deleteEventMedia(baseUrl: string, accessToken: string, fallbackOrigin: string,
+                         eventId: string): Promise<void> {
+    await this.request(baseUrl, accessToken, fallbackOrigin,
+      `/api/events/${encodeURIComponent(eventId)}/media`, { method: "DELETE" });
+  }
+
   async createDebugEvent(baseUrl: string, accessToken: string,
                          fallbackOrigin: string): Promise<WardyEvent> {
     return this.request(baseUrl, accessToken, fallbackOrigin, "/api/debug/events", {

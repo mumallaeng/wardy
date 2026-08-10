@@ -95,6 +95,10 @@ class SqliteStore {
                                                       std::size_t offset = 0) const;
   bool update_event_status(const std::string& event_id, const std::string& event_status,
                            const std::string& changed_at);
+  bool update_event_media(const std::string& event_id, const std::string& media_type,
+                          const std::string& media_path,
+                          const std::string& media_started_at,
+                          const std::string& media_ended_at);
   void save_system_state(const SystemStateRecord& state);
   [[nodiscard]] std::optional<SystemStateRecord> load_system_state() const;
   void upsert_managed_item(const ManagedItemRecord& item);

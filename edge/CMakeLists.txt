@@ -79,6 +79,13 @@ if(OpenCV_FOUND)
   target_link_libraries(wardy_camera PUBLIC ${OpenCV_LIBS})
   target_compile_options(wardy_camera PRIVATE -Wall -Wextra -Wpedantic)
 
+  add_library(wardy_event_media STATIC
+    src/media/event_media.cpp
+  )
+  target_include_directories(wardy_event_media PUBLIC src ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(wardy_event_media PUBLIC wardy_storage ${OpenCV_LIBS} Threads::Threads)
+  target_compile_options(wardy_event_media PRIVATE -Wall -Wextra -Wpedantic)
+
   add_executable(wardy_camera_probe
     src/input/camera_probe.cpp
   )
@@ -90,7 +97,7 @@ if(OpenCV_FOUND)
     src/api/wardy_edge_service.cpp
   )
   target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime Threads::Threads ${OpenCV_LIBS})
+  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime wardy_event_media Threads::Threads ${OpenCV_LIBS})
   target_compile_options(wardy_edge_service PRIVATE -Wall -Wextra -Wpedantic)
 else()
   message(STATUS "OpenCV core/videoio/imgcodecs not found: camera library, probe, and edge service are skipped")

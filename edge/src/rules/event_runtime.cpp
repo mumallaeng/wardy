@@ -136,7 +136,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       transition.created = true;
     }
   }
-  notify_change();
+  notify_change(transition.event);
   return transition;
 }
 
@@ -148,6 +148,7 @@ bool EventRuntime::update_status(const std::string& event_id,
     throw std::invalid_argument("unsupported event status: " + status);
   }
   bool updated = false;
+  std::optional<storage::EventRecord> changed_event;
   {
     const std::lock_guard lock(mutex_);
     const auto stored = database_.get_event(event_id);
@@ -174,8 +175,9 @@ bool EventRuntime::update_status(const std::string& event_id,
         }
       }
     }
+    if (updated) changed_event = database_.get_event(event_id);
   }
-  if (updated) notify_change();
+  if (changed_event) notify_change(*changed_event);
   return updated;
 }
 
@@ -210,8 +212,8 @@ void EventRuntime::restore_active_events() {
   }
 }
 
-void EventRuntime::notify_change() const {
-  if (on_change_) on_change_();
+void EventRuntime::notify_change(const storage::EventRecord& event) const {
+  if (on_change_) on_change_(event);
 }
 
 }  // namespace wardy::rules

@@ -368,6 +368,29 @@ async function runEventAction(eventId: string,
   } catch (error) { toast(errorMessage(error)); }
 }
 
+async function viewEventMedia(eventId: string): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const blob = await runtime.loadEventMedia(connection.baseUrl, connection.accessToken,
+      connection.origin, eventId);
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function deleteEventMedia(eventId: string): Promise<void> {
+  if (!window.confirm("Jetson에 저장된 이벤트 사진·영상을 삭제할까요?")) return;
+  try {
+    const connection = runtimeConnection();
+    await runtime.deleteEventMedia(connection.baseUrl, connection.accessToken,
+      connection.origin, eventId);
+    applyRuntimeSnapshot(await runtime.loadSnapshot(
+      connection.baseUrl, connection.accessToken, connection.origin));
+    toast("이벤트 자료를 Jetson에서 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
 /**
  * Downloads a JSON-serializable value as a local file.
  *
@@ -498,7 +521,8 @@ $<HTMLTableSectionElement>("#event-table-body").addEventListener("click", (event
   if (action === "confirm") void runEventAction(eventId, "confirm");
   if (action === "false") void runEventAction(eventId, "false-detection");
   if (action === "release") void runEventAction(eventId, "release");
-  if (action === "delete-media") toast("이벤트 자료 삭제 API는 미디어 저장 단위에서 연결됩니다.");
+  if (action === "view-media") void viewEventMedia(eventId);
+  if (action === "delete-media") void deleteEventMedia(eventId);
 });
 
 $<HTMLFormElement>("#subject-form").addEventListener("submit", async (event: SubmitEvent) => {

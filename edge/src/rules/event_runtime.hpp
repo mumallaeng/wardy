@@ -33,7 +33,7 @@ struct EventTransition {
 
 class EventRuntime {
  public:
-  using ChangeCallback = std::function<void()>;
+  using ChangeCallback = std::function<void(const storage::EventRecord&)>;
 
   explicit EventRuntime(storage::SqliteStore& database,
                         ChangeCallback on_change = {});
@@ -52,7 +52,7 @@ class EventRuntime {
   static int care_rank(const std::optional<std::string>& care_status);
   std::string next_event_id(const std::string& event_type);
   void restore_active_events();
-  void notify_change() const;
+  void notify_change(const storage::EventRecord& event) const;
 
   storage::SqliteStore& database_;
   ChangeCallback on_change_;

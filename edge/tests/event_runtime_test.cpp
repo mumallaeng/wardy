@@ -9,7 +9,7 @@ int main() {
   wardy::storage::SqliteStore database(":memory:");
   database.initialize();
   int changes = 0;
-  wardy::rules::EventRuntime runtime(database, [&changes] { ++changes; });
+  wardy::rules::EventRuntime runtime(database, [&changes](const auto&) { ++changes; });
 
   wardy::rules::EventObservation hazard{
       "hazard_detected", true, "2026-08-10T10:00:00Z", "subject-1", "돌봄 대상",

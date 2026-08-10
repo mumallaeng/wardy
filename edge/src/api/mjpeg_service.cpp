@@ -4,6 +4,7 @@
 #include "api/json_serialization.hpp"
 #include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
+#include "media/event_media.hpp"
 #include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
 
@@ -30,6 +31,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -53,6 +55,7 @@ struct StreamState {
   std::atomic_uint64_t sample_counter{0};
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
+  std::shared_ptr<media::EventMediaRecorder> event_media;
   std::filesystem::path training_data_path;
   std::mutex websocket_mutex;
   std::vector<int> websocket_clients;
@@ -64,6 +67,16 @@ struct StreamState {
 };
 
 void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept;
+
+void schedule_event_media(const std::shared_ptr<StreamState>& state,
+                          const storage::EventRecord& event) noexcept {
+  try {
+    if (!state->event_media) return;
+    state->event_media->schedule(event);
+  } catch (const std::exception& error) {
+    std::cerr << "Event media scheduling error: " << error.what() << '\n';
+  }
+}
 
 std::string lowercase(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
@@ -190,6 +203,15 @@ bool send_text(int socket_fd, const std::string& text) {
   return send_all(socket_fd, text.data(), text.size());
 }
 
+bool send_binary_response(int socket_fd, const std::vector<unsigned char>& body,
+                          const std::string& content_type,
+                          const std::string& allowed_origin) {
+  const std::string headers = "HTTP/1.1 200 OK\r\n" + common_headers(allowed_origin) +
+      "Content-Type: " + content_type + "\r\nContent-Length: " +
+      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
+  return send_text(socket_fd, headers) && send_all(socket_fd, body.data(), body.size());
+}
+
 std::optional<std::string> runtime_snapshot(
     const std::shared_ptr<StreamState>& state) {
   const auto system = state->database->load_system_state();
@@ -285,6 +307,22 @@ std::optional<std::string> resource_id_path(const std::string& path,
   const std::string identifier = path.substr(prefix.size());
   if (!safe_item_id(identifier)) return std::nullopt;
   return identifier;
+}
+
+std::optional<std::string> event_media_path(const std::string& path) {
+  const auto action = event_action_path(path);
+  if (!action || action->second != "media") return std::nullopt;
+  return action->first;
+}
+
+std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
+                                        const storage::EventRecord& event) {
+  if (!event.media_path) throw std::invalid_argument("event media is not ready");
+  const std::filesystem::path relative(*event.media_path);
+  if (relative.empty() || relative.has_parent_path() || relative.filename() != relative) {
+    throw std::runtime_error("invalid event media path in SQLite");
+  }
+  return state->event_media->root_path() / relative;
 }
 
 std::optional<std::string> decoded_optional_header(const std::string& request,
@@ -644,6 +682,38 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_text(socket_fd, json_response(200, "OK", state_json(*current),
                                          config.allowed_origin));
     }
+  } else if (method == "GET" && event_media_path(path)) {
+    const auto event = state->database->get_event(*event_media_path(path));
+    if (!event || !event->media_path) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event media not found\"}",
+                                         config.allowed_origin));
+    } else {
+      const auto file = stored_media_file(state, *event);
+      std::ifstream input(file, std::ios::binary);
+      if (!input) throw std::runtime_error("event media file is missing");
+      const std::vector<unsigned char> bytes(
+          (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+      send_binary_response(socket_fd, bytes,
+          event->media_type == "image" ? "image/jpeg" : "video/mp4", config.allowed_origin);
+    }
+  } else if (method == "DELETE" && event_media_path(path)) {
+    const auto event = state->database->get_event(*event_media_path(path));
+    if (!event) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event not found\"}",
+                                         config.allowed_origin));
+    } else {
+      const auto stored_path = event->media_path;
+      if (stored_path) {
+        const auto file = stored_media_file(state, *event);
+        std::error_code error;
+        std::filesystem::remove(file, error);
+        if (error) throw std::runtime_error("failed to delete event media file");
+      }
+      state->database->clear_event_media(event->event_id);
+      broadcast_snapshot(state);
+      send_text(socket_fd, json_response(200, "OK", "{\"deleted\":true}",
+                                         config.allowed_origin));
+    }
   } else if (method == "POST" && path == "/api/debug/events") {
     try {
       send_text(socket_fd, json_response(201, "Created", mock_event(request, state),
@@ -769,6 +839,7 @@ void capture_frames(const MjpegServiceConfig& config,
         if (!camera.read(frame)) {
           throw std::runtime_error("failed to read a frame from the Jetson camera");
         }
+        if (state->event_media) state->event_media->push_frame(frame);
         if (!connected_reported) {
           {
             std::lock_guard lock(state->mutex);
@@ -851,6 +922,7 @@ void MjpegServiceConfig::validate() const {
   if (jpeg_quality < 1 || jpeg_quality > 100) throw std::invalid_argument("jpeg quality must be between 1 and 100");
   if (database_path.empty()) throw std::invalid_argument("database path must not be empty");
   if (training_data_path.empty()) throw std::invalid_argument("training data path must not be empty");
+  if (event_media_path.empty()) throw std::invalid_argument("event media path must not be empty");
   if (allowed_origin.empty()) throw std::invalid_argument("allowed UI origin must not be empty");
   if (allowed_origin.find_first_of("\r\n") != std::string::npos ||
       (allowed_origin.rfind("http://", 0) != 0 && allowed_origin.rfind("https://", 0) != 0)) {
@@ -869,9 +941,16 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->database->initialize();
   state->training_data_path = config_.training_data_path;
   const std::weak_ptr<StreamState> weak_state = state;
+  state->event_media = std::make_shared<media::EventMediaRecorder>(
+      config_.event_media_path, *state->database, [weak_state] {
+        if (const auto locked = weak_state.lock()) broadcast_snapshot(locked);
+      });
   state->events = std::make_shared<rules::EventRuntime>(
-      *state->database, [weak_state] {
-        if (const auto locked = weak_state.lock()) save_runtime_state(locked);
+      *state->database, [weak_state](const storage::EventRecord& event) {
+        if (const auto locked = weak_state.lock()) {
+          save_runtime_state(locked);
+          if (event.event_status == "new") schedule_event_media(locked, event);
+        }
       });
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
@@ -896,6 +975,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->frame_ready.notify_all();
   ::close(server_fd);
   if (capture_thread.joinable()) capture_thread.join();
+  state->event_media->stop();
   save_camera_state(state, "idle", "Wardy edge service stopped");
   return 0;
 }

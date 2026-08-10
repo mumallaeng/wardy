@@ -40,3 +40,18 @@ test("Jetson runtime WebSocket은 전용 protocol과 탭 token으로 연결한�
   assert.deepEqual(opened.protocols, ["wardy-events", "session-token"]);
   client.stop();
 });
+
+test("이벤트 자료 조회와 삭제는 인증된 Jetson API를 사용한다", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return init?.method === "DELETE" ? Response.json({ deleted: true })
+      : new Response(new Blob(["media"], { type: "image/jpeg" }));
+  };
+  const client = new WardyRuntimeClient(fetchImpl);
+  const blob = await client.loadEventMedia("https://jetson.local:8443", "token", "", "EVT-1");
+  await client.deleteEventMedia("https://jetson.local:8443", "token", "", "EVT-1");
+  assert.equal(blob.type, "image/jpeg");
+  assert.equal(calls[0].url, "https://jetson.local:8443/api/events/EVT-1/media");
+  assert.equal(calls[1].init.method, "DELETE");
+});

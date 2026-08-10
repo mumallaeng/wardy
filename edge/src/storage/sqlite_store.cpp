@@ -421,6 +421,26 @@ bool SqliteStore::update_event_status(const std::string& event_id,
   return sqlite3_changes(impl_->database) > 0;
 }
 
+bool SqliteStore::update_event_media(const std::string& event_id,
+                                     const std::string& media_type,
+                                     const std::string& media_path,
+                                     const std::string& media_started_at,
+                                     const std::string& media_ended_at) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    UPDATE events SET media_type=?, media_path=?, media_started_at=?, media_ended_at=?
+    WHERE event_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, media_type);
+  bind_text(statement.get(), 2, media_path);
+  bind_text(statement.get(), 3, media_started_at);
+  bind_text(statement.get(), 4, media_ended_at);
+  bind_text(statement.get(), 5, event_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
 void SqliteStore::save_system_state(const SystemStateRecord& state) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
   const std::lock_guard lock(impl_->mutex);

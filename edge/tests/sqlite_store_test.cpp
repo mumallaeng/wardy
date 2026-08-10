@@ -108,6 +108,11 @@ int main() {
   assert(events[0].confirmed_at == "2026-08-06T12:01:00+09:00");
   assert(!store.update_event_status("missing", "confirmed",
                                     "2026-08-06T12:01:00+09:00"));
+  assert(store.update_event_media(event.event_id, "video", "events/EVT-TEST-001.mp4",
+                                  "2026-08-06T11:59:55+09:00",
+                                  "2026-08-06T12:00:05+09:00"));
+  assert(store.get_event(event.event_id)->media_ended_at ==
+         "2026-08-06T12:00:05+09:00");
 
   wardy::storage::SystemStateRecord state{
       "warning",
@@ -166,7 +171,7 @@ int main() {
   assert(subjects[0].reference_sample_count == 1);
 
   const auto removed_media = store.clear_event_media(event.event_id);
-  assert(removed_media == event.media_path);
+  assert(removed_media == "events/EVT-TEST-001.mp4");
   assert(store.get_event(event.event_id)->media_type == "none");
   assert(!store.get_event(event.event_id)->media_path.has_value());
   assert(!store.clear_event_media("missing").has_value());
