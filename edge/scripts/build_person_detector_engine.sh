@@ -15,6 +15,10 @@ engine_path="${2:-${onnx_path%.*}.engine}"
 force=false
 
 if [[ "${2:-}" == "--force" ]]; then
+  if (( $# != 2 )); then
+    usage
+    exit 1
+  fi
   engine_path="${onnx_path%.*}.engine"
   force=true
 elif [[ "${3:-}" == "--force" ]]; then
@@ -60,12 +64,22 @@ echo "Building FP16 TensorRT engine on $(uname -m)"
 echo "ONNX:   ${onnx_path}"
 echo "Engine: ${engine_path}"
 
+cleanup_partial_engine() {
+  local status=$?
+  if (( status != 0 )); then
+    rm -f -- "${engine_path}"
+  fi
+  exit "${status}"
+}
+trap cleanup_partial_engine EXIT
+
 "${trtexec_bin}" --onnx="${onnx_path}" --saveEngine="${engine_path}" --fp16
 
 if [[ ! -s "${engine_path}" ]]; then
   echo "TensorRT engine was not created: ${engine_path}" >&2
   exit 1
 fi
+trap - EXIT
 
 echo "Validating the generated engine"
 "${trtexec_bin}" --loadEngine="${engine_path}" --warmUp=500 --duration=5
