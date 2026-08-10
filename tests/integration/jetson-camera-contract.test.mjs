@@ -74,6 +74,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
   const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
   const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
   const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
   const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
@@ -133,7 +134,14 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(setup, /cmake --build/);
   assert.match(setup, /check_jetson_dependencies\.sh/);
   assert.match(setup, /--no-start/);
-  assert.match(setup, /exec .*start_jetson_webrtc\.sh/);
+  assert.match(setup, /install_jetson_service\.sh/);
+  const serviceInstaller = await readFile(path.join(root, "edge/scripts/install_jetson_service.sh"), "utf8");
+  assert.match(serviceInstaller, /wardy-edge\.service/);
+  assert.match(serviceInstaller, /systemctl enable/);
+  assert.match(serviceInstaller, /systemctl restart/);
+  assert.match(serviceInstaller, /Restart=on-failure/);
+  assert.match(serviceInstaller, /MTX_WEBRTCLOCALTCPADDRESS=:8189/);
+  assert.match(launcher, /MTX_WEBRTCLOCALTCPADDRESS.*:8189/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
@@ -153,6 +161,7 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
   assert.match(caddy, /auto_https disable_redirects/);
+  assert.match(caddy, /default_sni \{\$WARDY_JETSON_HOST\}/);
   assert.match(caddy, /https:\/\/\{\$WARDY_JETSON_HOST\}:8443/);
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
@@ -177,7 +186,7 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
-  assert.match(source, /POST \/api\/training\/items\/sample/);
+  assert.match(source, /method == "POST" && path == "\/api\/training\/items\/sample"/);
   assert.match(source, /sample_capture_requests/);
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
@@ -188,7 +197,28 @@ test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장�
 
 test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
-  assert.match(source, /POST \/api\/training\/subjects\/reference/);
+  assert.match(source, /method == "POST" && path == "\/api\/training\/subjects\/reference"/);
   assert.match(source, /add_subject_reference_sample/);
   assert.match(source, /std::filesystem::path\("subjects"\)/);
+});
+
+test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한다", async () => {
+  const media = await readFile(path.join(root, "edge/src/media/event_media.cpp"), "utf8");
+  const mediaHeader = await readFile(path.join(root, "edge/src/media/event_media.hpp"), "utf8");
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  assert.match(media, /event\.media_type == "image"/);
+  assert.match(media, /event\.media_type == "video"/);
+  assert.match(mediaHeader, /before_event\{5000\}/);
+  assert.match(mediaHeader, /after_event\{5000\}/);
+  assert.match(media, /ring_\.size\(\) > ring_capacity_/);
+  assert.match(mediaHeader, /max_workers = 2/);
+  assert.match(mediaHeader, /max_pending_events = 16/);
+  assert.match(media, /void EventMediaRecorder::worker_loop\(\)/);
+  assert.match(media, /update_event_media/);
+  assert.match(api, /const auto media_event_id = event_media_path\(path\)/);
+  assert.match(api, /method == "GET" && media_event_id/);
+  assert.match(api, /method == "DELETE" && media_event_id/);
+  assert.match(launcher, /data\/events/);
+  assert.doesNotMatch(media, /TensorRT|onnx|inference|tracking/i);
 });

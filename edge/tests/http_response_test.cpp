@@ -18,7 +18,7 @@ int main() {
       !expect(health.find("X-Wardy-Access-Token") != std::string::npos, "missing access header") ||
       !expect(health.find("X-Wardy-Item-Id") != std::string::npos, "missing item header") ||
       !expect(health.find("X-Wardy-Subject-Id") != std::string::npos, "missing subject header") ||
-      !expect(health.find("GET, POST, OPTIONS") != std::string::npos, "missing methods") ||
+      !expect(health.find("GET, POST, DELETE, OPTIONS") != std::string::npos, "missing methods") ||
       !expect(health.find("\"camera\":\"connected\"") != std::string::npos,
               "wrong connected health body")) return 1;
 

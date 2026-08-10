@@ -13,6 +13,7 @@ struct MjpegServiceConfig {
   int jpeg_quality = 80;
   std::string database_path = "edge/db/wardy.sqlite";
   std::string training_data_path = "edge/data/training";
+  std::string event_media_path = "edge/data/events";
   std::string allowed_origin = "http://localhost:8000";
   std::string access_token;
 

@@ -96,10 +96,11 @@ export WARDY_CAMERA_PIPELINE="${camera_source} ! tee name=wardy_camera \
 wardy_camera. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1 sync=false \
 wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! nvvidconv ! video/x-raw,format=I420 ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=${software_bitrate_kbps} key-int-max=${keyframe_interval} bframes=0 threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0 byte-stream=true ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://wardy-publisher:${publish_token}@127.0.0.1:8554/wardy protocols=tcp latency=0"
 
-mkdir -p "${edge_dir}/db" "${edge_dir}/data/training"
-chmod 0700 "${edge_dir}/db" "${edge_dir}/data" "${edge_dir}/data/training"
+mkdir -p "${edge_dir}/db" "${edge_dir}/data/training" "${edge_dir}/data/events"
+chmod 0700 "${edge_dir}/db" "${edge_dir}/data" "${edge_dir}/data/training" "${edge_dir}/data/events"
 
 export MTX_WEBRTCALLOWORIGINS="${ui_origin}"
+export MTX_WEBRTCLOCALTCPADDRESS="${MTX_WEBRTCLOCALTCPADDRESS:-:8189}"
 export MTX_AUTHINTERNALUSERS_0_PASS="${publish_token}"
 export MTX_AUTHINTERNALUSERS_1_PASS="${viewer_token}"
 export MTX_AUTHINTERNALUSERS_1_IPS="127.0.0.1,::1"
@@ -143,7 +144,8 @@ fi
 
 cd "${repo_dir}"
 "${edge_service}" 8787 0 "${camera_width}" "${camera_height}" \
-  "${edge_dir}/db/wardy.sqlite" "${edge_dir}/data/training" &
+  "${edge_dir}/db/wardy.sqlite" "${edge_dir}/data/training" \
+  "${edge_dir}/data/events" &
 edge_pid=$!
 "${caddy_bin}" run --config "${edge_dir}/config/Caddyfile" --adapter caddyfile &
 caddy_pid=$!

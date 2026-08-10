@@ -172,5 +172,7 @@ cmake --build "${edge_dir}/build" -j"$(nproc)"
 echo "Wardy Jetson setup is ready"
 echo "Trust ${tls_dir}/wardy-ca.crt on each Windows browser host"
 if [[ "${start_service}" == true ]]; then
-  exec "${script_dir}/start_jetson_webrtc.sh"
+  "${script_dir}/install_jetson_service.sh"
+else
+  "${script_dir}/install_jetson_service.sh" --no-start
 fi

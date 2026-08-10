@@ -1,7 +1,11 @@
 #include "api/mjpeg_service.hpp"
 
 #include "api/http_response.hpp"
+#include "api/json_serialization.hpp"
+#include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
+#include "media/event_media.hpp"
+#include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
 
 #include <arpa/inet.h>
@@ -27,6 +31,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -49,13 +54,31 @@ struct StreamState {
   std::atomic_int frame_height{0};
   std::atomic_uint64_t sample_counter{0};
   std::shared_ptr<storage::SqliteStore> database;
+  std::shared_ptr<rules::EventRuntime> events;
+  std::shared_ptr<media::EventMediaRecorder> event_media;
   std::filesystem::path training_data_path;
+  std::mutex websocket_mutex;
+  std::mutex websocket_send_mutex;
+  std::vector<int> websocket_clients;
+  std::size_t websocket_reservations = 0;
   std::mutex mutex;
   std::condition_variable frame_ready;
   std::vector<unsigned char> jpeg;
   std::size_t sequence = 0;
   std::string camera_error;
 };
+
+void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept;
+
+void schedule_event_media(const std::shared_ptr<StreamState>& state,
+                          const storage::EventRecord& event) noexcept {
+  try {
+    if (!state->event_media) return;
+    state->event_media->schedule(event);
+  } catch (const std::exception& error) {
+    std::cerr << "Event media scheduling error: " << error.what() << '\n';
+  }
+}
 
 std::string lowercase(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
@@ -133,9 +156,18 @@ void save_camera_state(const std::shared_ptr<StreamState>& state,
                        const std::string& camera_state,
                        const std::string& reason) noexcept {
   try {
+    const auto previous = state->database->load_system_state();
+    const bool preserve_event_reason = previous && previous->care_state &&
+        *previous->care_state != "normal" && camera_state == "connected";
     state->database->save_system_state({
-        std::nullopt, camera_state, "disconnected", "ready", reason, utc_now(),
+        previous ? previous->care_state : std::optional<std::string>{"normal"},
+        camera_state,
+        previous ? previous->detection_state : "disconnected",
+        previous ? previous->event_state : "ready",
+        preserve_event_reason ? previous->reason : reason,
+        utc_now(),
     });
+    broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite state error: " << error.what() << '\n';
   }
@@ -175,33 +207,65 @@ bool send_text(int socket_fd, const std::string& text) {
   return send_all(socket_fd, text.data(), text.size());
 }
 
+bool send_binary_response(int socket_fd, const std::vector<unsigned char>& body,
+                          const std::string& content_type,
+                          const std::string& allowed_origin) {
+  const std::string headers = "HTTP/1.1 200 OK\r\n" + common_headers(allowed_origin) +
+      "Content-Type: " + content_type + "\r\nContent-Length: " +
+      std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n";
+  return send_text(socket_fd, headers) && send_all(socket_fd, body.data(), body.size());
+}
+
+std::optional<std::string> runtime_snapshot(
+    const std::shared_ptr<StreamState>& state) {
+  const auto system = state->database->load_system_state();
+  if (!system) return std::nullopt;
+  return runtime_snapshot_json(*system, state->database->list_events());
+}
+
+void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept {
+  try {
+    const auto snapshot = runtime_snapshot(state);
+    if (!snapshot) return;
+    const std::string frame = websocket_text_frame(*snapshot);
+    std::vector<int> clients;
+    {
+      std::lock_guard lock(state->websocket_mutex);
+      clients = state->websocket_clients;
+    }
+    std::vector<int> failed;
+    {
+      std::lock_guard send_lock(state->websocket_send_mutex);
+      for (const int client : clients) {
+        if (!send_all(client, frame.data(), frame.size())) failed.push_back(client);
+      }
+    }
+    if (!failed.empty()) {
+      std::lock_guard lock(state->websocket_mutex);
+      state->websocket_clients.erase(
+          std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
+              [&](int client) {
+                return std::find(failed.begin(), failed.end(), client) != failed.end();
+              }),
+          state->websocket_clients.end());
+    }
+  } catch (const std::exception& error) {
+    std::cerr << "WebSocket broadcast error: " << error.what() << '\n';
+  }
+}
+
+void remove_websocket_client(const std::shared_ptr<StreamState>& state,
+                             int socket_fd) {
+  std::lock_guard lock(state->websocket_mutex);
+  state->websocket_clients.erase(
+      std::remove(state->websocket_clients.begin(), state->websocket_clients.end(), socket_fd),
+      state->websocket_clients.end());
+}
+
 bool apply_socket_timeouts(int socket_fd) {
   const timeval timeout{5, 0};
   return ::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0 &&
          ::setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) == 0;
-}
-
-std::string json_escape(const std::string& value) {
-  std::ostringstream escaped;
-  escaped << std::hex << std::setfill('0');
-  for (const unsigned char character : value) {
-    switch (character) {
-      case '"': escaped << "\\\""; break;
-      case '\\': escaped << "\\\\"; break;
-      case '\b': escaped << "\\b"; break;
-      case '\f': escaped << "\\f"; break;
-      case '\n': escaped << "\\n"; break;
-      case '\r': escaped << "\\r"; break;
-      case '\t': escaped << "\\t"; break;
-      default:
-        if (character < 0x20) {
-          escaped << "\\u" << std::setw(4) << static_cast<int>(character);
-        } else {
-          escaped << character;
-        }
-    }
-  }
-  return escaped.str();
 }
 
 bool origin_allowed(const std::string& request, const std::string& allowed_origin) {
@@ -213,6 +277,25 @@ bool authorized(const std::string& request, const std::string& access_token) {
   return request_header(request, "x-wardy-access-token").value_or("") == access_token;
 }
 
+bool websocket_authorized(const std::string& request,
+                          const std::string& access_token) {
+  const std::string protocols = request_header(request, "sec-websocket-protocol")
+      .value_or("");
+  std::istringstream stream(protocols);
+  std::string protocol;
+  bool wardy_protocol = false;
+  bool token = false;
+  while (std::getline(stream, protocol, ',')) {
+    protocol.erase(protocol.begin(), std::find_if(protocol.begin(), protocol.end(),
+        [](unsigned char value) { return !std::isspace(value); }));
+    protocol.erase(std::find_if(protocol.rbegin(), protocol.rend(),
+        [](unsigned char value) { return !std::isspace(value); }).base(), protocol.end());
+    wardy_protocol = wardy_protocol || protocol == "wardy-events";
+    token = token || protocol == access_token;
+  }
+  return wardy_protocol && token;
+}
+
 std::string read_request(int socket_fd) {
   std::string request;
   char buffer[1024];
@@ -222,6 +305,152 @@ std::string read_request(int socket_fd) {
     request.append(buffer, static_cast<std::size_t>(count));
   }
   return request;
+}
+
+std::pair<std::string, std::string> request_method_path(const std::string& request) {
+  const std::size_t method_end = request.find(' ');
+  if (method_end == std::string::npos) return {};
+  const std::size_t path_end = request.find(' ', method_end + 1);
+  if (path_end == std::string::npos) return {};
+  return {request.substr(0, method_end),
+          request.substr(method_end + 1, path_end - method_end - 1)};
+}
+
+std::optional<std::pair<std::string, std::string>> event_action_path(
+    const std::string& path) {
+  constexpr const char* prefix = "/api/events/";
+  if (path.rfind(prefix, 0) != 0) return std::nullopt;
+  const std::string remainder = path.substr(std::strlen(prefix));
+  const std::size_t separator = remainder.find('/');
+  if (separator == std::string::npos) return std::nullopt;
+  const std::string event_id = remainder.substr(0, separator);
+  const std::string action = remainder.substr(separator + 1);
+  if (!safe_item_id(event_id) || action.empty()) return std::nullopt;
+  return std::pair{event_id, action};
+}
+
+std::optional<std::string> resource_id_path(const std::string& path,
+                                            const std::string& prefix) {
+  if (path.rfind(prefix, 0) != 0) return std::nullopt;
+  const std::string identifier = path.substr(prefix.size());
+  if (!safe_item_id(identifier)) return std::nullopt;
+  return identifier;
+}
+
+std::optional<std::string> event_media_path(const std::string& path) {
+  const auto action = event_action_path(path);
+  if (!action || action->second != "media") return std::nullopt;
+  return action->first;
+}
+
+std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
+                                        const storage::EventRecord& event) {
+  if (!event.media_path) throw std::invalid_argument("event media is not ready");
+  const std::filesystem::path relative(*event.media_path);
+  if (relative.empty() || relative.has_parent_path() || relative.filename() != relative) {
+    throw std::runtime_error("invalid event media path in SQLite");
+  }
+  return state->event_media->root_path() / relative;
+}
+
+std::optional<std::string> decoded_optional_header(const std::string& request,
+                                                   const std::string& name) {
+  const auto value = request_header(request, name);
+  if (!value || value->empty()) return std::nullopt;
+  return percent_decode(*value);
+}
+
+void save_runtime_state(const std::shared_ptr<StreamState>& state,
+                        const std::string& camera_state = "") noexcept {
+  try {
+    const auto previous = state->database->load_system_state();
+    const std::string resolved_camera = !camera_state.empty()
+        ? camera_state
+        : previous ? previous->camera_state
+                   : (state->camera_connected ? "connected" : "idle");
+    const auto care = state->events ? state->events->current_care_status()
+                                    : std::optional<std::string>{};
+    const std::string reason = state->events ? state->events->current_reason()
+                                             : "Event runtime is starting";
+    state->database->save_system_state({
+        care, resolved_camera,
+        previous ? previous->detection_state : "disconnected",
+        previous ? previous->event_state : "ready",
+        reason, utc_now(),
+    });
+    broadcast_snapshot(state);
+  } catch (const std::exception& error) {
+    std::cerr << "SQLite runtime state error: " << error.what() << '\n';
+  }
+}
+
+std::string mock_event(const std::string& request,
+                       const std::shared_ptr<StreamState>& state) {
+  rules::EventObservation observation;
+  observation.event_type = request_header(request, "x-wardy-event-type").value_or("");
+  observation.active = lowercase(
+      request_header(request, "x-wardy-event-active").value_or("true")) != "false";
+  observation.observed_at = request_header(request, "x-wardy-observed-at").value_or(utc_now());
+  observation.subject_id = decoded_optional_header(request, "x-wardy-subject-id");
+  observation.subject_name = decoded_optional_header(request, "x-wardy-subject-name");
+  observation.subject_location = decoded_optional_header(
+      request, "x-wardy-subject-location").value_or("unknown");
+  observation.object_id = decoded_optional_header(request, "x-wardy-object-id");
+  observation.object_class = decoded_optional_header(request, "x-wardy-object-class");
+  observation.zone_id = decoded_optional_header(request, "x-wardy-zone-id");
+  observation.reason = decoded_optional_header(request, "x-wardy-reason")
+      .value_or("모델 연결 전 event runtime 검증 입력");
+  observation.source_results_json =
+      R"([{"source":"mock_contract","note":"AI model is not connected"}])";
+  return event_json(state->events->apply(observation).event);
+}
+
+void apply_camera_fault(const std::shared_ptr<StreamState>& state, bool active,
+                        const std::string& reason) noexcept {
+  try {
+    rules::EventObservation observation;
+    observation.event_type = "camera_fault";
+    observation.active = active;
+    observation.observed_at = utc_now();
+    observation.subject_location = "unknown";
+    observation.reason = reason;
+    observation.source_results_json =
+        R"([{"source":"camera_runtime","note":"V4L2 frame input state"}])";
+    state->events->apply(observation);
+  } catch (const std::exception& error) {
+    std::cerr << "Camera fault event error: " << error.what() << '\n';
+  }
+}
+
+std::string create_subject(const std::string& request,
+                           const std::shared_ptr<StreamState>& state) {
+  const std::string subject_id = request_header(request, "x-wardy-subject-id").value_or("");
+  const std::string name = percent_decode(
+      request_header(request, "x-wardy-subject-name").value_or(""));
+  const std::string role = percent_decode(
+      request_header(request, "x-wardy-subject-role").value_or(""));
+  if (!safe_item_id(subject_id) || name.empty() || name.size() > 120 ||
+      role.empty() || role.size() > 120) {
+    throw std::invalid_argument("invalid subject metadata");
+  }
+  const std::string now = utc_now();
+  state->database->upsert_subject({subject_id, name, role, now, now});
+  return subjects_json(state->database->list_subjects());
+}
+
+std::string create_managed_item(const std::string& request,
+                                const std::shared_ptr<StreamState>& state) {
+  const std::string item_id = request_header(request, "x-wardy-item-id").value_or("");
+  const std::string label = percent_decode(
+      request_header(request, "x-wardy-item-label").value_or(""));
+  const std::string policy = request_header(request, "x-wardy-item-policy").value_or("");
+  if (!safe_item_id(item_id) || label.empty() || label.size() > 120 ||
+      (policy != "included" && policy != "excluded")) {
+    throw std::invalid_argument("invalid managed item metadata");
+  }
+  const std::string now = utc_now();
+  state->database->upsert_managed_item({item_id, label, policy, now, now});
+  return managed_items_json(state->database->list_managed_items());
 }
 
 std::string capture_training_sample(const std::string& request,
@@ -417,6 +646,71 @@ void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state,
   }
 }
 
+void serve_websocket(int socket_fd, const std::string& request,
+                     const std::shared_ptr<StreamState>& state,
+                     const MjpegServiceConfig& config) {
+  const auto key = request_header(request, "sec-websocket-key");
+  if (!key || lowercase(request_header(request, "upgrade").value_or("")) != "websocket" ||
+      !origin_allowed(request, config.allowed_origin) ||
+      !websocket_authorized(request, config.access_token)) {
+    send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"WebSocket access denied\"}",
+                                       config.allowed_origin));
+    return;
+  }
+  constexpr std::size_t max_websocket_clients = 8;
+  bool client_limit_reached = false;
+  {
+    std::lock_guard lock(state->websocket_mutex);
+    if (state->websocket_clients.size() + state->websocket_reservations >=
+        max_websocket_clients) {
+      client_limit_reached = true;
+    } else {
+      ++state->websocket_reservations;
+    }
+  }
+  if (client_limit_reached) {
+    send_text(socket_fd, json_response(503, "Service Unavailable",
+        "{\"error\":\"WebSocket client limit reached\"}", config.allowed_origin));
+    return;
+  }
+  const std::string handshake =
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: " + websocket_accept_key(*key) + "\r\n"
+      "Sec-WebSocket-Protocol: wardy-events\r\n\r\n";
+  if (!send_text(socket_fd, handshake)) {
+    std::lock_guard lock(state->websocket_mutex);
+    --state->websocket_reservations;
+    return;
+  }
+  {
+    std::lock_guard lock(state->websocket_mutex);
+    --state->websocket_reservations;
+    state->websocket_clients.push_back(socket_fd);
+  }
+  if (const auto snapshot = runtime_snapshot(state)) {
+    const std::string frame = websocket_text_frame(*snapshot);
+    std::lock_guard send_lock(state->websocket_send_mutex);
+    if (!send_all(socket_fd, frame.data(), frame.size())) {
+      remove_websocket_client(state, socket_fd);
+      return;
+    }
+  }
+
+  unsigned char input[256];
+  while (state->running) {
+    const auto count = ::recv(socket_fd, input, sizeof(input), 0);
+    if (count == 0) break;
+    if (count < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue;
+      break;
+    }
+    if ((input[0] & 0x0fU) == 0x08U) break;
+  }
+  remove_websocket_client(state, socket_fd);
+}
+
 void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
                    const MjpegServiceConfig config) {
   if (!apply_socket_timeouts(socket_fd)) {
@@ -424,27 +718,144 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     return;
   }
   const std::string request = read_request(socket_fd);
-  if (request.rfind("OPTIONS ", 0) == 0) {
+  const auto [method, path] = request_method_path(request);
+  const auto media_event_id = event_media_path(path);
+  const auto event_action = event_action_path(path);
+  const auto subject_id_path = resource_id_path(path, "/api/subjects/");
+  const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
+  try {
+  const bool protected_api = path.rfind("/api/", 0) == 0 &&
+      path != "/api/health" && path != "/api/ws";
+  if (method == "OPTIONS") {
     if (origin_allowed(request, config.allowed_origin)) {
       send_text(socket_fd, options_response(config.allowed_origin));
     } else {
       send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Origin denied\"}",
                                          config.allowed_origin));
     }
-  } else if (request.rfind("GET /api/health ", 0) == 0) {
+  } else if (protected_api &&
+             (!origin_allowed(request, config.allowed_origin) ||
+              !authorized(request, config.access_token))) {
+    send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+                                       config.allowed_origin));
+  } else if (method == "GET" && path == "/api/health") {
     send_text(socket_fd, health_response(state->camera_connected, config.allowed_origin));
-  } else if (request.rfind("GET /api/camera/stream ", 0) == 0) {
-    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
-      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+  } else if (method == "GET" && path == "/api/ws") {
+    serve_websocket(socket_fd, request, state, config);
+  } else if (method == "GET" && path == "/api/camera/stream") {
+    serve_stream(socket_fd, state, config.allowed_origin);
+  } else if (method == "GET" && path == "/api/events") {
+    send_text(socket_fd, json_response(200, "OK",
+        events_json(state->database->list_events()), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/state") {
+    const auto current = state->database->load_system_state();
+    if (!current) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"State not initialized\"}", config.allowed_origin));
+    } else {
+      send_text(socket_fd, json_response(200, "OK", state_json(*current),
+                                         config.allowed_origin));
+    }
+  } else if (method == "GET" && media_event_id) {
+    const auto event = state->database->get_event(*media_event_id);
+    if (!event || !event->media_path) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event media not found\"}",
                                          config.allowed_origin));
     } else {
-      serve_stream(socket_fd, state, config.allowed_origin);
+      const auto file = stored_media_file(state, *event);
+      std::ifstream input(file, std::ios::binary);
+      if (!input) throw std::runtime_error("event media file is missing");
+      const std::vector<unsigned char> bytes(
+          (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+      send_binary_response(socket_fd, bytes,
+          event->media_type == "image" ? "image/jpeg" : "video/mp4", config.allowed_origin);
     }
-  } else if (request.rfind("POST /api/training/items/sample ", 0) == 0) {
-    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
-      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
+  } else if (method == "DELETE" && media_event_id) {
+    const auto event = state->database->get_event(*media_event_id);
+    if (!event) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event not found\"}",
                                          config.allowed_origin));
-    } else try {
+    } else {
+      const auto stored_path = event->media_path;
+      if (stored_path) {
+        const auto file = stored_media_file(state, *event);
+        std::error_code error;
+        std::filesystem::remove(file, error);
+        if (error) throw std::runtime_error("failed to delete event media file");
+      }
+      (void)state->database->clear_event_media(event->event_id);
+      broadcast_snapshot(state);
+      send_text(socket_fd, json_response(200, "OK", "{\"deleted\":true}",
+                                         config.allowed_origin));
+    }
+  } else if (method == "POST" && path == "/api/debug/events") {
+    try {
+      send_text(socket_fd, json_response(201, "Created", mock_event(request, state),
+                                         config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "POST" && event_action) {
+    const auto& [event_id, action] = *event_action;
+    const std::string status = action == "confirm" ? "confirmed" :
+                               action == "release" ? "released" :
+                               action == "false-detection" ? "false_detection" : "";
+    if (status.empty()) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Unknown action\"}",
+                                         config.allowed_origin));
+    } else if (!state->events->update_status(event_id, status, utc_now())) {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event not found\"}",
+                                         config.allowed_origin));
+    } else if (const auto event = state->database->get_event(event_id)) {
+      send_text(socket_fd, json_response(200, "OK",
+          event_json(*event), config.allowed_origin));
+    } else {
+      send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event not found\"}",
+                                         config.allowed_origin));
+    }
+  } else if (method == "GET" && path == "/api/subjects") {
+    send_text(socket_fd, json_response(200, "OK",
+        subjects_json(state->database->list_subjects()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/subjects") {
+    try {
+      send_text(socket_fd, json_response(201, "Created", create_subject(request, state),
+                                         config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "DELETE" && subject_id_path) {
+    const std::string& subject_id = *subject_id_path;
+    const bool deleted = state->database->delete_subject(subject_id);
+    if (deleted) {
+      std::error_code error;
+      std::filesystem::remove_all(state->training_data_path / "subjects" / subject_id, error);
+    }
+    send_text(socket_fd, json_response(deleted ? 200 : 404, deleted ? "OK" : "Not Found",
+        subjects_json(state->database->list_subjects()), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/managed-items") {
+    send_text(socket_fd, json_response(200, "OK",
+        managed_items_json(state->database->list_managed_items()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/managed-items") {
+    try {
+      send_text(socket_fd, json_response(201, "Created", create_managed_item(request, state),
+                                         config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "DELETE" && managed_item_id_path) {
+    const std::string& item_id = *managed_item_id_path;
+    const bool deleted = state->database->delete_managed_item(item_id);
+    if (deleted) {
+      std::error_code error;
+      std::filesystem::remove_all(state->training_data_path / "items" / item_id, error);
+    }
+    send_text(socket_fd, json_response(deleted ? 200 : 404, deleted ? "OK" : "Not Found",
+        managed_items_json(state->database->list_managed_items()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/training/items/sample") {
+    try {
       send_text(socket_fd, json_response(201, "Created",
                                          capture_training_sample(request, state), config.allowed_origin));
     } catch (const std::invalid_argument& error) {
@@ -456,11 +867,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
                                          "{\"error\":\"" + json_escape(error.what()) + "\"}",
                                          config.allowed_origin));
     }
-  } else if (request.rfind("POST /api/training/subjects/reference ", 0) == 0) {
-    if (!origin_allowed(request, config.allowed_origin) || !authorized(request, config.access_token)) {
-      send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
-                                         config.allowed_origin));
-    } else try {
+  } else if (method == "POST" && path == "/api/training/subjects/reference") {
+    try {
       send_text(socket_fd, json_response(201, "Created",
                                          capture_subject_reference(request, state), config.allowed_origin));
     } catch (const std::invalid_argument& error) {
@@ -476,6 +884,14 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Not found\"}",
                                        config.allowed_origin));
   }
+  } catch (const std::invalid_argument& error) {
+    send_text(socket_fd, json_response(400, "Bad Request",
+        "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+  } catch (const std::exception& error) {
+    std::cerr << "Wardy API error: " << error.what() << '\n';
+    send_text(socket_fd, json_response(500, "Internal Server Error",
+        "{\"error\":\"Request failed\"}", config.allowed_origin));
+  }
   ::close(socket_fd);
 }
 
@@ -484,6 +900,7 @@ void capture_frames(const MjpegServiceConfig& config,
   auto retry_delay = std::chrono::seconds(1);
   constexpr auto maximum_retry_delay = std::chrono::seconds(30);
   std::string last_reported_error;
+  bool camera_fault_active = false;
   while (state->running) {
     try {
       input::CameraCapture camera(config.camera);
@@ -497,6 +914,7 @@ void capture_frames(const MjpegServiceConfig& config,
         if (!camera.read(frame)) {
           throw std::runtime_error("failed to read a frame from the Jetson camera");
         }
+        if (state->event_media) state->event_media->push_frame(frame);
         if (!connected_reported) {
           {
             std::lock_guard lock(state->mutex);
@@ -507,6 +925,10 @@ void capture_frames(const MjpegServiceConfig& config,
           retry_delay = std::chrono::seconds(1);
           last_reported_error.clear();
           connected_reported = true;
+          if (camera_fault_active) {
+            apply_camera_fault(state, false, "Jetson camera frame input recovered");
+            camera_fault_active = false;
+          }
         }
         state->frame_width = frame.cols;
         state->frame_height = frame.rows;
@@ -541,6 +963,10 @@ void capture_frames(const MjpegServiceConfig& config,
         last_reported_error = error.what();
         save_camera_state(state, "fault", error.what());
         std::cerr << "Jetson camera error: " << error.what() << '\n';
+      }
+      if (!camera_fault_active) {
+        apply_camera_fault(state, true, error.what());
+        camera_fault_active = true;
       }
       if (state->running) std::this_thread::sleep_for(retry_delay);
       retry_delay = std::min(retry_delay * 2, maximum_retry_delay);
@@ -579,6 +1005,7 @@ void MjpegServiceConfig::validate() const {
   if (jpeg_quality < 1 || jpeg_quality > 100) throw std::invalid_argument("jpeg quality must be between 1 and 100");
   if (database_path.empty()) throw std::invalid_argument("database path must not be empty");
   if (training_data_path.empty()) throw std::invalid_argument("training data path must not be empty");
+  if (event_media_path.empty()) throw std::invalid_argument("event media path must not be empty");
   if (allowed_origin.empty()) throw std::invalid_argument("allowed UI origin must not be empty");
   if (allowed_origin.find_first_of("\r\n") != std::string::npos ||
       (allowed_origin.rfind("http://", 0) != 0 && allowed_origin.rfind("https://", 0) != 0)) {
@@ -596,6 +1023,18 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->database = std::make_shared<storage::SqliteStore>(config_.database_path);
   state->database->initialize();
   state->training_data_path = config_.training_data_path;
+  const std::weak_ptr<StreamState> weak_state = state;
+  state->event_media = std::make_shared<media::EventMediaRecorder>(
+      config_.event_media_path, *state->database, [weak_state] {
+        if (const auto locked = weak_state.lock()) broadcast_snapshot(locked);
+      });
+  state->events = std::make_shared<rules::EventRuntime>(
+      *state->database, [weak_state](const storage::EventRecord& event) {
+        if (const auto locked = weak_state.lock()) {
+          save_runtime_state(locked);
+          if (event.event_status == "new") schedule_event_media(locked, event);
+        }
+      });
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
   std::thread capture_thread(capture_frames, std::cref(config_), state);
@@ -619,6 +1058,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->frame_ready.notify_all();
   ::close(server_fd);
   if (capture_thread.joinable()) capture_thread.join();
+  state->event_media->stop();
   save_camera_state(state, "idle", "Wardy edge service stopped");
   return 0;
 }

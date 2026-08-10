@@ -77,6 +77,43 @@ void validate_limit(std::size_t value, const char* name) {
   }
 }
 
+EventRecord event_from_row(sqlite3_stmt* statement) {
+  EventRecord event;
+  event.event_id = column_text(statement, 0);
+  event.event_type = column_text(statement, 1);
+  event.occurred_at = column_text(statement, 2);
+  event.first_seen_at = column_text(statement, 3);
+  event.last_seen_at = column_text(statement, 4);
+  event.subject_id = optional_column_text(statement, 5);
+  event.subject_name = optional_column_text(statement, 6);
+  event.subject_location = column_text(statement, 7);
+  event.object_id = optional_column_text(statement, 8);
+  event.object_class = optional_column_text(statement, 9);
+  event.zone_id = optional_column_text(statement, 10);
+  event.care_status = optional_column_text(statement, 11);
+  event.event_status = column_text(statement, 12);
+  event.confirmed_at = optional_column_text(statement, 13);
+  event.released_at = optional_column_text(statement, 14);
+  event.false_detection_at = optional_column_text(statement, 15);
+  event.reason = column_text(statement, 16);
+  event.source_results_json = column_text(statement, 17);
+  event.media_type = column_text(statement, 18);
+  event.media_path = optional_column_text(statement, 19);
+  event.media_started_at = optional_column_text(statement, 20);
+  event.media_ended_at = optional_column_text(statement, 21);
+  return event;
+}
+
+std::vector<EventRecord> collect_events(sqlite3* database, sqlite3_stmt* statement) {
+  std::vector<EventRecord> events;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+    events.push_back(event_from_row(statement));
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(database));
+  return events;
+}
+
 }  // namespace
 
 struct SqliteStore::Impl {
@@ -308,6 +345,23 @@ void SqliteStore::upsert_event(const EventRecord& event) {
   require_done(impl_->database, statement.get());
 }
 
+std::optional<EventRecord> SqliteStore::get_event(const std::string& event_id) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT event_id, event_type, occurred_at, first_seen_at, last_seen_at,
+      subject_id, subject_name, subject_location, object_id, object_class, zone_id,
+      care_status, event_status, confirmed_at, released_at, false_detection_at,
+      reason, source_results_json, media_type, media_path, media_started_at, media_ended_at
+    FROM events WHERE event_id = ?;
+  )SQL");
+  bind_text(statement.get(), 1, event_id);
+  const int result = sqlite3_step(statement.get());
+  if (result == SQLITE_DONE) return std::nullopt;
+  if (result != SQLITE_ROW) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return event_from_row(statement.get());
+}
+
 std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
                                                    std::size_t offset) const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
@@ -324,36 +378,22 @@ std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
   sqlite3_bind_int(statement.get(), 1, static_cast<int>(limit));
   sqlite3_bind_int(statement.get(), 2, static_cast<int>(offset));
 
-  std::vector<EventRecord> events;
-  int result = SQLITE_ROW;
-  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
-    EventRecord event;
-    event.event_id = column_text(statement.get(), 0);
-    event.event_type = column_text(statement.get(), 1);
-    event.occurred_at = column_text(statement.get(), 2);
-    event.first_seen_at = column_text(statement.get(), 3);
-    event.last_seen_at = column_text(statement.get(), 4);
-    event.subject_id = optional_column_text(statement.get(), 5);
-    event.subject_name = optional_column_text(statement.get(), 6);
-    event.subject_location = column_text(statement.get(), 7);
-    event.object_id = optional_column_text(statement.get(), 8);
-    event.object_class = optional_column_text(statement.get(), 9);
-    event.zone_id = optional_column_text(statement.get(), 10);
-    event.care_status = optional_column_text(statement.get(), 11);
-    event.event_status = column_text(statement.get(), 12);
-    event.confirmed_at = optional_column_text(statement.get(), 13);
-    event.released_at = optional_column_text(statement.get(), 14);
-    event.false_detection_at = optional_column_text(statement.get(), 15);
-    event.reason = column_text(statement.get(), 16);
-    event.source_results_json = column_text(statement.get(), 17);
-    event.media_type = column_text(statement.get(), 18);
-    event.media_path = optional_column_text(statement.get(), 19);
-    event.media_started_at = optional_column_text(statement.get(), 20);
-    event.media_ended_at = optional_column_text(statement.get(), 21);
-    events.push_back(std::move(event));
-  }
-  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
-  return events;
+  return collect_events(impl_->database, statement.get());
+}
+
+std::vector<EventRecord> SqliteStore::list_active_events() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT event_id, event_type, occurred_at, first_seen_at, last_seen_at,
+      subject_id, subject_name, subject_location, object_id, object_class, zone_id,
+      care_status, event_status, confirmed_at, released_at, false_detection_at,
+      reason, source_results_json, media_type, media_path, media_started_at, media_ended_at
+    FROM events
+    WHERE event_status NOT IN ('released', 'false_detection')
+    ORDER BY occurred_at DESC;
+  )SQL");
+  return collect_events(impl_->database, statement.get());
 }
 
 bool SqliteStore::update_event_status(const std::string& event_id,
@@ -377,6 +417,26 @@ bool SqliteStore::update_event_status(const std::string& event_id,
   bind_text(statement.get(), 6, event_status);
   bind_text(statement.get(), 7, changed_at);
   bind_text(statement.get(), 8, event_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
+bool SqliteStore::update_event_media(const std::string& event_id,
+                                     const std::string& media_type,
+                                     const std::string& media_path,
+                                     const std::string& media_started_at,
+                                     const std::string& media_ended_at) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    UPDATE events SET media_type=?, media_path=?, media_started_at=?, media_ended_at=?
+    WHERE event_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, media_type);
+  bind_text(statement.get(), 2, media_path);
+  bind_text(statement.get(), 3, media_started_at);
+  bind_text(statement.get(), 4, media_ended_at);
+  bind_text(statement.get(), 5, event_id);
   require_done(impl_->database, statement.get());
   return sqlite3_changes(impl_->database) > 0;
 }
@@ -436,6 +496,38 @@ void SqliteStore::upsert_managed_item(const ManagedItemRecord& item) {
   require_done(impl_->database, statement.get());
 }
 
+std::vector<ManagedItemRecord> SqliteStore::list_managed_items() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT item.item_id, item.label, item.policy, item.created_at, item.updated_at,
+           COUNT(sample.sample_id)
+    FROM managed_items AS item
+    LEFT JOIN training_samples AS sample ON sample.item_id = item.item_id
+    GROUP BY item.item_id
+    ORDER BY item.created_at ASC;
+  )SQL");
+  std::vector<ManagedItemRecord> items;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    items.push_back({column_text(statement.get(), 0), column_text(statement.get(), 1),
+                     column_text(statement.get(), 2), column_text(statement.get(), 3),
+                     column_text(statement.get(), 4),
+                     static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 5))});
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return items;
+}
+
+bool SqliteStore::delete_managed_item(const std::string& item_id) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, "DELETE FROM managed_items WHERE item_id = ?;");
+  bind_text(statement.get(), 1, item_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
 void SqliteStore::add_training_sample(const TrainingSampleRecord& sample) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
   const std::lock_guard lock(impl_->mutex);
@@ -481,6 +573,39 @@ void SqliteStore::upsert_subject(const SubjectRecord& subject) {
   require_done(impl_->database, statement.get());
 }
 
+std::vector<SubjectRecord> SqliteStore::list_subjects() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT subject.subject_id, subject.name, subject.role, subject.created_at,
+           subject.updated_at, COUNT(sample.sample_id)
+    FROM subjects AS subject
+    LEFT JOIN subject_reference_samples AS sample
+      ON sample.subject_id = subject.subject_id
+    GROUP BY subject.subject_id
+    ORDER BY subject.created_at ASC;
+  )SQL");
+  std::vector<SubjectRecord> subjects;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    subjects.push_back({column_text(statement.get(), 0), column_text(statement.get(), 1),
+                        column_text(statement.get(), 2), column_text(statement.get(), 3),
+                        column_text(statement.get(), 4),
+                        static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 5))});
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return subjects;
+}
+
+bool SqliteStore::delete_subject(const std::string& subject_id) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, "DELETE FROM subjects WHERE subject_id = ?;");
+  bind_text(statement.get(), 1, subject_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
 void SqliteStore::add_subject_reference_sample(
     const SubjectReferenceSampleRecord& sample) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
@@ -510,6 +635,28 @@ std::size_t SqliteStore::count_subject_reference_samples(
     throw std::runtime_error(sqlite3_errmsg(impl_->database));
   }
   return static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 0));
+}
+
+std::optional<std::string> SqliteStore::clear_event_media(
+    const std::string& event_id) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  std::optional<std::string> media_path;
+  {
+    Statement select(impl_->database, "SELECT media_path FROM events WHERE event_id = ?;");
+    bind_text(select.get(), 1, event_id);
+    const int result = sqlite3_step(select.get());
+    if (result == SQLITE_DONE) return std::nullopt;
+    if (result != SQLITE_ROW) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+    media_path = optional_column_text(select.get(), 0);
+  }
+  Statement update(impl_->database, R"SQL(
+    UPDATE events SET media_type='none', media_path=NULL,
+      media_started_at=NULL, media_ended_at=NULL WHERE event_id = ?;
+  )SQL");
+  bind_text(update.get(), 1, event_id);
+  require_done(impl_->database, update.get());
+  return media_path;
 }
 
 std::string SqliteStore::schema_version() const {

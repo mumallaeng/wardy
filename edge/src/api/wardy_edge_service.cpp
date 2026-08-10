@@ -47,7 +47,8 @@ int main(int argc, char* argv[]) {
     if (argc > 4) config.camera.height = parse_integer(argv[4], "height");
     if (argc > 5) config.database_path = argv[5];
     if (argc > 6) config.training_data_path = argv[6];
-    if (argc > 7) throw std::invalid_argument("usage: wardy_edge_service [port] [device] [width] [height] [database] [training data]");
+    if (argc > 7) config.event_media_path = argv[7];
+    if (argc > 8) throw std::invalid_argument("usage: wardy_edge_service [port] [device] [width] [height] [database] [training data] [event media]");
 
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
