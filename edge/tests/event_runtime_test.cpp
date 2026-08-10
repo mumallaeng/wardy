@@ -20,10 +20,17 @@ int main() {
   assert(created.event.media_type == "image");
   assert(runtime.current_care_status() == "caution");
 
+  assert(database.update_event_media(created.event.event_id, "image",
+                                     "EVT-HAZARD.jpg",
+                                     "2026-08-10T10:00:00Z",
+                                     "2026-08-10T10:00:00Z"));
+
   hazard.observed_at = "2026-08-10T10:00:01Z";
   const auto merged = runtime.apply(hazard);
   assert(!merged.created);
   assert(merged.event.event_id == created.event.event_id);
+  assert(merged.event.media_path == "EVT-HAZARD.jpg");
+  assert(database.get_event(created.event.event_id)->media_path == "EVT-HAZARD.jpg");
   assert(database.list_events().size() == 1);
 
   wardy::rules::EventObservation fall{

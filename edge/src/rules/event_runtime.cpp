@@ -91,6 +91,14 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
     const std::lock_guard lock(mutex_);
     const std::string key = active_key(observation);
     const auto found = active_events_.find(key);
+    if (found != active_events_.end()) {
+      if (const auto stored = database_.get_event(found->second.event_id)) {
+        found->second.media_type = stored->media_type;
+        found->second.media_path = stored->media_path;
+        found->second.media_started_at = stored->media_started_at;
+        found->second.media_ended_at = stored->media_ended_at;
+      }
+    }
 
     if (!observation.active) {
       if (found == active_events_.end()) {
