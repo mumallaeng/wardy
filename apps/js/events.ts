@@ -8,8 +8,11 @@ import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
  * @returns A new array ordered by descending care-status rank, then by descending occurrence time. Unknown care statuses are placed last.
  */
 export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
+  const rank = (event: WardyEvent): number => event.care_status
+    ? CARE_STATUS[event.care_status]?.rank ?? -1
+    : Number.MAX_SAFE_INTEGER;
   return [...events].sort((a, b) => {
-    const statusDelta = (CARE_STATUS[b.care_status]?.rank ?? -1) - (CARE_STATUS[a.care_status]?.rank ?? -1);
+    const statusDelta = rank(b) - rank(a);
     return statusDelta || new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
   });
 }
@@ -42,7 +45,7 @@ export function summarizeEvents(events: readonly WardyEvent[], now = new Date())
   const today = events.filter((event) => dayKey(new Date(event.occurred_at)) === dayKey(now));
   const result: EventSummary = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
   today.forEach((event) => {
-    if (event.care_status in result) result[event.care_status] += 1;
+    if (event.care_status && event.care_status in result) result[event.care_status] += 1;
     if (event.event_status === "new") result.unconfirmed += 1;
   });
   return result;
@@ -117,7 +120,8 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     target.append(location);
 
     const care = document.createElement("td");
-    care.append(chip(CARE_STATUS[event.care_status]?.label ?? "확인 불가", event.care_status ?? "released"));
+    care.append(chip(event.care_status ? CARE_STATUS[event.care_status]?.label ?? "확인 불가" : "해당 없음",
+      event.care_status ?? "unavailable"));
 
     const media = document.createElement("td");
     media.textContent = event.media_type === "image" ? "사진" : event.media_type === "video" ? "10초 영상" : "없음";
@@ -133,8 +137,14 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     const actionGroup = document.createElement("div");
     actionGroup.className = "table-action-group";
     if (event.event_status === "new") actionGroup.append(actionButton("확인", "confirm", event.event_id));
-    if (!["released", "false_detection"].includes(event.event_status)) actionGroup.append(actionButton("오탐", "false", event.event_id));
-    if (event.media_type !== "none" && event.media_path) actionGroup.append(actionButton("자료 삭제", "delete-media", event.event_id));
+    if (!["released", "false_detection"].includes(event.event_status)) {
+      actionGroup.append(actionButton("해제", "release", event.event_id));
+      actionGroup.append(actionButton("오탐", "false", event.event_id));
+    }
+    if (event.media_type !== "none" && event.media_path) {
+      actionGroup.append(actionButton("자료 보기", "view-media", event.event_id));
+      actionGroup.append(actionButton("자료 삭제", "delete-media", event.event_id));
+    }
     if (actionGroup.childElementCount) actions.append(actionGroup);
     else actions.textContent = "—";
 

@@ -17,7 +17,7 @@
     "object_id": { "type": ["string", "null"] },
     "object_class": { "type": ["string", "null"] },
     "zone_id": { "type": ["string", "null"] },
-    "care_status": { "enum": ["normal", "caution", "warning", "emergency"] },
+    "care_status": { "enum": ["normal", "caution", "warning", "emergency", null] },
     "event_status": { "enum": ["new", "confirmed", "released", "false_detection"] },
     "confirmed_at": { "type": ["string", "null"], "format": "date-time" },
     "released_at": { "type": ["string", "null"], "format": "date-time" },
