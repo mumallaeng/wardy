@@ -61,6 +61,12 @@ target_include_directories(json_serialization_test PRIVATE src)
 target_link_libraries(json_serialization_test PRIVATE wardy_storage)
 add_test(NAME json_serialization_test COMMAND json_serialization_test)
 
+add_executable(websocket_test
+  tests/websocket_test.cpp
+)
+target_include_directories(websocket_test PRIVATE src)
+add_test(NAME websocket_test COMMAND websocket_test)
+
 find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)

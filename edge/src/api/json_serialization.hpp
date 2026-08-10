@@ -87,6 +87,14 @@ inline std::string state_json(const storage::SystemStateRecord& state) {
       ",\"updated_at\":" + json_string(state.updated_at) + "}";
 }
 
+inline std::string runtime_snapshot_json(
+    const storage::SystemStateRecord& state,
+    const std::vector<storage::EventRecord>& events) {
+  const std::string event_object = events_json(events);
+  return "{\"type\":\"snapshot\",\"state\":" + state_json(state) +
+      ",\"events\":" + event_object.substr(10, event_object.size() - 11) + "}";
+}
+
 inline std::string subjects_json(const std::vector<storage::SubjectRecord>& subjects) {
   std::string body = "{\"subjects\":[";
   for (std::size_t index = 0; index < subjects.size(); ++index) {

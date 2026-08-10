@@ -135,7 +135,10 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     const actionGroup = document.createElement("div");
     actionGroup.className = "table-action-group";
     if (event.event_status === "new") actionGroup.append(actionButton("확인", "confirm", event.event_id));
-    if (!["released", "false_detection"].includes(event.event_status)) actionGroup.append(actionButton("오탐", "false", event.event_id));
+    if (!["released", "false_detection"].includes(event.event_status)) {
+      actionGroup.append(actionButton("해제", "release", event.event_id));
+      actionGroup.append(actionButton("오탐", "false", event.event_id));
+    }
     if (event.media_type !== "none" && event.media_path) actionGroup.append(actionButton("자료 삭제", "delete-media", event.event_id));
     if (actionGroup.childElementCount) actions.append(actionGroup);
     else actions.textContent = "—";

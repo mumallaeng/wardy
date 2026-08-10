@@ -2,6 +2,7 @@
 
 #include "api/http_response.hpp"
 #include "api/json_serialization.hpp"
+#include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
 #include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
@@ -53,12 +54,16 @@ struct StreamState {
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::filesystem::path training_data_path;
+  std::mutex websocket_mutex;
+  std::vector<int> websocket_clients;
   std::mutex mutex;
   std::condition_variable frame_ready;
   std::vector<unsigned char> jpeg;
   std::size_t sequence = 0;
   std::string camera_error;
 };
+
+void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept;
 
 std::string lowercase(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
@@ -145,6 +150,7 @@ void save_camera_state(const std::shared_ptr<StreamState>& state,
         reason,
         utc_now(),
     });
+    broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite state error: " << error.what() << '\n';
   }
@@ -184,6 +190,28 @@ bool send_text(int socket_fd, const std::string& text) {
   return send_all(socket_fd, text.data(), text.size());
 }
 
+std::optional<std::string> runtime_snapshot(
+    const std::shared_ptr<StreamState>& state) {
+  const auto system = state->database->load_system_state();
+  if (!system) return std::nullopt;
+  return runtime_snapshot_json(*system, state->database->list_events());
+}
+
+void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept {
+  try {
+    const auto snapshot = runtime_snapshot(state);
+    if (!snapshot) return;
+    const std::string frame = websocket_text_frame(*snapshot);
+    std::lock_guard lock(state->websocket_mutex);
+    state->websocket_clients.erase(
+        std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
+                       [&](int client) { return !send_all(client, frame.data(), frame.size()); }),
+        state->websocket_clients.end());
+  } catch (const std::exception& error) {
+    std::cerr << "WebSocket broadcast error: " << error.what() << '\n';
+  }
+}
+
 bool apply_socket_timeouts(int socket_fd) {
   const timeval timeout{5, 0};
   return ::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0 &&
@@ -197,6 +225,25 @@ bool origin_allowed(const std::string& request, const std::string& allowed_origi
 
 bool authorized(const std::string& request, const std::string& access_token) {
   return request_header(request, "x-wardy-access-token").value_or("") == access_token;
+}
+
+bool websocket_authorized(const std::string& request,
+                          const std::string& access_token) {
+  const std::string protocols = request_header(request, "sec-websocket-protocol")
+      .value_or("");
+  std::istringstream stream(protocols);
+  std::string protocol;
+  bool wardy_protocol = false;
+  bool token = false;
+  while (std::getline(stream, protocol, ',')) {
+    protocol.erase(protocol.begin(), std::find_if(protocol.begin(), protocol.end(),
+        [](unsigned char value) { return !std::isspace(value); }));
+    protocol.erase(std::find_if(protocol.rbegin(), protocol.rend(),
+        [](unsigned char value) { return !std::isspace(value); }).base(), protocol.end());
+    wardy_protocol = wardy_protocol || protocol == "wardy-events";
+    token = token || protocol == access_token;
+  }
+  return wardy_protocol && token;
 }
 
 std::string read_request(int socket_fd) {
@@ -262,6 +309,7 @@ void save_runtime_state(const std::shared_ptr<StreamState>& state,
     state->database->save_system_state({
         care, resolved_camera, "disconnected", "ready", reason, utc_now(),
     });
+    broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite runtime state error: " << error.what() << '\n';
   }
@@ -512,6 +560,49 @@ void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state,
   }
 }
 
+void serve_websocket(int socket_fd, const std::string& request,
+                     const std::shared_ptr<StreamState>& state,
+                     const MjpegServiceConfig& config) {
+  const auto key = request_header(request, "sec-websocket-key");
+  if (!key || lowercase(request_header(request, "upgrade").value_or("")) != "websocket" ||
+      !origin_allowed(request, config.allowed_origin) ||
+      !websocket_authorized(request, config.access_token)) {
+    send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"WebSocket access denied\"}",
+                                       config.allowed_origin));
+    return;
+  }
+  const std::string handshake =
+      "HTTP/1.1 101 Switching Protocols\r\n"
+      "Upgrade: websocket\r\n"
+      "Connection: Upgrade\r\n"
+      "Sec-WebSocket-Accept: " + websocket_accept_key(*key) + "\r\n"
+      "Sec-WebSocket-Protocol: wardy-events\r\n\r\n";
+  if (!send_text(socket_fd, handshake)) return;
+  {
+    std::lock_guard lock(state->websocket_mutex);
+    state->websocket_clients.push_back(socket_fd);
+  }
+  if (const auto snapshot = runtime_snapshot(state)) {
+    const std::string frame = websocket_text_frame(*snapshot);
+    if (!send_all(socket_fd, frame.data(), frame.size())) return;
+  }
+
+  unsigned char input[256];
+  while (state->running) {
+    const auto count = ::recv(socket_fd, input, sizeof(input), 0);
+    if (count == 0) break;
+    if (count < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue;
+      break;
+    }
+    if ((input[0] & 0x0fU) == 0x08U) break;
+  }
+  std::lock_guard lock(state->websocket_mutex);
+  state->websocket_clients.erase(
+      std::remove(state->websocket_clients.begin(), state->websocket_clients.end(), socket_fd),
+      state->websocket_clients.end());
+}
+
 void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
                    const MjpegServiceConfig config) {
   if (!apply_socket_timeouts(socket_fd)) {
@@ -521,7 +612,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const std::string request = read_request(socket_fd);
   const auto [method, path] = request_method_path(request);
   try {
-  const bool protected_api = path.rfind("/api/", 0) == 0 && path != "/api/health";
+  const bool protected_api = path.rfind("/api/", 0) == 0 &&
+      path != "/api/health" && path != "/api/ws";
   if (method == "OPTIONS") {
     if (origin_allowed(request, config.allowed_origin)) {
       send_text(socket_fd, options_response(config.allowed_origin));
@@ -536,6 +628,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
                                        config.allowed_origin));
   } else if (method == "GET" && path == "/api/health") {
     send_text(socket_fd, health_response(state->camera_connected, config.allowed_origin));
+  } else if (method == "GET" && path == "/api/ws") {
+    serve_websocket(socket_fd, request, state, config);
   } else if (method == "GET" && path == "/api/camera/stream") {
     serve_stream(socket_fd, state, config.allowed_origin);
   } else if (method == "GET" && path == "/api/events") {

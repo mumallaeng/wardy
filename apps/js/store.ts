@@ -1,5 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
-import type { CareStatus, EventType, IdentityReview, IdentityReviewDecision, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CareStatus, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -87,7 +87,7 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && isStringOrNull(value.object_id)
     && isStringOrNull(value.object_class)
     && isStringOrNull(value.zone_id)
-    && typeof value.care_status === "string" && Object.hasOwn(CARE_STATUS, value.care_status)
+    && (value.care_status === null || (typeof value.care_status === "string" && Object.hasOwn(CARE_STATUS, value.care_status)))
     && typeof value.event_status === "string" && Object.hasOwn(EVENT_STATUS, value.event_status)
     && isStringOrNull(value.confirmed_at)
     && isStringOrNull(value.released_at)
@@ -108,7 +108,7 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof careState.status !== "string" || !Object.hasOwn(CARE_STATUS, careState.status)
     || typeof careState.reason !== "string"
     || typeof careState.updatedAt !== "string"
-    || careState.source !== "manual_ui"
+    || !["manual_ui", "jetson_runtime"].includes(String(careState.source))
     || !isRecord(settings)
     || !isRecord(settings.overlay)
     || typeof settings.overlay.showClass !== "boolean"
@@ -197,6 +197,27 @@ export class WardyStore {
   setCareState(status: CareStatus, reason = CARE_STATUS[status].reason): WardyState {
     if (!CARE_STATUS[status]) throw new Error(`Unsupported care status: ${status}`);
     return this.#commit((state) => { state.careState = { status, reason, updatedAt: new Date().toISOString(), source: "manual_ui" }; });
+  }
+
+  applyRuntimeSnapshot(system: SystemState, events: WardyEvent[]): WardyState {
+    const status = system.care_state ?? "normal";
+    return this.#commit((state) => {
+      state.careState = {
+        status,
+        reason: system.reason || CARE_STATUS[status].reason,
+        updatedAt: system.updated_at,
+        source: "jetson_runtime",
+      };
+      state.events = clone(events);
+    });
+  }
+
+  replaceSubjects(subjects: Subject[]): WardyState {
+    return this.#commit((state) => { state.subjects = clone(subjects); });
+  }
+
+  replaceManagedItems(items: ManagedItem[]): WardyState {
+    return this.#commit((state) => { state.managedItems = clone(items); });
   }
 
   setOverlaySetting(key: OverlaySettingKey, value: boolean): WardyState {
