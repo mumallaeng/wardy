@@ -16,7 +16,8 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
-"$VENV_DIR/bin/python" -m pip install -r "$PROJECT_ROOT/requirements.txt"
+"$VENV_DIR/bin/python" -m pip install \
+    -r "$PROJECT_ROOT/ml/requirements/m03.txt"
 
 echo "venv: $VENV_DIR"
 echo "activate: source $VENV_DIR/bin/activate"
