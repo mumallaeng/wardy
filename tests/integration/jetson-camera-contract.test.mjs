@@ -204,11 +204,13 @@ test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", a
 
 test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한다", async () => {
   const media = await readFile(path.join(root, "edge/src/media/event_media.cpp"), "utf8");
+  const mediaHeader = await readFile(path.join(root, "edge/src/media/event_media.hpp"), "utf8");
   const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   assert.match(media, /event\.media_type == "image"/);
   assert.match(media, /event\.media_type == "video"/);
-  assert.match(media, /std::chrono::seconds\(5\)/);
+  assert.match(mediaHeader, /before_event\{5000\}/);
+  assert.match(mediaHeader, /after_event\{5000\}/);
   assert.match(media, /ring_\.size\(\) > 60U/);
   assert.match(media, /update_event_media/);
   assert.match(api, /method == "GET" && event_media_path\(path\)/);

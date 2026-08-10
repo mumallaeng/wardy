@@ -86,6 +86,12 @@ if(OpenCV_FOUND)
   target_link_libraries(wardy_event_media PUBLIC wardy_storage ${OpenCV_LIBS} Threads::Threads)
   target_compile_options(wardy_event_media PRIVATE -Wall -Wextra -Wpedantic)
 
+  add_executable(event_media_test
+    tests/event_media_test.cpp
+  )
+  target_link_libraries(event_media_test PRIVATE wardy_event_media)
+  add_test(NAME event_media_test COMMAND event_media_test)
+
   add_executable(wardy_camera_probe
     src/input/camera_probe.cpp
   )

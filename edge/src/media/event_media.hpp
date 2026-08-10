@@ -15,12 +15,19 @@
 
 namespace wardy::media {
 
+struct EventMediaOptions {
+  std::chrono::milliseconds ring_interval{100};
+  std::chrono::milliseconds before_event{5000};
+  std::chrono::milliseconds after_event{5000};
+  double frames_per_second = 10.0;
+};
+
 class EventMediaRecorder {
  public:
   using ChangeCallback = std::function<void()>;
 
   EventMediaRecorder(std::filesystem::path root, storage::SqliteStore& database,
-                     ChangeCallback on_change = {});
+                     ChangeCallback on_change = {}, EventMediaOptions options = {});
   ~EventMediaRecorder();
 
   EventMediaRecorder(const EventMediaRecorder&) = delete;
@@ -48,6 +55,7 @@ class EventMediaRecorder {
   std::filesystem::path root_;
   storage::SqliteStore& database_;
   ChangeCallback on_change_;
+  EventMediaOptions options_;
   std::mutex mutex_;
   std::condition_variable frame_ready_;
   std::vector<TimedFrame> ring_;

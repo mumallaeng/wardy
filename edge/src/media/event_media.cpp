@@ -26,9 +26,15 @@ std::string iso_utc(const std::chrono::system_clock::time_point& point) {
 
 EventMediaRecorder::EventMediaRecorder(std::filesystem::path root,
                                        storage::SqliteStore& database,
-                                       ChangeCallback on_change)
-    : root_(std::move(root)), database_(database), on_change_(std::move(on_change)) {
+                                       ChangeCallback on_change,
+                                       EventMediaOptions options)
+    : root_(std::move(root)), database_(database), on_change_(std::move(on_change)),
+      options_(options) {
   if (root_.empty()) throw std::invalid_argument("event media path must not be empty");
+  if (options_.ring_interval.count() <= 0 || options_.before_event.count() < 0 ||
+      options_.after_event.count() <= 0 || options_.frames_per_second <= 0.0) {
+    throw std::invalid_argument("event media timing options are invalid");
+  }
   std::filesystem::create_directories(root_);
 }
 
@@ -39,7 +45,7 @@ void EventMediaRecorder::push_frame(const cv::Mat& frame) {
   const auto steady_now = std::chrono::steady_clock::now();
   std::lock_guard lock(mutex_);
   if (!running_ || steady_now < next_ring_frame_) return;
-  next_ring_frame_ = steady_now + std::chrono::milliseconds(100);
+  next_ring_frame_ = steady_now + options_.ring_interval;
   ring_.push_back({std::chrono::system_clock::now(), frame.clone()});
   ++frame_sequence_;
   if (ring_.size() > 60U) ring_.erase(ring_.begin(), ring_.begin() + (ring_.size() - 60U));
@@ -84,8 +90,8 @@ void EventMediaRecorder::record_image(storage::EventRecord event) {
 
 void EventMediaRecorder::record_video(storage::EventRecord event) {
   const auto trigger = std::chrono::system_clock::now();
-  const auto cutoff = trigger - std::chrono::seconds(5);
-  const auto complete_at = trigger + std::chrono::seconds(5);
+  const auto cutoff = trigger - options_.before_event;
+  const auto complete_at = trigger + options_.after_event;
   std::vector<TimedFrame> frames;
   {
     std::unique_lock lock(mutex_);
@@ -111,10 +117,10 @@ void EventMediaRecorder::record_video(storage::EventRecord event) {
   const std::string pipeline = "appsrc ! videoconvert ! x264enc tune=zerolatency "
       "speed-preset=ultrafast bitrate=1800 key-int-max=15 ! h264parse ! mp4mux ! "
       "filesink location=\"" + temporary.string() + "\"";
-  writer.open(pipeline, cv::CAP_GSTREAMER, 0, 10.0, size, true);
+  writer.open(pipeline, cv::CAP_GSTREAMER, 0, options_.frames_per_second, size, true);
   if (!writer.isOpened()) {
     writer.open(temporary.string(), cv::VideoWriter::fourcc('m', 'p', '4', 'v'),
-                10.0, size, true);
+                options_.frames_per_second, size, true);
   }
   if (!writer.isOpened()) throw std::runtime_error("failed to open event video encoder");
   for (const auto& frame : frames) writer.write(frame.frame);
