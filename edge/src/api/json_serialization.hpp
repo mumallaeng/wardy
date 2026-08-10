@@ -3,9 +3,11 @@
 #include "storage/sqlite_store.hpp"
 
 #include <iomanip>
+#include <cctype>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace wardy::api {
@@ -41,9 +43,124 @@ inline std::string json_string(const std::string& value) {
   return "\"" + json_escape(value) + "\"";
 }
 
+class JsonValidator {
+ public:
+  explicit JsonValidator(std::string_view input) : input_(input) {}
+
+  bool array() {
+    skip_space();
+    const bool valid = value('[');
+    skip_space();
+    return valid && position_ == input_.size();
+  }
+
+ private:
+  void skip_space() {
+    while (position_ < input_.size() &&
+           std::isspace(static_cast<unsigned char>(input_[position_]))) ++position_;
+  }
+
+  bool consume(char expected) {
+    skip_space();
+    if (position_ >= input_.size() || input_[position_] != expected) return false;
+    ++position_;
+    return true;
+  }
+
+  bool value(char required = '\0') {
+    skip_space();
+    if (position_ >= input_.size() || (required && input_[position_] != required)) return false;
+    const char token = input_[position_];
+    if (token == '"') return string();
+    if (token == '[') return sequence('[', ']');
+    if (token == '{') return object();
+    if (token == 't') return literal("true");
+    if (token == 'f') return literal("false");
+    if (token == 'n') return literal("null");
+    return number();
+  }
+
+  bool sequence(char open, char close) {
+    if (!consume(open)) return false;
+    if (consume(close)) return true;
+    do {
+      if (!value()) return false;
+    } while (consume(','));
+    return consume(close);
+  }
+
+  bool object() {
+    if (!consume('{')) return false;
+    if (consume('}')) return true;
+    do {
+      if (!string() || !consume(':') || !value()) return false;
+    } while (consume(','));
+    return consume('}');
+  }
+
+  bool string() {
+    if (!consume('"')) return false;
+    while (position_ < input_.size()) {
+      const unsigned char character = static_cast<unsigned char>(input_[position_++]);
+      if (character == '"') return true;
+      if (character < 0x20) return false;
+      if (character != '\\') continue;
+      if (position_ >= input_.size()) return false;
+      const char escaped = input_[position_++];
+      if (std::string_view{"\"\\/bfnrt"}.find(escaped) != std::string_view::npos) continue;
+      if (escaped != 'u' || position_ + 4 > input_.size()) return false;
+      for (int index = 0; index < 4; ++index) {
+        if (!std::isxdigit(static_cast<unsigned char>(input_[position_++]))) return false;
+      }
+    }
+    return false;
+  }
+
+  bool literal(std::string_view literal_value) {
+    if (input_.substr(position_, literal_value.size()) != literal_value) return false;
+    position_ += literal_value.size();
+    return true;
+  }
+
+  bool number() {
+    const std::size_t start = position_;
+    if (position_ < input_.size() && input_[position_] == '-') ++position_;
+    if (position_ >= input_.size()) return false;
+    if (input_[position_] == '0') {
+      ++position_;
+    } else {
+      if (!std::isdigit(static_cast<unsigned char>(input_[position_]))) return false;
+      while (position_ < input_.size() &&
+             std::isdigit(static_cast<unsigned char>(input_[position_]))) ++position_;
+    }
+    if (position_ < input_.size() && input_[position_] == '.') {
+      ++position_;
+      const std::size_t fraction = position_;
+      while (position_ < input_.size() &&
+             std::isdigit(static_cast<unsigned char>(input_[position_]))) ++position_;
+      if (fraction == position_) return false;
+    }
+    if (position_ < input_.size() && (input_[position_] == 'e' || input_[position_] == 'E')) {
+      ++position_;
+      if (position_ < input_.size() && (input_[position_] == '+' || input_[position_] == '-')) ++position_;
+      const std::size_t exponent = position_;
+      while (position_ < input_.size() &&
+             std::isdigit(static_cast<unsigned char>(input_[position_]))) ++position_;
+      if (exponent == position_) return false;
+    }
+    return position_ > start;
+  }
+
+  std::string_view input_;
+  std::size_t position_ = 0;
+};
+
+inline bool valid_json_array(const std::string& value) {
+  return JsonValidator(value).array();
+}
+
 inline std::string event_json(const storage::EventRecord& event) {
-  const bool source_is_array = event.source_results_json.size() >= 2 &&
-      event.source_results_json.front() == '[' && event.source_results_json.back() == ']';
+  const bool source_is_array = valid_json_array(event.source_results_json);
   return "{" 
       "\"event_id\":" + json_string(event.event_id) +
       ",\"event_type\":" + json_string(event.event_type) +
@@ -69,13 +186,17 @@ inline std::string event_json(const storage::EventRecord& event) {
       ",\"media_ended_at\":" + json_string(event.media_ended_at) + "}";
 }
 
-inline std::string events_json(const std::vector<storage::EventRecord>& events) {
-  std::string body = "{\"events\":[";
+inline std::string event_array_json(const std::vector<storage::EventRecord>& events) {
+  std::string body = "[";
   for (std::size_t index = 0; index < events.size(); ++index) {
     if (index > 0) body += ',';
     body += event_json(events[index]);
   }
-  return body + "]}";
+  return body + "]";
+}
+
+inline std::string events_json(const std::vector<storage::EventRecord>& events) {
+  return "{\"events\":" + event_array_json(events) + "}";
 }
 
 inline std::string state_json(const storage::SystemStateRecord& state) {
@@ -90,9 +211,8 @@ inline std::string state_json(const storage::SystemStateRecord& state) {
 inline std::string runtime_snapshot_json(
     const storage::SystemStateRecord& state,
     const std::vector<storage::EventRecord>& events) {
-  const std::string event_object = events_json(events);
   return "{\"type\":\"snapshot\",\"state\":" + state_json(state) +
-      ",\"events\":" + event_object.substr(10, event_object.size() - 11) + "}";
+      ",\"events\":" + event_array_json(events) + "}";
 }
 
 inline std::string subjects_json(const std::vector<storage::SubjectRecord>& subjects) {

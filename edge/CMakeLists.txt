@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(CTest)
 
 find_package(SQLite3 REQUIRED)
+find_package(Threads REQUIRED)
 
 add_library(wardy_storage STATIC
   src/storage/sqlite_store.cpp
@@ -33,7 +34,7 @@ add_library(wardy_event_runtime STATIC
   src/rules/event_runtime.cpp
 )
 target_include_directories(wardy_event_runtime PUBLIC src)
-target_link_libraries(wardy_event_runtime PUBLIC wardy_storage)
+target_link_libraries(wardy_event_runtime PUBLIC wardy_storage Threads::Threads)
 target_compile_options(wardy_event_runtime PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(event_runtime_test
@@ -70,8 +71,6 @@ add_test(NAME websocket_test COMMAND websocket_test)
 find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)
-  find_package(Threads REQUIRED)
-
   add_library(wardy_camera STATIC
     src/input/camera_capture.cpp
   )

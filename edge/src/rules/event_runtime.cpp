@@ -217,10 +217,8 @@ std::string EventRuntime::current_reason() const {
 
 void EventRuntime::restore_active_events() {
   const std::lock_guard lock(mutex_);
-  for (auto& event : database_.list_events(1000, 0)) {
-    if (!terminal_status(event.event_status)) {
-      active_events_.insert_or_assign(active_key(event), std::move(event));
-    }
+  for (auto& event : database_.list_active_events()) {
+    active_events_.insert_or_assign(active_key(event), std::move(event));
   }
 }
 

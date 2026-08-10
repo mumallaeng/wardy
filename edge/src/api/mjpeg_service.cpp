@@ -58,7 +58,9 @@ struct StreamState {
   std::shared_ptr<media::EventMediaRecorder> event_media;
   std::filesystem::path training_data_path;
   std::mutex websocket_mutex;
+  std::mutex websocket_send_mutex;
   std::vector<int> websocket_clients;
+  std::size_t websocket_reservations = 0;
   std::mutex mutex;
   std::condition_variable frame_ready;
   std::vector<unsigned char> jpeg;
@@ -226,11 +228,27 @@ void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept {
     const auto snapshot = runtime_snapshot(state);
     if (!snapshot) return;
     const std::string frame = websocket_text_frame(*snapshot);
-    std::lock_guard lock(state->websocket_mutex);
-    state->websocket_clients.erase(
-        std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
-                       [&](int client) { return !send_all(client, frame.data(), frame.size()); }),
-        state->websocket_clients.end());
+    std::vector<int> clients;
+    {
+      std::lock_guard lock(state->websocket_mutex);
+      clients = state->websocket_clients;
+    }
+    std::vector<int> failed;
+    {
+      std::lock_guard send_lock(state->websocket_send_mutex);
+      for (const int client : clients) {
+        if (!send_all(client, frame.data(), frame.size())) failed.push_back(client);
+      }
+    }
+    if (!failed.empty()) {
+      std::lock_guard lock(state->websocket_mutex);
+      state->websocket_clients.erase(
+          std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
+              [&](int client) {
+                return std::find(failed.begin(), failed.end(), client) != failed.end();
+              }),
+          state->websocket_clients.end());
+    }
   } catch (const std::exception& error) {
     std::cerr << "WebSocket broadcast error: " << error.what() << '\n';
   }
@@ -639,19 +657,41 @@ void serve_websocket(int socket_fd, const std::string& request,
                                        config.allowed_origin));
     return;
   }
+  constexpr std::size_t max_websocket_clients = 8;
+  bool client_limit_reached = false;
+  {
+    std::lock_guard lock(state->websocket_mutex);
+    if (state->websocket_clients.size() + state->websocket_reservations >=
+        max_websocket_clients) {
+      client_limit_reached = true;
+    } else {
+      ++state->websocket_reservations;
+    }
+  }
+  if (client_limit_reached) {
+    send_text(socket_fd, json_response(503, "Service Unavailable",
+        "{\"error\":\"WebSocket client limit reached\"}", config.allowed_origin));
+    return;
+  }
   const std::string handshake =
       "HTTP/1.1 101 Switching Protocols\r\n"
       "Upgrade: websocket\r\n"
       "Connection: Upgrade\r\n"
       "Sec-WebSocket-Accept: " + websocket_accept_key(*key) + "\r\n"
       "Sec-WebSocket-Protocol: wardy-events\r\n\r\n";
-  if (!send_text(socket_fd, handshake)) return;
+  if (!send_text(socket_fd, handshake)) {
+    std::lock_guard lock(state->websocket_mutex);
+    --state->websocket_reservations;
+    return;
+  }
   {
     std::lock_guard lock(state->websocket_mutex);
+    --state->websocket_reservations;
     state->websocket_clients.push_back(socket_fd);
   }
   if (const auto snapshot = runtime_snapshot(state)) {
     const std::string frame = websocket_text_frame(*snapshot);
+    std::lock_guard send_lock(state->websocket_send_mutex);
     if (!send_all(socket_fd, frame.data(), frame.size())) {
       remove_websocket_client(state, socket_fd);
       return;
@@ -679,6 +719,10 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   }
   const std::string request = read_request(socket_fd);
   const auto [method, path] = request_method_path(request);
+  const auto media_event_id = event_media_path(path);
+  const auto event_action = event_action_path(path);
+  const auto subject_id_path = resource_id_path(path, "/api/subjects/");
+  const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
   try {
   const bool protected_api = path.rfind("/api/", 0) == 0 &&
       path != "/api/health" && path != "/api/ws";
@@ -712,8 +756,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_text(socket_fd, json_response(200, "OK", state_json(*current),
                                          config.allowed_origin));
     }
-  } else if (method == "GET" && event_media_path(path)) {
-    const auto event = state->database->get_event(*event_media_path(path));
+  } else if (method == "GET" && media_event_id) {
+    const auto event = state->database->get_event(*media_event_id);
     if (!event || !event->media_path) {
       send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event media not found\"}",
                                          config.allowed_origin));
@@ -726,8 +770,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_binary_response(socket_fd, bytes,
           event->media_type == "image" ? "image/jpeg" : "video/mp4", config.allowed_origin);
     }
-  } else if (method == "DELETE" && event_media_path(path)) {
-    const auto event = state->database->get_event(*event_media_path(path));
+  } else if (method == "DELETE" && media_event_id) {
+    const auto event = state->database->get_event(*media_event_id);
     if (!event) {
       send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Event not found\"}",
                                          config.allowed_origin));
@@ -752,8 +796,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_text(socket_fd, json_response(400, "Bad Request",
           "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
     }
-  } else if (method == "POST" && event_action_path(path)) {
-    const auto [event_id, action] = *event_action_path(path);
+  } else if (method == "POST" && event_action) {
+    const auto& [event_id, action] = *event_action;
     const std::string status = action == "confirm" ? "confirmed" :
                                action == "release" ? "released" :
                                action == "false-detection" ? "false_detection" : "";
@@ -781,8 +825,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_text(socket_fd, json_response(400, "Bad Request",
           "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
     }
-  } else if (method == "DELETE" && resource_id_path(path, "/api/subjects/")) {
-    const std::string subject_id = *resource_id_path(path, "/api/subjects/");
+  } else if (method == "DELETE" && subject_id_path) {
+    const std::string& subject_id = *subject_id_path;
     const bool deleted = state->database->delete_subject(subject_id);
     if (deleted) {
       std::error_code error;
@@ -801,8 +845,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
       send_text(socket_fd, json_response(400, "Bad Request",
           "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
     }
-  } else if (method == "DELETE" && resource_id_path(path, "/api/managed-items/")) {
-    const std::string item_id = *resource_id_path(path, "/api/managed-items/");
+  } else if (method == "DELETE" && managed_item_id_path) {
+    const std::string& item_id = *managed_item_id_path;
     const bool deleted = state->database->delete_managed_item(item_id);
     if (deleted) {
       std::error_code error;

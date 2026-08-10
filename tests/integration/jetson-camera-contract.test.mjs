@@ -213,8 +213,9 @@ test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한�
   assert.match(mediaHeader, /after_event\{5000\}/);
   assert.match(media, /ring_\.size\(\) > 60U/);
   assert.match(media, /update_event_media/);
-  assert.match(api, /method == "GET" && event_media_path\(path\)/);
-  assert.match(api, /method == "DELETE" && event_media_path\(path\)/);
+  assert.match(api, /const auto media_event_id = event_media_path\(path\)/);
+  assert.match(api, /method == "GET" && media_event_id/);
+  assert.match(api, /method == "DELETE" && media_event_id/);
   assert.match(launcher, /data\/events/);
   assert.doesNotMatch(media, /TensorRT|onnx|inference|tracking/i);
 });

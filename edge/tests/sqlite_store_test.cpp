@@ -108,6 +108,14 @@ int main() {
   assert(events[0].confirmed_at == "2026-08-06T12:01:00+09:00");
   assert(!store.update_event_status("missing", "confirmed",
                                     "2026-08-06T12:01:00+09:00"));
+  auto active_events = store.list_active_events();
+  assert(active_events.size() == 1);
+  assert(active_events[0].event_id == event.event_id);
+  assert(store.update_event_status(event.event_id, "released",
+                                   "2026-08-06T12:01:30+09:00"));
+  assert(store.list_active_events().empty());
+  assert(store.update_event_status(event.event_id, "confirmed",
+                                   "2026-08-06T12:01:31+09:00"));
   assert(store.update_event_media(event.event_id, "video", "events/EVT-TEST-001.mp4",
                                   "2026-08-06T11:59:55+09:00",
                                   "2026-08-06T12:00:05+09:00"));
