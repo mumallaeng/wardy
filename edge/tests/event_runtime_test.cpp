@@ -54,6 +54,16 @@ int main() {
   }
   assert(rejected_terminal_change);
   assert(runtime.current_care_status() == "normal");
-  assert(changes == 6);
+  wardy::rules::EventObservation camera_fault{
+      "camera_fault", true, "2026-08-10T10:00:06Z", std::nullopt, std::nullopt,
+      "unknown", std::nullopt, std::nullopt, std::nullopt,
+      "카메라 입력이 중단됨", "[]"};
+  runtime.apply(camera_fault);
+  assert(!runtime.current_care_status().has_value());
+  camera_fault.active = false;
+  camera_fault.observed_at = "2026-08-10T10:00:07Z";
+  runtime.apply(camera_fault);
+  assert(runtime.current_care_status() == "normal");
+  assert(changes == 8);
   return 0;
 }

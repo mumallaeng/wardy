@@ -374,6 +374,23 @@ std::string mock_event(const std::string& request,
   return event_json(state->events->apply(observation).event);
 }
 
+void apply_camera_fault(const std::shared_ptr<StreamState>& state, bool active,
+                        const std::string& reason) noexcept {
+  try {
+    rules::EventObservation observation;
+    observation.event_type = "camera_fault";
+    observation.active = active;
+    observation.observed_at = utc_now();
+    observation.subject_location = "unknown";
+    observation.reason = reason;
+    observation.source_results_json =
+        R"([{"source":"camera_runtime","note":"V4L2 frame input state"}])";
+    state->events->apply(observation);
+  } catch (const std::exception& error) {
+    std::cerr << "Camera fault event error: " << error.what() << '\n';
+  }
+}
+
 std::string create_subject(const std::string& request,
                            const std::shared_ptr<StreamState>& state) {
   const std::string subject_id = request_header(request, "x-wardy-subject-id").value_or("");
@@ -826,6 +843,7 @@ void capture_frames(const MjpegServiceConfig& config,
   auto retry_delay = std::chrono::seconds(1);
   constexpr auto maximum_retry_delay = std::chrono::seconds(30);
   std::string last_reported_error;
+  bool camera_fault_active = false;
   while (state->running) {
     try {
       input::CameraCapture camera(config.camera);
@@ -850,6 +868,10 @@ void capture_frames(const MjpegServiceConfig& config,
           retry_delay = std::chrono::seconds(1);
           last_reported_error.clear();
           connected_reported = true;
+          if (camera_fault_active) {
+            apply_camera_fault(state, false, "Jetson camera frame input recovered");
+            camera_fault_active = false;
+          }
         }
         state->frame_width = frame.cols;
         state->frame_height = frame.rows;
@@ -884,6 +906,10 @@ void capture_frames(const MjpegServiceConfig& config,
         last_reported_error = error.what();
         save_camera_state(state, "fault", error.what());
         std::cerr << "Jetson camera error: " << error.what() << '\n';
+      }
+      if (!camera_fault_active) {
+        apply_camera_fault(state, true, error.what());
+        camera_fault_active = true;
       }
       if (state->running) std::this_thread::sleep_for(retry_delay);
       retry_delay = std::min(retry_delay * 2, maximum_retry_delay);

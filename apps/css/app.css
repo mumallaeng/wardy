@@ -93,6 +93,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .care-orb.is-caution { background: var(--caution); }
 .care-orb.is-warning { background: var(--warning); }
 .care-orb.is-emergency { background: var(--emergency); }
+.care-orb.is-unavailable { background: #69756f; }
 .status-reason { min-height: 48px; color: var(--muted); text-align: center; }
 .manual-state { margin-top: auto; padding-top: 22px; }
 .manual-state > span { display: block; margin-bottom: 8px; color: var(--muted); font-size: .75rem; }

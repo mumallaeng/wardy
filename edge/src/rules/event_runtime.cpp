@@ -184,10 +184,13 @@ bool EventRuntime::update_status(const std::string& event_id,
 std::optional<std::string> EventRuntime::current_care_status() const {
   const std::lock_guard lock(mutex_);
   std::optional<std::string> current;
+  bool system_fault = false;
   for (const auto& [key, event] : active_events_) {
     (void)key;
+    if (!event.care_status) system_fault = true;
     if (care_rank(event.care_status) > care_rank(current)) current = event.care_status;
   }
+  if (system_fault) return std::nullopt;
   return current.value_or("normal");
 }
 
@@ -196,6 +199,7 @@ std::string EventRuntime::current_reason() const {
   const storage::EventRecord* current = nullptr;
   for (const auto& [key, event] : active_events_) {
     (void)key;
+    if (!event.care_status) return event.reason;
     if (!current || care_rank(event.care_status) > care_rank(current->care_status)) {
       current = &event;
     }

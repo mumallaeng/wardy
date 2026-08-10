@@ -20,6 +20,22 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
   assert.deepEqual(restored.settings.jetson, { baseUrl: "https://jetson.local:8443" });
 });
 
+test("Jetson system fault에서는 돌봄 상태를 확인 불가로 보존한다", () => {
+  const store = new WardyStore(new MemoryStorage(), "runtime-fault");
+  store.applyRuntimeSnapshot({
+    care_state: null,
+    camera_state: "fault",
+    detection_state: "disconnected",
+    event_state: "ready",
+    reason: "camera disconnected",
+    updated_at: "2026-08-10T00:00:00Z",
+  }, []);
+  const restored = store.getState();
+  assert.equal(restored.careState.status, null);
+  assert.equal(restored.careState.source, "jetson_runtime");
+  assert.equal(restored.careState.reason, "camera disconnected");
+});
+
 test("기존 Jetson 설정을 자동 연결 형식으로 이전하고 media port를 교정한다", () => {
   const storage = new MemoryStorage();
   const initial = new WardyStore(null).getState();

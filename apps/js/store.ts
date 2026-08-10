@@ -105,7 +105,7 @@ function isWardyState(value: unknown): value is WardyState {
   const careState = value.careState;
   const settings = value.settings;
   if (!isRecord(careState)
-    || typeof careState.status !== "string" || !Object.hasOwn(CARE_STATUS, careState.status)
+    || !(careState.status === null || (typeof careState.status === "string" && Object.hasOwn(CARE_STATUS, careState.status)))
     || typeof careState.reason !== "string"
     || typeof careState.updatedAt !== "string"
     || !["manual_ui", "jetson_runtime"].includes(String(careState.source))
@@ -200,11 +200,11 @@ export class WardyStore {
   }
 
   applyRuntimeSnapshot(system: SystemState, events: WardyEvent[]): WardyState {
-    const status = system.care_state ?? "normal";
+    const status = system.care_state;
     return this.#commit((state) => {
       state.careState = {
         status,
-        reason: system.reason || CARE_STATUS[status].reason,
+        reason: system.reason || (status ? CARE_STATUS[status].reason : "안전 상태를 판단할 수 없습니다."),
         updatedAt: system.updated_at,
         source: "jetson_runtime",
       };

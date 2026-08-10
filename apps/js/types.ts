@@ -50,7 +50,7 @@ export interface OverlaySettings extends Record<OverlaySettingKey, boolean> {}
 export type NotificationSettings = Partial<Record<EventType, NotificationSetting>>;
 
 export interface CareState {
-  status: CareStatus;
+  status: CareStatus | null;
   reason: string;
   updatedAt: string;
   source: "manual_ui" | "jetson_runtime";
