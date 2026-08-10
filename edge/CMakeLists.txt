@@ -29,6 +29,19 @@ add_executable(sqlite_store_test
 target_link_libraries(sqlite_store_test PRIVATE wardy_storage)
 add_test(NAME sqlite_store_test COMMAND sqlite_store_test)
 
+add_library(wardy_event_runtime STATIC
+  src/rules/event_runtime.cpp
+)
+target_include_directories(wardy_event_runtime PUBLIC src)
+target_link_libraries(wardy_event_runtime PUBLIC wardy_storage)
+target_compile_options(wardy_event_runtime PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(event_runtime_test
+  tests/event_runtime_test.cpp
+)
+target_link_libraries(event_runtime_test PRIVATE wardy_event_runtime)
+add_test(NAME event_runtime_test COMMAND event_runtime_test)
+
 add_executable(camera_config_test
   tests/camera_config_test.cpp
 )
@@ -64,7 +77,7 @@ if(OpenCV_FOUND)
     src/api/wardy_edge_service.cpp
   )
   target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_storage Threads::Threads ${OpenCV_LIBS})
+  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime Threads::Threads ${OpenCV_LIBS})
   target_compile_options(wardy_edge_service PRIVATE -Wall -Wextra -Wpedantic)
 else()
   message(STATUS "OpenCV core/videoio/imgcodecs not found: camera library, probe, and edge service are skipped")
