@@ -100,6 +100,31 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && isStringOrNull(value.media_started_at)
     && isStringOrNull(value.media_ended_at);
 }
+
+function isSystemState(value: unknown): value is SystemState {
+  if (!isRecord(value)) return false;
+  return (value.care_state === null
+      || (typeof value.care_state === "string" && Object.hasOwn(CARE_STATUS, value.care_state)))
+    && ["idle", "connecting", "connected", "fault"].includes(String(value.camera_state))
+    && ["disconnected", "ready", "running", "fault"].includes(String(value.detection_state))
+    && ["ready", "processing", "fault"].includes(String(value.event_state))
+    && typeof value.reason === "string"
+    && typeof value.updated_at === "string";
+}
+
+function isSubject(value: unknown): value is Subject {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.name === "string"
+    && typeof value.role === "string" && typeof value.createdAt === "string"
+    && isOptionalCount(value.referenceSampleCount);
+}
+
+function isManagedItem(value: unknown): value is ManagedItem {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.label === "string"
+    && ["included", "excluded"].includes(String(value.policy))
+    && isOptionalCount(value.sampleCount);
+}
 function isWardyState(value: unknown): value is WardyState {
   if (!isRecord(value) || value.version !== 1) return false;
   const careState = value.careState;
@@ -200,7 +225,9 @@ export class WardyStore {
   }
 
   applyRuntimeSnapshot(system: SystemState, events: WardyEvent[]): WardyState {
+    if (!isSystemState(system)) throw new Error("Jetson system 상태 응답 형식이 올바르지 않습니다.");
     const status = system.care_state;
+    const validEvents = events.filter(isWardyEvent);
     return this.#commit((state) => {
       state.careState = {
         status,
@@ -208,16 +235,16 @@ export class WardyStore {
         updatedAt: system.updated_at,
         source: "jetson_runtime",
       };
-      state.events = clone(events);
+      state.events = clone(validEvents);
     });
   }
 
   replaceSubjects(subjects: Subject[]): WardyState {
-    return this.#commit((state) => { state.subjects = clone(subjects); });
+    return this.#commit((state) => { state.subjects = clone(subjects.filter(isSubject)); });
   }
 
   replaceManagedItems(items: ManagedItem[]): WardyState {
-    return this.#commit((state) => { state.managedItems = clone(items); });
+    return this.#commit((state) => { state.managedItems = clone(items.filter(isManagedItem)); });
   }
 
   setOverlaySetting(key: OverlaySettingKey, value: boolean): WardyState {

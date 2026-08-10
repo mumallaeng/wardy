@@ -8,9 +8,11 @@ import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
  * @returns A new array ordered by descending care-status rank, then by descending occurrence time. Unknown care statuses are placed last.
  */
 export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
+  const rank = (event: WardyEvent): number => event.care_status
+    ? CARE_STATUS[event.care_status]?.rank ?? -1
+    : Number.MAX_SAFE_INTEGER;
   return [...events].sort((a, b) => {
-    const statusDelta = (b.care_status ? CARE_STATUS[b.care_status]?.rank ?? -1 : -1)
-      - (a.care_status ? CARE_STATUS[a.care_status]?.rank ?? -1 : -1);
+    const statusDelta = rank(b) - rank(a);
     return statusDelta || new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
   });
 }
@@ -119,7 +121,7 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
 
     const care = document.createElement("td");
     care.append(chip(event.care_status ? CARE_STATUS[event.care_status]?.label ?? "확인 불가" : "해당 없음",
-      event.care_status ?? "released"));
+      event.care_status ?? "unavailable"));
 
     const media = document.createElement("td");
     media.textContent = event.media_type === "image" ? "사진" : event.media_type === "video" ? "10초 영상" : "없음";

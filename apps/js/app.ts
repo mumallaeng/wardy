@@ -363,8 +363,10 @@ async function runEventAction(eventId: string,
     const connection = runtimeConnection();
     await runtime.eventAction(connection.baseUrl, connection.accessToken,
       connection.origin, eventId, action);
-    applyRuntimeSnapshot(await runtime.loadSnapshot(
-      connection.baseUrl, connection.accessToken, connection.origin));
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
     toast(`${eventId} 처리 상태를 저장했습니다.`);
   } catch (error) { toast(errorMessage(error)); }
 }
@@ -375,7 +377,11 @@ async function viewEventMedia(eventId: string): Promise<void> {
     const blob = await runtime.loadEventMedia(connection.baseUrl, connection.accessToken,
       connection.origin, eventId);
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener,noreferrer");
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (error) { toast(errorMessage(error)); }
 }
@@ -386,8 +392,10 @@ async function deleteEventMedia(eventId: string): Promise<void> {
     const connection = runtimeConnection();
     await runtime.deleteEventMedia(connection.baseUrl, connection.accessToken,
       connection.origin, eventId);
-    applyRuntimeSnapshot(await runtime.loadSnapshot(
-      connection.baseUrl, connection.accessToken, connection.origin));
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
     toast("이벤트 자료를 Jetson에서 삭제했습니다.");
   } catch (error) { toast(errorMessage(error)); }
 }
@@ -505,8 +513,10 @@ $("#demo-event").addEventListener("click", async () => {
   try {
     const connection = runtimeConnection();
     await runtime.createDebugEvent(connection.baseUrl, connection.accessToken, connection.origin);
-    applyRuntimeSnapshot(await runtime.loadSnapshot(
-      connection.baseUrl, connection.accessToken, connection.origin));
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
     toast("AI와 연결되지 않은 runtime 검증 event를 Jetson에 저장했습니다.");
   } catch (error) { toast(errorMessage(error)); }
 });

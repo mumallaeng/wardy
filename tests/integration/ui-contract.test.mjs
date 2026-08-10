@@ -36,7 +36,7 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /id="start-camera"[^>]*>Jetson 카메라 연결<\/button><button[^>]*id="stop-camera"[^>]*>카메라 연결 중지<\/button>/);
   assert.match(html, /WebRTC\/UDP/);
   assert.match(html, /event·state 동기화<\/dt><dd>인증 WebSocket · 자동 재연결/);
-  assert.match(html, /\/dev\/video0/);
+  assert.match(html, /<code>\/dev\/video0<\/code>/);
   assert.match(html, /V4L2/);
 });
 
@@ -51,6 +51,7 @@ test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 �
   assert.match(app, /connectConfiguredJetson/);
   assert.match(app, /status === "fault".*reconnectTimer/s);
   assert.match(app, /JetsonCredentialStore\(window\.sessionStorage\)/);
+  assert.doesNotMatch(app, /window\.open/);
   assert.match(overlay, /setMirrored/);
   assert.match(overlay, /1 - zone\.x - zone\.width/);
 });
