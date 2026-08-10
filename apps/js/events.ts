@@ -9,7 +9,8 @@ import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
  */
 export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
   return [...events].sort((a, b) => {
-    const statusDelta = (CARE_STATUS[b.care_status]?.rank ?? -1) - (CARE_STATUS[a.care_status]?.rank ?? -1);
+    const statusDelta = (b.care_status ? CARE_STATUS[b.care_status]?.rank ?? -1 : -1)
+      - (a.care_status ? CARE_STATUS[a.care_status]?.rank ?? -1 : -1);
     return statusDelta || new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
   });
 }
@@ -42,7 +43,7 @@ export function summarizeEvents(events: readonly WardyEvent[], now = new Date())
   const today = events.filter((event) => dayKey(new Date(event.occurred_at)) === dayKey(now));
   const result: EventSummary = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
   today.forEach((event) => {
-    if (event.care_status in result) result[event.care_status] += 1;
+    if (event.care_status && event.care_status in result) result[event.care_status] += 1;
     if (event.event_status === "new") result.unconfirmed += 1;
   });
   return result;
@@ -117,7 +118,8 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     target.append(location);
 
     const care = document.createElement("td");
-    care.append(chip(CARE_STATUS[event.care_status]?.label ?? "확인 불가", event.care_status ?? "released"));
+    care.append(chip(event.care_status ? CARE_STATUS[event.care_status]?.label ?? "확인 불가" : "해당 없음",
+      event.care_status ?? "released"));
 
     const media = document.createElement("td");
     media.textContent = event.media_type === "image" ? "사진" : event.media_type === "video" ? "10초 영상" : "없음";

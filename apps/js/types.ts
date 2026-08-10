@@ -33,7 +33,7 @@ export interface WardyEvent {
   object_id: string | null;
   object_class: string | null;
   zone_id: string | null;
-  care_status: CareStatus;
+  care_status: CareStatus | null;
   event_status: EventStatus;
   confirmed_at: string | null;
   released_at: string | null;
@@ -53,7 +53,16 @@ export interface CareState {
   status: CareStatus;
   reason: string;
   updatedAt: string;
-  source: "manual_ui";
+  source: "manual_ui" | "jetson_runtime";
+}
+
+export interface SystemState {
+  care_state: CareStatus | null;
+  camera_state: CameraStatus;
+  detection_state: "disconnected" | "ready" | "running" | "fault";
+  event_state: "ready" | "processing" | "fault";
+  reason: string;
+  updated_at: string;
 }
 
 export interface ManagedItem {

@@ -1,0 +1,119 @@
+#pragma once
+
+#include "storage/sqlite_store.hpp"
+
+#include <iomanip>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace wardy::api {
+
+inline std::string json_escape(const std::string& value) {
+  std::ostringstream escaped;
+  escaped << std::hex << std::setfill('0');
+  for (const unsigned char character : value) {
+    switch (character) {
+      case '"': escaped << "\\\""; break;
+      case '\\': escaped << "\\\\"; break;
+      case '\b': escaped << "\\b"; break;
+      case '\f': escaped << "\\f"; break;
+      case '\n': escaped << "\\n"; break;
+      case '\r': escaped << "\\r"; break;
+      case '\t': escaped << "\\t"; break;
+      default:
+        if (character < 0x20) {
+          escaped << "\\u" << std::setw(4) << static_cast<int>(character);
+        } else {
+          escaped << character;
+        }
+    }
+  }
+  return escaped.str();
+}
+
+inline std::string json_string(const std::optional<std::string>& value) {
+  return value ? "\"" + json_escape(*value) + "\"" : "null";
+}
+
+inline std::string json_string(const std::string& value) {
+  return "\"" + json_escape(value) + "\"";
+}
+
+inline std::string event_json(const storage::EventRecord& event) {
+  const bool source_is_array = event.source_results_json.size() >= 2 &&
+      event.source_results_json.front() == '[' && event.source_results_json.back() == ']';
+  return "{" 
+      "\"event_id\":" + json_string(event.event_id) +
+      ",\"event_type\":" + json_string(event.event_type) +
+      ",\"occurred_at\":" + json_string(event.occurred_at) +
+      ",\"first_seen_at\":" + json_string(event.first_seen_at) +
+      ",\"last_seen_at\":" + json_string(event.last_seen_at) +
+      ",\"subject_id\":" + json_string(event.subject_id) +
+      ",\"subject_name\":" + json_string(event.subject_name) +
+      ",\"subject_location\":" + json_string(event.subject_location) +
+      ",\"object_id\":" + json_string(event.object_id) +
+      ",\"object_class\":" + json_string(event.object_class) +
+      ",\"zone_id\":" + json_string(event.zone_id) +
+      ",\"care_status\":" + json_string(event.care_status) +
+      ",\"event_status\":" + json_string(event.event_status) +
+      ",\"confirmed_at\":" + json_string(event.confirmed_at) +
+      ",\"released_at\":" + json_string(event.released_at) +
+      ",\"false_detection_at\":" + json_string(event.false_detection_at) +
+      ",\"reason\":" + json_string(event.reason) +
+      ",\"source_results\":" + (source_is_array ? event.source_results_json : "[]") +
+      ",\"media_type\":" + json_string(event.media_type) +
+      ",\"media_path\":" + json_string(event.media_path) +
+      ",\"media_started_at\":" + json_string(event.media_started_at) +
+      ",\"media_ended_at\":" + json_string(event.media_ended_at) + "}";
+}
+
+inline std::string events_json(const std::vector<storage::EventRecord>& events) {
+  std::string body = "{\"events\":[";
+  for (std::size_t index = 0; index < events.size(); ++index) {
+    if (index > 0) body += ',';
+    body += event_json(events[index]);
+  }
+  return body + "]}";
+}
+
+inline std::string state_json(const storage::SystemStateRecord& state) {
+  return "{\"care_state\":" + json_string(state.care_state) +
+      ",\"camera_state\":" + json_string(state.camera_state) +
+      ",\"detection_state\":" + json_string(state.detection_state) +
+      ",\"event_state\":" + json_string(state.event_state) +
+      ",\"reason\":" + json_string(state.reason) +
+      ",\"updated_at\":" + json_string(state.updated_at) + "}";
+}
+
+inline std::string subjects_json(const std::vector<storage::SubjectRecord>& subjects) {
+  std::string body = "{\"subjects\":[";
+  for (std::size_t index = 0; index < subjects.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& subject = subjects[index];
+    body += "{\"id\":" + json_string(subject.subject_id) +
+        ",\"name\":" + json_string(subject.name) +
+        ",\"role\":" + json_string(subject.role) +
+        ",\"createdAt\":" + json_string(subject.created_at) +
+        ",\"referenceSampleCount\":" +
+        std::to_string(subject.reference_sample_count) + "}";
+  }
+  return body + "]}";
+}
+
+inline std::string managed_items_json(
+    const std::vector<storage::ManagedItemRecord>& items) {
+  std::string body = "{\"managedItems\":[";
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& item = items[index];
+    body += "{\"id\":" + json_string(item.item_id) +
+        ",\"label\":" + json_string(item.label) +
+        ",\"policy\":" + json_string(item.policy) +
+        ",\"sampleCount\":" + std::to_string(item.sample_count) + "}";
+  }
+  return body + "]}";
+}
+
+}  // namespace wardy::api

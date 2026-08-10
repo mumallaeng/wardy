@@ -101,13 +101,16 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
   }
 });
 
-test("AI 작업 영역은 빈 자리표시자만 유지한다", async () => {
+test("비AI runtime은 AI 구현 파일을 import하지 않는다", async () => {
   const aiDirectories = [
-    "ml/config", "ml/notebook", "ml/result/figure", "ml/src/data", "ml/src/evaluation", "ml/src/export", "ml/src/models", "ml/test",
-    "edge/src/inference", "edge/src/tracking", "edge/src/analysis", "edge/src/rules",
+    "edge/src/inference", "edge/src/tracking", "edge/src/analysis",
   ];
   for (const directory of aiDirectories) {
     const entries = await readdir(path.join(root, directory));
     assert.deepEqual(entries, [".gitkeep"], directory);
+  }
+  for (const file of ["apps/js/app.ts", "edge/src/api/mjpeg_service.cpp", "edge/src/rules/event_runtime.cpp"]) {
+    const content = await readFile(path.join(root, file), "utf8");
+    assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);
   }
 });

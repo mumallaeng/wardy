@@ -150,6 +150,12 @@ bool EventRuntime::update_status(const std::string& event_id,
   bool updated = false;
   {
     const std::lock_guard lock(mutex_);
+    const auto stored = database_.get_event(event_id);
+    if (!stored) return false;
+    if (terminal_status(stored->event_status)) {
+      throw std::invalid_argument("terminal event status cannot be changed");
+    }
+    if (status == "confirmed" && stored->event_status == "confirmed") return true;
     updated = database_.update_event_status(event_id, status, changed_at);
     if (updated && terminal_status(status)) {
       for (auto iterator = active_events_.begin(); iterator != active_events_.end();) {

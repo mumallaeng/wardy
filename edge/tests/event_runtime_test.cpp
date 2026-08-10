@@ -45,6 +45,14 @@ int main() {
                                "2026-08-10T10:00:04Z"));
   assert(runtime.update_status(created.event.event_id, "false_detection",
                                "2026-08-10T10:00:05Z"));
+  bool rejected_terminal_change = false;
+  try {
+    runtime.update_status(created.event.event_id, "confirmed",
+                          "2026-08-10T10:00:06Z");
+  } catch (const std::invalid_argument&) {
+    rejected_terminal_change = true;
+  }
+  assert(rejected_terminal_change);
   assert(runtime.current_care_status() == "normal");
   assert(changes == 6);
   return 0;

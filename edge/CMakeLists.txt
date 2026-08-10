@@ -54,6 +54,13 @@ add_executable(http_response_test
 target_include_directories(http_response_test PRIVATE src)
 add_test(NAME http_response_test COMMAND http_response_test)
 
+add_executable(json_serialization_test
+  tests/json_serialization_test.cpp
+)
+target_include_directories(json_serialization_test PRIVATE src)
+target_link_libraries(json_serialization_test PRIVATE wardy_storage)
+add_test(NAME json_serialization_test COMMAND json_serialization_test)
+
 find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)
