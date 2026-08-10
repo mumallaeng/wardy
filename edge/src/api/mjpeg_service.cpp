@@ -155,12 +155,14 @@ void save_camera_state(const std::shared_ptr<StreamState>& state,
                        const std::string& reason) noexcept {
   try {
     const auto previous = state->database->load_system_state();
+    const bool preserve_event_reason = previous && previous->care_state &&
+        *previous->care_state != "normal" && camera_state == "connected";
     state->database->save_system_state({
         previous ? previous->care_state : std::optional<std::string>{"normal"},
         camera_state,
         previous ? previous->detection_state : "disconnected",
         previous ? previous->event_state : "ready",
-        reason,
+        preserve_event_reason ? previous->reason : reason,
         utc_now(),
     });
     broadcast_snapshot(state);
@@ -232,6 +234,14 @@ void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept {
   } catch (const std::exception& error) {
     std::cerr << "WebSocket broadcast error: " << error.what() << '\n';
   }
+}
+
+void remove_websocket_client(const std::shared_ptr<StreamState>& state,
+                             int socket_fd) {
+  std::lock_guard lock(state->websocket_mutex);
+  state->websocket_clients.erase(
+      std::remove(state->websocket_clients.begin(), state->websocket_clients.end(), socket_fd),
+      state->websocket_clients.end());
 }
 
 bool apply_socket_timeouts(int socket_fd) {
@@ -345,7 +355,10 @@ void save_runtime_state(const std::shared_ptr<StreamState>& state,
     const std::string reason = state->events ? state->events->current_reason()
                                              : "Event runtime is starting";
     state->database->save_system_state({
-        care, resolved_camera, "disconnected", "ready", reason, utc_now(),
+        care, resolved_camera,
+        previous ? previous->detection_state : "disconnected",
+        previous ? previous->event_state : "ready",
+        reason, utc_now(),
     });
     broadcast_snapshot(state);
   } catch (const std::exception& error) {
@@ -639,7 +652,10 @@ void serve_websocket(int socket_fd, const std::string& request,
   }
   if (const auto snapshot = runtime_snapshot(state)) {
     const std::string frame = websocket_text_frame(*snapshot);
-    if (!send_all(socket_fd, frame.data(), frame.size())) return;
+    if (!send_all(socket_fd, frame.data(), frame.size())) {
+      remove_websocket_client(state, socket_fd);
+      return;
+    }
   }
 
   unsigned char input[256];
@@ -652,10 +668,7 @@ void serve_websocket(int socket_fd, const std::string& request,
     }
     if ((input[0] & 0x0fU) == 0x08U) break;
   }
-  std::lock_guard lock(state->websocket_mutex);
-  state->websocket_clients.erase(
-      std::remove(state->websocket_clients.begin(), state->websocket_clients.end(), socket_fd),
-      state->websocket_clients.end());
+  remove_websocket_client(state, socket_fd);
 }
 
 void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
@@ -726,7 +739,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
         std::filesystem::remove(file, error);
         if (error) throw std::runtime_error("failed to delete event media file");
       }
-      state->database->clear_event_media(event->event_id);
+      (void)state->database->clear_event_media(event->event_id);
       broadcast_snapshot(state);
       send_text(socket_fd, json_response(200, "OK", "{\"deleted\":true}",
                                          config.allowed_origin));
