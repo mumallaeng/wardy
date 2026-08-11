@@ -42,5 +42,17 @@ int main() {
   assert(samples.find("\"mediaResource\":\"/api/data-samples/dataset-sample-001/media\"") !=
          std::string::npos);
   assert(samples.find("\"originalFilename\":\"pose.png\"") != std::string::npos);
+  const std::string zones = wardy::api::zones_json({{
+      "zone-1", "주방 입구", 0.1, 0.2, 0.3, 0.4,
+      "2026-08-11T05:00:00Z", "2026-08-11T05:00:00Z",
+  }});
+  assert(zones.find("\"id\":\"zone-1\"") != std::string::npos);
+  assert(zones.find("\"width\":0.300000") != std::string::npos);
+  const std::string notifications = wardy::api::notification_settings_json({
+      {"fall_suspected", true, "2026-08-11T05:00:00Z"},
+      {"inactivity", false, "2026-08-11T05:00:00Z"},
+  });
+  assert(notifications.find("\"fall_suspected\":\"on\"") != std::string::npos);
+  assert(notifications.find("\"inactivity\":\"off\"") != std::string::npos);
   return 0;
 }

@@ -60,7 +60,7 @@ export function renderNotifications(
   onChange: (eventType: EventType, value: NotificationSetting) => void,
 ): void {
   container.replaceChildren();
-  const configurableEventTypes: EventType[] = ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity"];
+  const configurableEventTypes = Object.keys(EVENT_TYPES) as EventType[];
   configurableEventTypes.forEach((eventType) => {
     const row = document.createElement("div");
     row.className = "setting-row";

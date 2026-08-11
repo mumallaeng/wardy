@@ -72,7 +72,7 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "4");
+  assert(store.schema_version() == "5");
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -257,6 +257,40 @@ int main() {
   assert(store.list_dataset_samples().empty());
   assert(!store.delete_dataset_sample("missing").has_value());
 
+  store.upsert_zone({
+      "zone-kitchen", "주방 입구", 0.1, 0.2, 0.3, 0.4,
+      "2026-08-11T00:00:00Z", "2026-08-11T00:00:00Z",
+  });
+  auto zones = store.list_zones();
+  assert(zones.size() == 1);
+  assert(zones[0].name == "주방 입구");
+  assert(zones[0].width == 0.3);
+  assert(store.delete_zone("zone-kitchen"));
+  assert(store.list_zones().empty());
+  assert(!store.delete_zone("missing"));
+
+  store.upsert_notification_setting({
+      "fall_suspected", false, "2026-08-11T00:00:00Z",
+  });
+  auto notification_settings = store.list_notification_settings();
+  assert(notification_settings.size() == 8);
+  auto fall_setting = std::find_if(
+      notification_settings.begin(), notification_settings.end(), [](const auto& setting) {
+        return setting.event_type == "fall_suspected";
+      });
+  assert(fall_setting != notification_settings.end());
+  assert(!fall_setting->enabled);
+  store.upsert_notification_setting({
+      "fall_suspected", true, "2026-08-11T00:01:00Z",
+  });
+  notification_settings = store.list_notification_settings();
+  fall_setting = std::find_if(
+      notification_settings.begin(), notification_settings.end(), [](const auto& setting) {
+        return setting.event_type == "fall_suspected";
+      });
+  assert(fall_setting != notification_settings.end());
+  assert(fall_setting->enabled);
+
   const auto removed_media = store.clear_event_media(event.event_id);
   assert(removed_media == "events/EVT-TEST-001.mp4");
   assert(store.get_event(event.event_id)->media_type == "none");
@@ -278,7 +312,7 @@ int main() {
     {
       wardy::storage::SqliteStore migrated(path.string());
       migrated.initialize();
-      assert(migrated.schema_version() == "4");
+      assert(migrated.schema_version() == "5");
       const auto legacy_events = migrated.list_events();
       assert(legacy_events.size() == 1);
       assert(legacy_events[0].event_id == "EVT-LEGACY");
@@ -325,7 +359,7 @@ int main() {
   const auto retry_path =
       std::filesystem::temp_directory_path() / "wardy-schema-retry.sqlite";
   std::filesystem::remove(retry_path);
-  create_version_database(retry_path, 5);
+  create_version_database(retry_path, 6);
   {
     wardy::storage::SqliteStore retry_store(retry_path.string());
     bool rejected = false;
@@ -344,7 +378,7 @@ int main() {
             nullptr, nullptr, nullptr) == SQLITE_OK);
     assert(sqlite3_close(database) == SQLITE_OK);
     retry_store.initialize();
-    assert(retry_store.schema_version() == "4");
+    assert(retry_store.schema_version() == "5");
   }
   std::filesystem::remove(retry_path);
   return 0;
