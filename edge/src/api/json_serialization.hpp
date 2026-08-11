@@ -2,11 +2,13 @@
 
 #include "storage/sqlite_store.hpp"
 
-#include <iomanip>
 #include <cctype>
+#include <cmath>
+#include <iomanip>
 #include <locale>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,6 +47,9 @@ inline std::string json_string(const std::string& value) {
 }
 
 inline std::string json_number(double value) {
+  if (!std::isfinite(value)) {
+    throw std::invalid_argument("JSON numbers must be finite");
+  }
   std::ostringstream output;
   output.imbue(std::locale::classic());
   output << std::fixed << std::setprecision(6) << value;
