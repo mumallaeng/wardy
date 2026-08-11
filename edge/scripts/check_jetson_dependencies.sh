@@ -40,7 +40,7 @@ if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
   exit 1
 fi
 
-for command_name in cmake c++ flock git gst-inspect-1.0 openssl pkg-config v4l2-ctl; do
+for command_name in cmake c++ curl flock git gst-inspect-1.0 ollama openssl pkg-config v4l2-ctl; do
   require_command "${command_name}"
 done
 
@@ -63,6 +63,22 @@ fi
 
 require_file "${edge_dir}/tools/caddy"
 require_file "${edge_dir}/tools/mediamtx"
+
+versions_file="${edge_dir}/config/jetson-tool-versions.env"
+# shellcheck disable=SC1090
+source "${versions_file}"
+if curl --fail --silent --show-error http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+  echo "ok Ollama loopback API"
+else
+  echo "missing Ollama loopback API" >&2
+  missing=1
+fi
+if ollama list 2>/dev/null | awk 'NR > 1 {print $1}' | grep -Fxq "${WARDY_LLM_MODEL}"; then
+  echo "ok Ollama model ${WARDY_LLM_MODEL}"
+else
+  echo "missing Ollama model ${WARDY_LLM_MODEL}" >&2
+  missing=1
+fi
 
 if [[ -e /dev/video0 ]]; then
   echo "ok camera /dev/video0"
