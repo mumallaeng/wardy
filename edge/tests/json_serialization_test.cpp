@@ -62,5 +62,11 @@ int main() {
   assert(reviews.find("\"mediaResource\":\"/api/identity-reviews/review-1/media\"") !=
          std::string::npos);
   assert(reviews.find("\"confidence\":0.540000") != std::string::npos);
+  const std::string review_without_confidence = wardy::api::identity_reviews_json({{
+      "review-2", "identity/review-2.jpg", "2026-08-11T05:01:00Z",
+      std::nullopt, std::nullopt, "pending", std::nullopt,
+      "2026-08-11T05:01:00Z",
+  }});
+  assert(review_without_confidence.find("\"confidence\":null") != std::string::npos);
   return 0;
 }

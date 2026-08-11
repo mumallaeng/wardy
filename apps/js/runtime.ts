@@ -7,11 +7,11 @@ export interface RuntimeSnapshot {
 }
 
 interface RuntimeCollections {
-  subjects: Subject[];
-  managedItems: ManagedItem[];
-  zones: Zone[];
-  notifications: NotificationSettings;
-  identityReviews: IdentityReview[];
+  subjects: Subject[] | undefined;
+  managedItems: ManagedItem[] | undefined;
+  zones: Zone[] | undefined;
+  notifications: NotificationSettings | undefined;
+  identityReviews: IdentityReview[] | undefined;
 }
 
 type SnapshotHandler = (snapshot: RuntimeSnapshot) => void;
@@ -89,7 +89,7 @@ export class WardyRuntimeClient {
 
   async loadCollections(baseUrl: string, accessToken: string,
                         fallbackOrigin: string): Promise<RuntimeCollections> {
-    const [subjectBody, itemBody, zoneBody, notificationBody, reviewBody] = await Promise.all([
+    const [subjectResult, itemResult, zoneResult, notificationResult, reviewResult] = await Promise.allSettled([
       this.request<{ subjects: Subject[] }>(baseUrl, accessToken, fallbackOrigin, "/api/subjects"),
       this.request<{ managedItems: ManagedItem[] }>(baseUrl, accessToken, fallbackOrigin, "/api/managed-items"),
       this.request<{ zones: Zone[] }>(baseUrl, accessToken, fallbackOrigin, "/api/zones"),
@@ -97,11 +97,11 @@ export class WardyRuntimeClient {
       this.request<{ reviews: IdentityReview[] }>(baseUrl, accessToken, fallbackOrigin, "/api/identity-reviews"),
     ]);
     return {
-      subjects: subjectBody.subjects,
-      managedItems: itemBody.managedItems,
-      zones: zoneBody.zones,
-      notifications: notificationBody.notifications,
-      identityReviews: reviewBody.reviews,
+      subjects: subjectResult.status === "fulfilled" ? subjectResult.value.subjects : undefined,
+      managedItems: itemResult.status === "fulfilled" ? itemResult.value.managedItems : undefined,
+      zones: zoneResult.status === "fulfilled" ? zoneResult.value.zones : undefined,
+      notifications: notificationResult.status === "fulfilled" ? notificationResult.value.notifications : undefined,
+      identityReviews: reviewResult.status === "fulfilled" ? reviewResult.value.reviews : undefined,
     };
   }
 
@@ -229,8 +229,11 @@ export class WardyRuntimeClient {
 
   async resolveIdentityReview(baseUrl: string, accessToken: string,
                               fallbackOrigin: string, reviewId: string,
-                              decision: IdentityReviewDecision,
+                              decision: Exclude<IdentityReviewDecision, "pending">,
                               subjectId: string | null = null): Promise<IdentityReview[]> {
+    if (decision === "subject" && !subjectId) {
+      throw new Error("등록 인물 답변에는 인물 식별자가 필요합니다.");
+    }
     const headers: Record<string, string> = { "X-Wardy-Review-Decision": decision };
     if (decision === "subject" && subjectId) headers["X-Wardy-Subject-Id"] = subjectId;
     const body = await this.request<{ reviews: IdentityReview[] }>(baseUrl, accessToken,

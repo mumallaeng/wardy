@@ -36,6 +36,31 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
   assert.ok(calls.every((call) => call.init.signal instanceof AbortSignal));
 });
 
+test("등록 목록 일부 요청이 실패해도 성공한 collection을 유지한다", async () => {
+  const client = new WardyRuntimeClient(async (url) => {
+    if (String(url).endsWith("/api/subjects")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    if (String(url).endsWith("/api/managed-items")) {
+      return Response.json({ managedItems: [] });
+    }
+    if (String(url).endsWith("/api/zones")) return Response.json({ zones: [] });
+    if (String(url).endsWith("/api/notification-settings")) {
+      return Response.json({ notifications: { fall_suspected: "on" } });
+    }
+    return Response.json({ reviews: [] });
+  });
+
+  const collections = await client.loadCollections(
+    "https://jetson.local:8443", "token", "https://ui.local",
+  );
+  assert.equal(collections.subjects, undefined);
+  assert.deepEqual(collections.managedItems, []);
+  assert.deepEqual(collections.zones, []);
+  assert.deepEqual(collections.notifications, { fall_suspected: "on" });
+  assert.deepEqual(collections.identityReviews, []);
+});
+
 test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {
@@ -61,6 +86,13 @@ test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", a
   assert.equal(reviews[0].decision, "unknown");
   assert.equal(calls[1].init.method, "POST");
   assert.equal(calls[1].init.headers["X-Wardy-Review-Decision"], "unknown");
+  await assert.rejects(
+    client.resolveIdentityReview(
+      "https://jetson.local:8443", "token", "", "review-1", "subject",
+    ),
+    /인물 식별자가 필요합니다/,
+  );
+  assert.equal(calls.length, 2);
 });
 
 test("주의 구역과 알림 설정은 Jetson 운영 설정 API에 저장한다", async () => {

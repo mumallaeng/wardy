@@ -4,6 +4,7 @@
 
 #include <iomanip>
 #include <cctype>
+#include <locale>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -41,6 +42,13 @@ inline std::string json_string(const std::optional<std::string>& value) {
 
 inline std::string json_string(const std::string& value) {
   return "\"" + json_escape(value) + "\"";
+}
+
+inline std::string json_number(double value) {
+  std::ostringstream output;
+  output.imbue(std::locale::classic());
+  output << std::fixed << std::setprecision(6) << value;
+  return output.str();
 }
 
 class JsonValidator {
@@ -251,10 +259,10 @@ inline std::string zones_json(const std::vector<storage::ZoneRecord>& zones) {
     const auto& zone = zones[index];
     body += "{\"id\":" + json_string(zone.zone_id) +
         ",\"name\":" + json_string(zone.name) +
-        ",\"x\":" + std::to_string(zone.x) +
-        ",\"y\":" + std::to_string(zone.y) +
-        ",\"width\":" + std::to_string(zone.width) +
-        ",\"height\":" + std::to_string(zone.height) + "}";
+        ",\"x\":" + json_number(zone.x) +
+        ",\"y\":" + json_number(zone.y) +
+        ",\"width\":" + json_number(zone.width) +
+        ",\"height\":" + json_number(zone.height) + "}";
   }
   return body + "]}";
 }
@@ -284,7 +292,7 @@ inline std::string identity_reviews_json(
         ",\"capturedAt\":" + json_string(review.captured_at) +
         ",\"predictedName\":" + json_string(review.predicted_name) +
         ",\"confidence\":" +
-        (review.confidence ? std::to_string(*review.confidence) : "null") +
+        (review.confidence ? json_number(*review.confidence) : "null") +
         ",\"decision\":" + json_string(review.decision) +
         ",\"subjectId\":" + json_string(review.subject_id) + "}";
   }

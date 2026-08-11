@@ -307,6 +307,15 @@ int main() {
   assert(identity_reviews[0].subject_id == subject.subject_id);
   assert(!store.update_identity_review_decision(
       "missing", "unknown", std::nullopt, "2026-08-11T00:03:00Z"));
+  store.upsert_identity_review({
+      "review-2", "identity/review-2.jpg", "2026-08-11T00:04:00Z",
+      std::nullopt, std::nullopt, "pending", std::nullopt,
+      "2026-08-11T00:04:00Z",
+  });
+  const auto review_without_confidence = store.get_identity_review("review-2");
+  assert(review_without_confidence.has_value());
+  assert(!review_without_confidence->confidence.has_value());
+  assert(!review_without_confidence->predicted_name.has_value());
 
   const auto removed_media = store.clear_event_media(event.event_id);
   assert(removed_media == "events/EVT-TEST-001.mp4");
@@ -318,6 +327,7 @@ int main() {
   assert(store.list_managed_items().empty());
   assert(!store.delete_managed_item(item.item_id));
   assert(store.delete_subject(subject.subject_id));
+  assert(!store.get_identity_review("review-1")->subject_id.has_value());
   assert(store.list_subjects().empty());
   assert(!store.delete_subject(subject.subject_id));
 

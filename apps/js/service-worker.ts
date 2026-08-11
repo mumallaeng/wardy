@@ -1,8 +1,17 @@
 /// <reference lib="webworker" />
 
 const worker = globalThis as unknown as ServiceWorkerGlobalScope;
-const CACHE_NAME = "wardy-app-shell-v1";
+declare const __WARDY_BUILD_ID__: string;
+
+const CACHE_NAME = `wardy-app-shell-${__WARDY_BUILD_ID__}`;
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest"];
+const APP_SHELL_PATHS = new Set(APP_SHELL);
+
+function isApplicationShellPath(pathname: string): boolean {
+  return APP_SHELL_PATHS.has(pathname)
+    || pathname.startsWith("/assets/")
+    || pathname.startsWith("/icons/");
+}
 
 worker.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -18,7 +27,8 @@ worker.addEventListener("activate", (event) => {
 worker.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== worker.location.origin) return;
+  if (request.method !== "GET" || url.origin !== worker.location.origin || url.search
+      || !isApplicationShellPath(url.pathname)) return;
   event.respondWith(fetch(request).then((response) => {
     if (response.ok) {
       const copy = response.clone();
