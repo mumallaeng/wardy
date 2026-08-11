@@ -1,4 +1,140 @@
-import type { IdentityReview, IdentityReviewDecision, Subject } from "./types.ts";
+import type {
+  DatasetReviewStatus,
+  DatasetSample,
+  IdentityReview,
+  IdentityReviewDecision,
+  Subject,
+} from "./types.ts";
+
+export const DATASET_MODELS: ReadonlyArray<readonly [string, string]> = [
+  ["M-01", "사람 탐지·tracking"],
+  ["M-02", "돌봄 대상자 식별"],
+  ["M-03-04", "M-03/4 POSE·자세·행동·정지"],
+  ["M-05", "위험물 탐지·관리 물품 Filter"],
+];
+
+export const DATA_REQUIREMENTS: ReadonlyArray<readonly [string, string]> = [
+  ["DS-001", "사람 탐지·tracking"],
+  ["DS-002", "POSE·자세·행동·낙상"],
+  ["DS-003", "돌봄 대상자 식별"],
+  ["DS-004", "위험물·관리 물품"],
+  ["DS-006", "오탐·미탐 평가"],
+  ["DS-007", "통합 시나리오 평가"],
+  ["DS-009", "식별 검토 feedback"],
+];
+
+export function datasetManifest(
+  datasetVersion: string, samples: readonly DatasetSample[],
+): Record<string, unknown> {
+  const approved = samples.filter((sample) => sample.reviewStatus === "approved");
+  return {
+    schema: "wardy.dataset-manifest.v1",
+    datasetVersion: datasetVersion.trim(),
+    exportedAt: new Date().toISOString(),
+    activeModelChanged: false,
+    sampleCount: approved.length,
+    samples: approved.map((sample) => ({
+      sampleId: sample.id,
+      modelId: sample.modelId,
+      requirementId: sample.requirementId,
+      label: sample.label,
+      captureSession: sample.captureSession,
+      source: sample.source,
+      imagePath: sample.imagePath,
+      originalFilename: sample.originalFilename,
+      capturedAt: sample.capturedAt,
+      width: sample.width,
+      height: sample.height,
+    })),
+  };
+}
+
+function selectOptionLabel(options: ReadonlyArray<readonly [string, string]>, value: string): string {
+  const option = options.find(([id]) => id === value);
+  return option ? `${option[0]} · ${option[1]}` : value;
+}
+
+export function renderDatasetSamples(
+  container: HTMLTableSectionElement,
+  samples: readonly DatasetSample[],
+  onReview: (sampleId: string, label: string, status: DatasetReviewStatus) => void,
+  onPreview: (sampleId: string) => void,
+  onDelete: (sampleId: string) => void,
+): void {
+  container.replaceChildren();
+  [...samples]
+    .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
+    .forEach((sample) => {
+      const row = document.createElement("tr");
+
+      const target = document.createElement("td");
+      const targetName = document.createElement("strong");
+      targetName.textContent = selectOptionLabel(DATASET_MODELS, sample.modelId);
+      const requirement = document.createElement("small");
+      requirement.textContent = selectOptionLabel(DATA_REQUIREMENTS, sample.requirementId);
+      target.append(targetName, requirement);
+
+      const labelCell = document.createElement("td");
+      const label = document.createElement("input");
+      label.className = "dataset-label-input";
+      label.value = sample.label;
+      label.maxLength = 120;
+      label.setAttribute("aria-label", `${sample.id} label`);
+      labelCell.append(label);
+
+      const source = document.createElement("td");
+      const session = document.createElement("strong");
+      session.textContent = sample.captureSession;
+      const sourcePath = document.createElement("small");
+      sourcePath.textContent = `${sample.source === "jetson_camera" ? "Jetson camera" : sample.originalFilename ?? "로컬 파일"} · ${sample.width}×${sample.height}`;
+      const path = document.createElement("small");
+      path.className = "path-text";
+      path.textContent = sample.imagePath;
+      source.append(session, sourcePath, path);
+
+      const review = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = `badge dataset-status is-${sample.reviewStatus}`;
+      badge.textContent = sample.reviewStatus === "approved" ? "승인" : sample.reviewStatus === "rejected" ? "제외" : "검토 대기";
+      review.append(badge);
+
+      const actions = document.createElement("td");
+      actions.className = "row-actions dataset-row-actions";
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "button button-secondary button-small";
+      preview.textContent = "미리보기";
+      preview.addEventListener("click", () => onPreview(sample.id));
+      actions.append(preview);
+      const actionsList: ReadonlyArray<readonly [string, DatasetReviewStatus, string]> = [
+        ["승인", "approved", "button button-small"],
+        ["대기", "pending", "button button-secondary button-small"],
+        ["제외", "rejected", "button button-secondary button-small"],
+      ];
+      actionsList.forEach(([text, status, className]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = className;
+        button.textContent = text;
+        const updateDisabled = () => {
+          button.disabled = sample.reviewStatus === status && label.value.trim() === sample.label;
+        };
+        updateDisabled();
+        label.addEventListener("input", updateDisabled);
+        button.addEventListener("click", () => onReview(sample.id, label.value.trim(), status));
+        actions.append(button);
+      });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "text-button is-danger";
+      remove.textContent = "삭제";
+      remove.addEventListener("click", () => onDelete(sample.id));
+      actions.append(remove);
+
+      row.append(target, labelCell, source, review, actions);
+      container.append(row);
+    });
+}
 
 export function identityFeedbackManifest(
   reviews: readonly IdentityReview[], subjects: readonly Subject[],

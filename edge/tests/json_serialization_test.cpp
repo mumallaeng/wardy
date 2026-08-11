@@ -32,5 +32,15 @@ int main() {
   assert(state_body.find("\"camera_state\":\"connected\"") != std::string::npos);
   const std::string snapshot = wardy::api::runtime_snapshot_json(state, {event});
   assert(snapshot.find("\"events\":[{") != std::string::npos);
+
+  const wardy::storage::DatasetSampleRecord sample{
+      "dataset-sample-001", "M-03-04", "DS-002", "standing", "approved",
+      "session-0811-pm", "local_file", "datasets/sample-001.png", "pose.png",
+      "2026-08-11T05:00:00Z", 640, 480};
+  const std::string samples = wardy::api::dataset_samples_json({sample});
+  assert(samples.find("\"reviewStatus\":\"approved\"") != std::string::npos);
+  assert(samples.find("\"mediaResource\":\"/api/data-samples/dataset-sample-001/media\"") !=
+         std::string::npos);
+  assert(samples.find("\"originalFilename\":\"pose.png\"") != std::string::npos);
   return 0;
 }
