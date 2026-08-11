@@ -39,6 +39,7 @@ int main() {
 
   const std::string prompt = wardy::llm::build_anonymized_prompt("2026-08-11", events);
   assert(prompt.find("총 3건") != std::string::npos);
+  assert(prompt.find("고정 집계 문장(수정 금지)") != std::string::npos);
   assert(prompt.find("거실") != std::string::npos);
   assert(prompt.find("가위") != std::string::npos);
   for (const std::string& private_value : {
