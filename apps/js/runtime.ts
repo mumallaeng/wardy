@@ -1,5 +1,5 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
-import type { DailySummaryResult, EventType, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
+import type { DailySummaryResult, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
 
 export interface RuntimeSnapshot {
   state: SystemState;
@@ -11,6 +11,7 @@ interface RuntimeCollections {
   managedItems: ManagedItem[];
   zones: Zone[];
   notifications: NotificationSettings;
+  identityReviews: IdentityReview[];
 }
 
 type SnapshotHandler = (snapshot: RuntimeSnapshot) => void;
@@ -88,17 +89,19 @@ export class WardyRuntimeClient {
 
   async loadCollections(baseUrl: string, accessToken: string,
                         fallbackOrigin: string): Promise<RuntimeCollections> {
-    const [subjectBody, itemBody, zoneBody, notificationBody] = await Promise.all([
+    const [subjectBody, itemBody, zoneBody, notificationBody, reviewBody] = await Promise.all([
       this.request<{ subjects: Subject[] }>(baseUrl, accessToken, fallbackOrigin, "/api/subjects"),
       this.request<{ managedItems: ManagedItem[] }>(baseUrl, accessToken, fallbackOrigin, "/api/managed-items"),
       this.request<{ zones: Zone[] }>(baseUrl, accessToken, fallbackOrigin, "/api/zones"),
       this.request<{ notifications: NotificationSettings }>(baseUrl, accessToken, fallbackOrigin, "/api/notification-settings"),
+      this.request<{ reviews: IdentityReview[] }>(baseUrl, accessToken, fallbackOrigin, "/api/identity-reviews"),
     ]);
     return {
       subjects: subjectBody.subjects,
       managedItems: itemBody.managedItems,
       zones: zoneBody.zones,
       notifications: notificationBody.notifications,
+      identityReviews: reviewBody.reviews,
     };
   }
 
@@ -222,6 +225,31 @@ export class WardyRuntimeClient {
         }),
       });
     return body.notifications;
+  }
+
+  async resolveIdentityReview(baseUrl: string, accessToken: string,
+                              fallbackOrigin: string, reviewId: string,
+                              decision: IdentityReviewDecision,
+                              subjectId: string | null = null): Promise<IdentityReview[]> {
+    const headers: Record<string, string> = { "X-Wardy-Review-Decision": decision };
+    if (decision === "subject" && subjectId) headers["X-Wardy-Subject-Id"] = subjectId;
+    const body = await this.request<{ reviews: IdentityReview[] }>(baseUrl, accessToken,
+      fallbackOrigin, `/api/identity-reviews/${encodeURIComponent(reviewId)}`, {
+        method: "POST", headers: encodedHeaders(headers),
+      });
+    return body.reviews;
+  }
+
+  async loadIdentityReviewMedia(baseUrl: string, accessToken: string,
+                                fallbackOrigin: string, reviewId: string): Promise<Blob> {
+    if (!accessToken) throw new Error("Jetson 데이터 API 토큰이 필요합니다.");
+    const response = await this.fetchImpl(endpoint(baseUrl,
+      `/api/identity-reviews/${encodeURIComponent(reviewId)}/media`, fallbackOrigin), {
+      headers: { "X-Wardy-Access-Token": accessToken }, cache: "no-store",
+      signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`식별 검토 장면을 불러오지 못했습니다. HTTP ${response.status}`);
+    return response.blob();
   }
 
   connect(baseUrl: string, accessToken: string, fallbackOrigin: string,

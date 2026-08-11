@@ -85,6 +85,7 @@ export type DatasetSampleSource = "jetson_camera" | "local_file";
 export interface IdentityReview {
   id: string;
   imagePath: string;
+  mediaResource: string;
   capturedAt: string;
   predictedName: string | null;
   confidence: number | null;
