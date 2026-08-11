@@ -3,6 +3,26 @@ import assert from "node:assert/strict";
 
 import { MemoryStorage, WardyStore } from "../../apps/js/store.ts";
 
+const eventFixture = (id = "EVT-TEST-001") => ({
+  event_id: id, event_type: "fall_suspected", occurred_at: "2026-08-11T00:00:00Z",
+  first_seen_at: "2026-08-11T00:00:00Z", last_seen_at: "2026-08-11T00:00:01Z",
+  subject_id: "subject-test", subject_name: "돌봄 대상", subject_location: "거실",
+  object_id: null, object_class: null, zone_id: null, care_status: "emergency",
+  event_status: "new", confirmed_at: null, released_at: null, false_detection_at: null,
+  reason: "확인이 필요한 의심 상황", source_results: [], media_type: "video",
+  media_path: `${id}.mp4`, media_started_at: "2026-08-10T23:59:55Z",
+  media_ended_at: "2026-08-11T00:00:05Z",
+});
+
+const subjectFixture = () => ({
+  id: "subject-test", name: "돌봄 대상", role: "돌봄 대상",
+  createdAt: "2026-08-11T00:00:00Z", referenceSampleCount: 0,
+});
+
+const managedItemFixture = () => ({
+  id: "item-test", label: "가위", policy: "included", sampleCount: 0,
+});
+
 test("상태와 설정을 로컬 저장소에 보존한다", () => {
   const storage = new MemoryStorage();
   const store = new WardyStore(storage, "test-state");
@@ -113,13 +133,13 @@ test("Jetson runtime 목록에서 계약을 위반한 항목을 제외한다", (
     event_state: "ready",
     reason: "ready",
     updated_at: "2026-08-10T00:00:00Z",
-  }, [initial.events[0], { event_id: "broken" }]);
-  store.replaceSubjects([initial.subjects[0], { id: "broken" }]);
-  store.replaceManagedItems([initial.managedItems[0], { id: "broken" }]);
+  }, [eventFixture(), { event_id: "broken" }]);
+  store.replaceSubjects([subjectFixture(), { id: "broken" }]);
+  store.replaceManagedItems([managedItemFixture(), { id: "broken" }]);
   const restored = store.getState();
-  assert.deepEqual(restored.events.map((event) => event.event_id), [initial.events[0].event_id]);
-  assert.deepEqual(restored.subjects.map((subject) => subject.id), [initial.subjects[0].id]);
-  assert.deepEqual(restored.managedItems.map((item) => item.id), [initial.managedItems[0].id]);
+  assert.deepEqual(restored.events.map((event) => event.event_id), ["EVT-TEST-001"]);
+  assert.deepEqual(restored.subjects.map((subject) => subject.id), ["subject-test"]);
+  assert.deepEqual(restored.managedItems.map((item) => item.id), ["item-test"]);
 });
 
 test("기존 Jetson 설정을 자동 연결 형식으로 이전하고 media port를 교정한다", () => {
@@ -170,8 +190,8 @@ test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
   }));
 
   const restored = new WardyStore(storage, "broken-state").getState();
-  assert.equal(restored.careState.status, "normal");
-  assert.ok(restored.managedItems.length > 0);
+  assert.equal(restored.careState.status, null);
+  assert.deepEqual(restored.managedItems, []);
   assert.ok(Array.isArray(restored.zones));
   assert.ok(Array.isArray(restored.subjects));
   assert.doesNotMatch(storage.getItem("broken-state"), /stale-(?:token|viewer-token)/);
@@ -181,12 +201,12 @@ test("상속된 enum key가 포함된 저장 상태를 거부한다", () => {
   const storage = new MemoryStorage();
   const modified = new WardyStore(storage, "source-state").getState();
   modified.careState.status = "warning";
-  modified.events[0].care_status = "toString";
+  modified.events = [{ ...eventFixture(), care_status: "toString" }];
   storage.setItem("inherited-key-state", JSON.stringify(modified));
 
   const restored = new WardyStore(storage, "inherited-key-state").getState();
-  assert.equal(restored.careState.status, "normal");
-  assert.notEqual(restored.events[0].care_status, "toString");
+  assert.equal(restored.careState.status, null);
+  assert.deepEqual(restored.events, []);
 });
 
 test("잘못된 식별 검토 배열이 포함된 저장 상태를 거부한다", () => {
@@ -197,13 +217,16 @@ test("잘못된 식별 검토 배열이 포함된 저장 상태를 거부한다"
   storage.setItem("invalid-review-state", JSON.stringify(modified));
 
   const restored = new WardyStore(storage, "invalid-review-state").getState();
-  assert.equal(restored.careState.status, "normal");
+  assert.equal(restored.careState.status, null);
   assert.deepEqual(restored.identityReviews, []);
 });
 
 test("이벤트 확인, 오탐, 미디어 삭제 상태를 갱신한다", () => {
   const store = new WardyStore(new MemoryStorage());
-  const [first, second] = store.getState().events;
+  const first = eventFixture("EVT-TEST-001");
+  const second = eventFixture("EVT-TEST-002");
+  store.addEvent(second);
+  store.addEvent(first);
 
   store.confirmEvent(first.event_id, "2026-08-05T01:00:00.000Z");
   store.markFalseDetection(second.event_id, "2026-08-05T01:01:00.000Z");
@@ -226,7 +249,7 @@ test("초기화하면 독립된 초기 상태로 돌아간다", () => {
   store.addManagedItem("테스트 물품", "excluded");
 
   const state = store.reset();
-  assert.equal(state.careState.status, "normal");
+  assert.equal(state.careState.status, null);
   assert.equal(state.managedItems.length, initialItemCount);
   assert.equal(state.managedItems.some((item) => item.label === "테스트 물품"), false);
 });
@@ -244,6 +267,7 @@ test("관리 물품의 Jetson 학습 사진 수를 보존한다", () => {
 test("인물 기준 사진 수와 식별 검토 답변을 로컬에 저장한다", () => {
   const storage = new MemoryStorage();
   const store = new WardyStore(storage, "identity-feedback");
+  store.addSubject("돌봄 대상", "돌봄 대상");
   const subject = store.getState().subjects[0];
   store.setSubjectReferenceSampleCount(subject.id, 4);
   store.addIdentityReview({
@@ -284,7 +308,7 @@ test("제거된 관리 물품 이동 event를 제외하고 기존 상태를 복�
   const storage = new MemoryStorage();
   const initial = new WardyStore(null).getState();
   initial.careState.status = "warning";
-  initial.events.push({ ...initial.events[0], event_id: "EVT-LEGACY", event_type: "managed_item_moved" });
+  initial.events.push({ ...eventFixture("EVT-LEGACY"), event_type: "managed_item_moved" });
   initial.settings.notifications.managed_item_moved = "on";
   storage.setItem("legacy-managed-item-event", JSON.stringify(initial));
 

@@ -93,7 +93,6 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .camera-stage.is-zone-drawing canvas { cursor: crosshair; pointer-events: auto; }
 .camera-empty { position: absolute; display: grid; gap: 7px; max-width: 430px; padding: 20px; color: #dce8df; text-align: center; }
 .camera-empty span { color: #9eb0a4; font-size: .86rem; }
-.demo-watermark { position: absolute; top: 12px; left: 12px; padding: 5px 9px; border: 1px solid rgba(255,255,255,.23); border-radius: 99px; color: white; background: rgba(16,24,19,.72); font-size: .7rem; }
 .overlay-switches { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 15px; color: var(--muted); font-size: .82rem; }
 .overlay-switches label, .setting-row label { display: flex; align-items: center; gap: 7px; }
 .overlay-switches input[type="checkbox"] { width: 17px; min-height: 17px; height: 17px; margin: 0; padding: 0; accent-color: var(--forest-2); }

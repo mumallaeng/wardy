@@ -1,4 +1,4 @@
-import type { CareStatus, Detection, EventStatus, EventType, OverlaySettingKey, WardyEvent, WardyState } from "./types.ts";
+import type { CareStatus, EventStatus, EventType, OverlaySettingKey, WardyState } from "./types.ts";
 
 export const CARE_STATUS: Readonly<Record<CareStatus, { label: string; reason: string; rank: number }>> = Object.freeze({
   normal: { label: "기본", reason: "활성화된 안전 이벤트가 없습니다.", rank: 0 },
@@ -32,105 +32,8 @@ export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: stri
   { key: "showPosture", label: "자세·행동", description: "서 있음·앉음 등 상태 표시" },
 ]);
 
-export const DEMO_DETECTIONS: ReadonlyArray<Detection> = Object.freeze([
-  { id: "person-demo-01", box: [0.18, 0.16, 0.27, 0.64], className: "사람", role: "돌봄 대상", name: "조정민", posture: "서 있음", color: "#f4c85b" },
-  { id: "object-demo-01", box: [0.66, 0.57, 0.16, 0.18], className: "가위", role: "관리 위험물", name: "", posture: "", color: "#ef6b61" },
-]);
-
 /**
- * Creates an ISO 8601 timestamp for a specified number of minutes before the current time.
- *
- * @param minutes - The number of minutes to subtract from the current time
- * @returns The resulting ISO 8601 timestamp
- */
-function isoMinutesAgo(minutes: number): string {
-  return new Date(Date.now() - minutes * 60_000).toISOString();
-}
-
-/**
- * Creates the predefined demo events used to populate the application.
- *
- * @returns An array of sample hazardous-proximity, hazard-detected, and inactivity events
- */
-export function createDemoEvents(): WardyEvent[] {
-  return [
-    {
-      event_id: "EVT-DEMO-003",
-      event_type: "hazard_proximity",
-      occurred_at: isoMinutesAgo(8),
-      first_seen_at: isoMinutesAgo(8),
-      last_seen_at: isoMinutesAgo(7),
-      subject_id: "subject-demo-01",
-      subject_name: "조정민",
-      subject_location: "거실",
-      object_id: "object-demo-01",
-      object_class: "가위",
-      zone_id: null,
-      care_status: "warning",
-      event_status: "new",
-      confirmed_at: null,
-      released_at: null,
-      false_detection_at: null,
-      reason: "위험물과 돌봄 대상자가 가까운 UI 예시입니다.",
-      source_results: [{ source: "ui_demo_fixture", note: "AI 결과가 아님" }],
-      media_type: "video",
-      media_path: "demo/media/EVT-DEMO-003.mp4",
-      media_started_at: isoMinutesAgo(8.08),
-      media_ended_at: isoMinutesAgo(7.92),
-    },
-    {
-      event_id: "EVT-DEMO-002",
-      event_type: "hazard_detected",
-      occurred_at: isoMinutesAgo(28),
-      first_seen_at: isoMinutesAgo(28),
-      last_seen_at: isoMinutesAgo(27),
-      subject_id: "subject-demo-01",
-      subject_name: "조정민",
-      subject_location: "주방 입구",
-      object_id: "object-demo-01",
-      object_class: "가위",
-      zone_id: null,
-      care_status: "caution",
-      event_status: "confirmed",
-      confirmed_at: isoMinutesAgo(25),
-      released_at: null,
-      false_detection_at: null,
-      reason: "관리 대상 위험물이 표시된 UI 예시입니다.",
-      source_results: [{ source: "ui_demo_fixture", note: "AI 결과가 아님" }],
-      media_type: "image",
-      media_path: "demo/media/EVT-DEMO-002.jpg",
-      media_started_at: null,
-      media_ended_at: null,
-    },
-    {
-      event_id: "EVT-DEMO-001",
-      event_type: "inactivity",
-      occurred_at: isoMinutesAgo(74),
-      first_seen_at: isoMinutesAgo(74),
-      last_seen_at: isoMinutesAgo(69),
-      subject_id: "subject-demo-01",
-      subject_name: "조정민",
-      subject_location: "소파 주변",
-      object_id: null,
-      object_class: null,
-      zone_id: null,
-      care_status: "warning",
-      event_status: "released",
-      confirmed_at: isoMinutesAgo(72),
-      released_at: isoMinutesAgo(69),
-      false_detection_at: null,
-      reason: "장시간 정지 이벤트 처리 흐름의 UI 예시입니다.",
-      source_results: [{ source: "ui_demo_fixture", note: "AI 결과가 아님" }],
-      media_type: "video",
-      media_path: "demo/media/EVT-DEMO-001.mp4",
-      media_started_at: isoMinutesAgo(74.08),
-      media_ended_at: isoMinutesAgo(73.92),
-    },
-  ];
-}
-
-/**
- * Creates the initial application state with default settings, managed items, demo events, and a demo care subject.
+ * Creates the initial application state without simulated operational data.
  *
  * @returns The initial application state
  */
@@ -138,8 +41,8 @@ export function createInitialState(): WardyState {
   const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return {
     version: 1,
-    careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
-    events: createDemoEvents(),
+    careState: { status: null, reason: "Jetson 연결 뒤 안전 상태를 확인합니다.", updatedAt: new Date().toISOString(), source: "manual_ui" },
+    events: [],
     settings: {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
       notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
@@ -147,48 +50,10 @@ export function createInitialState(): WardyState {
       jetson: { baseUrl: "" },
       dataWorkspace: { captureSession: `session-${day}`, datasetVersion: `wardy-${day}-v1` },
     },
-    managedItems: [
-      { id: "item-scissors", label: "가위", policy: "included" },
-      { id: "item-cutter", label: "커터칼", policy: "included" },
-      { id: "item-kitchen-knife", label: "주방 칼", policy: "excluded" },
-    ],
+    managedItems: [],
     zones: [],
-    subjects: [{ id: "subject-demo-01", name: "조정민", role: "돌봄 대상", createdAt: new Date().toISOString() }],
+    subjects: [],
     identityReviews: [],
     datasetSamples: [],
-  };
-}
-
-/**
- * Creates a demo fall-suspected event with current timestamps and sequence-based identifiers.
- *
- * @param sequence - The numeric suffix used for the event and media identifiers
- * @returns A new emergency event in the unconfirmed state
- */
-export function createDemoEvent(sequence: number): WardyEvent {
-  const now = new Date().toISOString();
-  return {
-    event_id: `EVT-DEMO-${String(sequence).padStart(3, "0")}`,
-    event_type: "fall_suspected",
-    occurred_at: now,
-    first_seen_at: now,
-    last_seen_at: now,
-    subject_id: "subject-demo-01",
-    subject_name: "조정민",
-    subject_location: "거실",
-    object_id: null,
-    object_class: null,
-    zone_id: null,
-    care_status: "emergency",
-    event_status: "new",
-    confirmed_at: null,
-    released_at: null,
-    false_detection_at: null,
-    reason: "낙상 의심 이벤트 화면을 확인하기 위한 demo fixture입니다.",
-    source_results: [{ source: "ui_demo_fixture", note: "AI 결과가 아님" }],
-    media_type: "video",
-    media_path: `demo/media/EVT-DEMO-${String(sequence).padStart(3, "0")}.mp4`,
-    media_started_at: new Date(Date.now() - 5_000).toISOString(),
-    media_ended_at: new Date(Date.now() + 5_000).toISOString(),
   };
 }

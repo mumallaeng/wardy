@@ -1,4 +1,4 @@
-import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES } from "./constants.ts";
+import { CARE_STATUS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { JetsonCredentialStore } from "./credentials.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
@@ -14,7 +14,7 @@ import { renderManagedItems, renderNotifications, renderOverlaySettings, renderS
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, CareStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
+import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -57,7 +57,6 @@ const store = new WardyStore(window.localStorage);
 const credentialStore = new JetsonCredentialStore(window.sessionStorage);
 const trainingSamples = new TrainingSampleClient();
 const runtime = new WardyRuntimeClient();
-let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
@@ -228,7 +227,7 @@ function openView(viewName: ViewName): void {
 
 const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLVideoElement>("#camera"), (zone) => {
   store.addZone(zone);
-  toast(`'${zone.name}' 구역을 로컬에 저장했습니다.`);
+  toast(`'${zone.name}' 구역을 저장했습니다.`);
 });
 
 /**
@@ -739,9 +738,6 @@ function render(state: WardyState = store.getState()): void {
   if (document.activeElement !== viewerTokenInput) viewerTokenInput.value = credentials.viewerToken;
   const configured = state.settings.jetson.baseUrl || window.location.origin;
   $("#jetson-resolved-url").textContent = configured;
-  $$("#care-state-controls button").forEach((button) => {
-    (button as HTMLButtonElement).disabled = state.careState.source === "jetson_runtime";
-  });
   renderSystemState();
 }
 
@@ -777,31 +773,9 @@ $("#mirror-camera").addEventListener("click", () => {
   toast(mirrored ? "카메라 거울 모드를 켰습니다." : "카메라 거울 모드를 껐습니다.");
 });
 $("#stop-camera").addEventListener("click", () => { camera.stop(); toast("Jetson 카메라 stream 연결을 중지했습니다."); });
-$("#toggle-demo-overlay").addEventListener("click", (event: Event) => {
-  demoOverlayEnabled = !demoOverlayEnabled;
-  overlay.setDetections(demoOverlayEnabled ? DEMO_DETECTIONS : []);
-  $("#demo-watermark").hidden = !demoOverlayEnabled;
-  (event.currentTarget as HTMLButtonElement).textContent = demoOverlayEnabled ? "표시 예시 끄기" : "표시 예시 켜기";
-});
 $$<HTMLInputElement>('[data-overlay-setting]').forEach((input) => input.addEventListener("change", () => {
   store.setOverlaySetting(input.dataset.overlaySetting as OverlaySettingKey, input.checked);
 }));
-$$<HTMLButtonElement>('#care-state-controls button').forEach((button) => button.addEventListener("click", () => {
-  const status = button.dataset.careStatus as CareStatus;
-  store.setCareState(status);
-}));
-
-$("#demo-event").addEventListener("click", async () => {
-  try {
-    const connection = runtimeConnection();
-    await runtime.createDebugEvent(connection.baseUrl, connection.accessToken, connection.origin);
-    if (!runtime.isConnected()) {
-      applyRuntimeSnapshot(await runtime.loadSnapshot(
-        connection.baseUrl, connection.accessToken, connection.origin));
-    }
-    toast("AI와 연결되지 않은 runtime 검증 event를 Jetson에 저장했습니다.");
-  } catch (error) { toast(errorMessage(error)); }
-});
 $("#generate-ai-summary").addEventListener("click", () => { void generateDailySummary(); });
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
@@ -855,16 +829,6 @@ $("#draw-zone").addEventListener("click", () => { openView("dashboard"); overlay
 $("#export-events").addEventListener("click", () => {
   downloadJson(`wardy-events-${new Date().toISOString().slice(0, 10)}.json`, store.getState().events);
 });
-$("#add-review-demo").addEventListener("click", () => {
-  const sequence = store.getState().identityReviews.length + 1;
-  store.addIdentityReview({
-    imagePath: `demo/identity/review-${String(sequence).padStart(3, "0")}.jpg`,
-    capturedAt: new Date().toISOString(),
-    predictedName: sequence % 2 ? "조정민" : null,
-    confidence: sequence % 2 ? 0.54 : 0.31,
-  });
-  toast("AI 결과가 아닌 식별 검토 UI 예시를 추가했습니다.");
-});
 $("#export-identity-feedback").addEventListener("click", () => {
   const state = store.getState();
   downloadJson(
@@ -907,7 +871,7 @@ $<HTMLInputElement>("#dataset-file-input").addEventListener("change", (event) =>
 });
 $<HTMLInputElement>("#dataset-session").addEventListener("change", saveDataWorkspaceSettings);
 $<HTMLInputElement>("#dataset-version").addEventListener("change", saveDataWorkspaceSettings);
-$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
+$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy 화면 설정과 연결 정보를 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("브라우저 설정을 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
