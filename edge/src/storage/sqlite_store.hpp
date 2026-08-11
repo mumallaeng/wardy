@@ -78,6 +78,21 @@ struct SubjectReferenceSampleRecord {
   int height = 0;
 };
 
+struct DatasetSampleRecord {
+  std::string sample_id;
+  std::string model_id;
+  std::string requirement_id;
+  std::string label;
+  std::string review_status;
+  std::string capture_session;
+  std::string source;
+  std::string image_path;
+  std::optional<std::string> original_filename;
+  std::string captured_at;
+  int width = 0;
+  int height = 0;
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -113,6 +128,12 @@ class SqliteStore {
   void add_subject_reference_sample(const SubjectReferenceSampleRecord& sample);
   [[nodiscard]] std::size_t count_subject_reference_samples(
       const std::string& subject_id) const;
+  void add_dataset_sample(const DatasetSampleRecord& sample);
+  [[nodiscard]] std::vector<DatasetSampleRecord> list_dataset_samples() const;
+  bool update_dataset_sample(const std::string& sample_id, const std::string& label,
+                             const std::string& review_status);
+  [[nodiscard]] std::optional<std::string> delete_dataset_sample(
+      const std::string& sample_id);
   [[nodiscard]] std::optional<std::string> clear_event_media(
       const std::string& event_id);
   [[nodiscard]] std::string schema_version() const;

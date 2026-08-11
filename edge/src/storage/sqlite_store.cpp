@@ -190,7 +190,7 @@ void SqliteStore::initialize() {
         throw std::runtime_error(sqlite3_errmsg(impl_->database));
       }
     }
-    if (stored_version < 0 || stored_version > 3) {
+    if (stored_version < 0 || stored_version > 4) {
       throw std::runtime_error("unsupported SQLite schema version: " +
                                std::to_string(stored_version));
     }
@@ -276,10 +276,29 @@ void SqliteStore::initialize() {
     );
     CREATE INDEX IF NOT EXISTS subject_reference_samples_subject_idx
       ON subject_reference_samples(subject_id, captured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS dataset_samples (
+      sample_id TEXT PRIMARY KEY,
+      model_id TEXT NOT NULL,
+      requirement_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      review_status TEXT NOT NULL CHECK(review_status IN ('pending','approved','rejected')),
+      capture_session TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('jetson_camera','local_file')),
+      image_path TEXT NOT NULL UNIQUE,
+      original_filename TEXT,
+      captured_at TEXT NOT NULL,
+      width INTEGER NOT NULL CHECK(width > 0),
+      height INTEGER NOT NULL CHECK(height > 0)
+    );
+    CREATE INDEX IF NOT EXISTS dataset_samples_model_idx
+      ON dataset_samples(model_id, requirement_id, captured_at DESC);
+    CREATE INDEX IF NOT EXISTS dataset_samples_review_idx
+      ON dataset_samples(review_status, captured_at DESC);
     )SQL");
-      if (stored_version < 3) {
+      if (stored_version < 4) {
         execute(impl_->database, R"SQL(
-        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '3')
+        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '4')
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
       )SQL");
       }
@@ -635,6 +654,90 @@ std::size_t SqliteStore::count_subject_reference_samples(
     throw std::runtime_error(sqlite3_errmsg(impl_->database));
   }
   return static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 0));
+}
+
+void SqliteStore::add_dataset_sample(const DatasetSampleRecord& sample) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO dataset_samples(
+      sample_id, model_id, requirement_id, label, review_status, capture_session,
+      source, image_path, original_filename, captured_at, width, height
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?);
+  )SQL");
+  bind_text(statement.get(), 1, sample.sample_id);
+  bind_text(statement.get(), 2, sample.model_id);
+  bind_text(statement.get(), 3, sample.requirement_id);
+  bind_text(statement.get(), 4, sample.label);
+  bind_text(statement.get(), 5, sample.review_status);
+  bind_text(statement.get(), 6, sample.capture_session);
+  bind_text(statement.get(), 7, sample.source);
+  bind_text(statement.get(), 8, sample.image_path);
+  bind_optional_text(statement.get(), 9, sample.original_filename);
+  bind_text(statement.get(), 10, sample.captured_at);
+  sqlite3_bind_int(statement.get(), 11, sample.width);
+  sqlite3_bind_int(statement.get(), 12, sample.height);
+  require_done(impl_->database, statement.get());
+}
+
+std::vector<DatasetSampleRecord> SqliteStore::list_dataset_samples() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT sample_id, model_id, requirement_id, label, review_status,
+           capture_session, source, image_path, original_filename, captured_at,
+           width, height
+    FROM dataset_samples ORDER BY captured_at DESC;
+  )SQL");
+  std::vector<DatasetSampleRecord> samples;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    samples.push_back({
+        column_text(statement.get(), 0), column_text(statement.get(), 1),
+        column_text(statement.get(), 2), column_text(statement.get(), 3),
+        column_text(statement.get(), 4), column_text(statement.get(), 5),
+        column_text(statement.get(), 6), column_text(statement.get(), 7),
+        optional_column_text(statement.get(), 8), column_text(statement.get(), 9),
+        sqlite3_column_int(statement.get(), 10), sqlite3_column_int(statement.get(), 11),
+    });
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return samples;
+}
+
+bool SqliteStore::update_dataset_sample(const std::string& sample_id,
+                                        const std::string& label,
+                                        const std::string& review_status) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    UPDATE dataset_samples SET label=?, review_status=? WHERE sample_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, label);
+  bind_text(statement.get(), 2, review_status);
+  bind_text(statement.get(), 3, sample_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
+std::optional<std::string> SqliteStore::delete_dataset_sample(
+    const std::string& sample_id) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  std::optional<std::string> image_path;
+  {
+    Statement select(impl_->database,
+                     "SELECT image_path FROM dataset_samples WHERE sample_id=?;");
+    bind_text(select.get(), 1, sample_id);
+    const int result = sqlite3_step(select.get());
+    if (result == SQLITE_DONE) return std::nullopt;
+    if (result != SQLITE_ROW) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+    image_path = column_text(select.get(), 0);
+  }
+  Statement remove(impl_->database, "DELETE FROM dataset_samples WHERE sample_id=?;");
+  bind_text(remove.get(), 1, sample_id);
+  require_done(impl_->database, remove.get());
+  return image_path;
 }
 
 std::optional<std::string> SqliteStore::clear_event_media(

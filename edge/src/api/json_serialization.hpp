@@ -244,4 +244,26 @@ inline std::string managed_items_json(
   return body + "]}";
 }
 
+inline std::string dataset_samples_json(
+    const std::vector<storage::DatasetSampleRecord>& samples) {
+  std::string body = "{\"samples\":[";
+  for (std::size_t index = 0; index < samples.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& sample = samples[index];
+    body += "{\"id\":" + json_string(sample.sample_id) +
+        ",\"modelId\":" + json_string(sample.model_id) +
+        ",\"requirementId\":" + json_string(sample.requirement_id) +
+        ",\"label\":" + json_string(sample.label) +
+        ",\"reviewStatus\":" + json_string(sample.review_status) +
+        ",\"captureSession\":" + json_string(sample.capture_session) +
+        ",\"source\":" + json_string(sample.source) +
+        ",\"imagePath\":" + json_string(sample.image_path) +
+        ",\"originalFilename\":" + json_string(sample.original_filename) +
+        ",\"capturedAt\":" + json_string(sample.captured_at) +
+        ",\"width\":" + std::to_string(sample.width) +
+        ",\"height\":" + std::to_string(sample.height) + "}";
+  }
+  return body + "]}";
+}
+
 }  // namespace wardy::api

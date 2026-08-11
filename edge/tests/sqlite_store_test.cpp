@@ -71,7 +71,7 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "3");
+  assert(store.schema_version() == "4");
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -178,6 +178,33 @@ int main() {
   assert(subjects.size() == 1);
   assert(subjects[0].reference_sample_count == 1);
 
+  store.add_dataset_sample({
+      "dataset-sample-001",
+      "M-01",
+      "DS-001",
+      "person",
+      "pending",
+      "session-0811-am",
+      "jetson_camera",
+      "datasets/M-01/session-0811-am/dataset-sample-001.jpg",
+      std::nullopt,
+      "2026-08-11T00:00:00Z",
+      640,
+      480,
+  });
+  auto dataset_samples = store.list_dataset_samples();
+  assert(dataset_samples.size() == 1);
+  assert(dataset_samples[0].model_id == "M-01");
+  assert(dataset_samples[0].review_status == "pending");
+  assert(store.update_dataset_sample("dataset-sample-001", "care-person", "approved"));
+  dataset_samples = store.list_dataset_samples();
+  assert(dataset_samples[0].label == "care-person");
+  assert(dataset_samples[0].review_status == "approved");
+  assert(store.delete_dataset_sample("dataset-sample-001") ==
+         "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
+  assert(store.list_dataset_samples().empty());
+  assert(!store.delete_dataset_sample("missing").has_value());
+
   const auto removed_media = store.clear_event_media(event.event_id);
   assert(removed_media == "events/EVT-TEST-001.mp4");
   assert(store.get_event(event.event_id)->media_type == "none");
@@ -199,7 +226,7 @@ int main() {
     {
       wardy::storage::SqliteStore migrated(path.string());
       migrated.initialize();
-      assert(migrated.schema_version() == "3");
+      assert(migrated.schema_version() == "4");
       const auto legacy_events = migrated.list_events();
       assert(legacy_events.size() == 1);
       assert(legacy_events[0].event_id == "EVT-LEGACY");
@@ -246,7 +273,7 @@ int main() {
   const auto retry_path =
       std::filesystem::temp_directory_path() / "wardy-schema-retry.sqlite";
   std::filesystem::remove(retry_path);
-  create_version_database(retry_path, 4);
+  create_version_database(retry_path, 5);
   {
     wardy::storage::SqliteStore retry_store(retry_path.string());
     bool rejected = false;
@@ -265,7 +292,7 @@ int main() {
             nullptr, nullptr, nullptr) == SQLITE_OK);
     assert(sqlite3_close(database) == SQLITE_OK);
     retry_store.initialize();
-    assert(retry_store.schema_version() == "3");
+    assert(retry_store.schema_version() == "4");
   }
   std::filesystem::remove(retry_path);
   return 0;

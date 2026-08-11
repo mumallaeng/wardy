@@ -202,6 +202,19 @@ test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", a
   assert.match(source, /std::filesystem::path\("subjects"\)/);
 });
 
+test("데이터 작업실은 camera와 로컬 파일 원본을 Jetson SQLite에 연결한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const storage = await readFile(path.join(root, "edge/src/storage/sqlite_store.cpp"), "utf8");
+  assert.match(source, /path == "\/api\/data-samples\/camera"/);
+  assert.match(source, /path == "\/api\/data-samples\/upload"/);
+  assert.match(source, /cv::imdecode/);
+  assert.match(source, /maximum_body_size = 8 \* 1024 \* 1024/);
+  assert.match(source, /std::filesystem::path\("datasets"\)/);
+  assert.match(storage, /CREATE TABLE IF NOT EXISTS dataset_samples/);
+  assert.match(storage, /review_status IN \('pending','approved','rejected'\)/);
+  assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+});
+
 test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한다", async () => {
   const media = await readFile(path.join(root, "edge/src/media/event_media.cpp"), "utf8");
   const mediaHeader = await readFile(path.join(root, "edge/src/media/event_media.hpp"), "utf8");
