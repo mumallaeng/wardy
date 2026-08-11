@@ -170,6 +170,8 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(example, /WARDY_ACCESS_TOKEN=/);
   assert.match(example, /WARDY_VIEWER_TOKEN=/);
   assert.match(example, /WARDY_PUBLISH_TOKEN=/);
+  assert.match(example, /^WARDY_UI_ORIGIN=http:\/\/localhost:8000$/m);
+  assert.doesNotMatch(example, /WINDOWS_PC_LAN_IP/);
 });
 
 test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
