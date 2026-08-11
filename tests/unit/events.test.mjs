@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { filterEvents, sortEvents, summarizeEvents } from "../../apps/js/events.ts";
+import { filterEvents, kstDateKey, sortEvents, summarizeEvents } from "../../apps/js/events.ts";
 
 const events = [
   { event_id: "normal", care_status: "normal", event_status: "new", event_type: "EVT-001", occurred_at: "2026-08-05T10:00:00+09:00", reason: "일상", subject_name: "김연우" },
@@ -23,4 +23,14 @@ test("상태와 검색어로 이벤트를 필터링한다", () => {
 test("오늘 발생한 이벤트만 상태별로 집계한다", () => {
   const summary = summarizeEvents(events, new Date("2026-08-05T15:00:00+09:00"));
   assert.deepEqual(summary, { total: 3, normal: 1, caution: 0, warning: 0, emergency: 1, unconfirmed: 2 });
+});
+
+test("한국 시간 자정 경계에서 날짜를 일관되게 계산한다", () => {
+  assert.equal(kstDateKey(new Date("2026-08-10T14:59:59Z")), "2026-08-10");
+  assert.equal(kstDateKey(new Date("2026-08-10T15:00:00Z")), "2026-08-11");
+  const boundaryEvents = [
+    { ...events[0], event_id: "before", occurred_at: "2026-08-10T14:59:59Z" },
+    { ...events[0], event_id: "at", occurred_at: "2026-08-10T15:00:00Z" },
+  ];
+  assert.equal(summarizeEvents(boundaryEvents, new Date("2026-08-10T15:00:00Z")).total, 1);
 });

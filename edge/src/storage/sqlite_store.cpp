@@ -415,6 +415,25 @@ std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
   return collect_events(impl_->database, statement.get());
 }
 
+std::vector<EventRecord> SqliteStore::list_events_for_kst_date(
+    const std::string& date) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT event_id,event_type,occurred_at,first_seen_at,last_seen_at,
+           subject_id,subject_name,subject_location,object_id,object_class,zone_id,
+           care_status,event_status,confirmed_at,released_at,false_detection_at,
+           reason,source_results_json,media_type,media_path,media_started_at,media_ended_at
+    FROM events
+    WHERE datetime(occurred_at) >= datetime(? || 'T00:00:00', '-9 hours')
+      AND datetime(occurred_at) < datetime(? || 'T00:00:00', '+1 day', '-9 hours')
+    ORDER BY datetime(occurred_at) DESC;
+  )SQL");
+  bind_text(statement.get(), 1, date);
+  bind_text(statement.get(), 2, date);
+  return collect_events(impl_->database, statement.get());
+}
+
 std::vector<EventRecord> SqliteStore::list_active_events() const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
   const std::lock_guard lock(impl_->mutex);

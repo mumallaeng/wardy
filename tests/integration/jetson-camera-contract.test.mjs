@@ -88,6 +88,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "gstreamer1.0-tools",
     "gstreamer1.0-plugins-ugly",
     "gstreamer1.0-rtsp",
+    "jq",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -144,6 +145,42 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(launcher, /MTX_WEBRTCLOCALTCPADDRESS.*:8189/);
 });
 
+test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을 사용한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/llm/daily_summary.cpp"), "utf8");
+  const header = await readFile(path.join(root, "edge/src/llm/daily_summary.hpp"), "utf8");
+  const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
+  const installer = await readFile(path.join(root, "edge/scripts/install_ollama.sh"), "utf8");
+  const serviceInstaller = await readFile(path.join(root, "edge/scripts/install_jetson_service.sh"), "utf8");
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+
+  assert.match(header, /model = "qwen3\.5:4b"/);
+  assert.match(versions, /^WARDY_OLLAMA_VERSION=0\.32\.5$/m);
+  assert.match(versions, /^WARDY_OLLAMA_INSTALL_SHA256=[a-f0-9]{64}$/m);
+  assert.match(versions, /^WARDY_LLM_MODEL=qwen3\.5:4b$/m);
+  assert.match(versions, /^WARDY_LLM_MODEL_DIGEST=[a-f0-9]{64}$/m);
+  assert.match(installer, /sha256sum --check --status/);
+  assert.match(installer, /api\/tags/);
+  assert.match(installer, /jq --raw-output --arg model/);
+  assert.match(installer, /--connect-timeout 5 --max-time 30/);
+  assert.doesNotMatch(installer, /sed 's\/\},\{\//);
+  assert.match(installer, /ollama pull "\$\{WARDY_LLM_MODEL\}"/);
+  assert.match(installer, /ollama stop "\$\{WARDY_LLM_MODEL\}"/);
+  assert.match(serviceInstaller, /Wants=network-online\.target ollama\.service/);
+  assert.match(serviceInstaller, /After=network-online\.target ollama\.service/);
+  assert.match(source, /htonl\(INADDR_LOOPBACK\)/);
+  assert.match(source, /\\"keep_alive\\":\\"0s\\"/);
+  assert.match(source, /\\"num_ctx\\":2048/);
+  assert.match(source, /\\"num_predict\\":100,\\"temperature\\":0,\\"seed\\":7/);
+  assert.match(source, /deterministic_summary/);
+  assert.match(source, /invalid_output/);
+  assert.doesNotMatch(source, /event\.(?:subject_name|subject_id|media_path|source_results_json|reason)/);
+  assert.match(api, /path == "\/api\/llm\/daily-summary"/);
+  assert.match(api, /daily_summary_mutex/);
+  assert.match(api, /std::try_to_lock/);
+  assert.match(api, /429, "Too Many Requests"/);
+  assert.doesNotMatch(api, /list_events\(1000\)/);
+});
+
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
   const checker = await readFile(path.join(root, "edge/scripts/test_windows_connection.ps1"), "utf8");
   assert.match(checker, /:8443/);
@@ -188,12 +225,13 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const security = await readFile(path.join(root, "edge/src/api/request_security.hpp"), "utf8");
   assert.match(source, /method == "POST" && path == "\/api\/training\/items\/sample"/);
   assert.match(source, /sample_capture_requests/);
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
   assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
-  assert.match(source, /x-wardy-access-token/);
+  assert.match(security, /x-wardy-access-token/);
   assert.match(source, /origin_allowed/);
 });
 
