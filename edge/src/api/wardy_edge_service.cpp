@@ -27,6 +27,13 @@ int parse_integer(const char* value, const char* name) {
   }
 }
 
+bool parse_boolean(const char* value, const char* name) {
+  const std::string text = value;
+  if (text == "true" || text == "1") return true;
+  if (text == "false" || text == "0") return false;
+  throw std::invalid_argument(std::string{name} + " must be true, false, 1, or 0");
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -40,6 +47,18 @@ int main(int argc, char* argv[]) {
     }
     if (const char* access_token = std::getenv("WARDY_ACCESS_TOKEN")) {
       config.access_token = access_token;
+    }
+    if (const char* enabled = std::getenv("WARDY_LLM_ENABLED")) {
+      config.llm_enabled = parse_boolean(enabled, "WARDY_LLM_ENABLED");
+    }
+    if (const char* model = std::getenv("WARDY_LLM_MODEL")) {
+      config.llm_model = model;
+    }
+    if (const char* port = std::getenv("WARDY_OLLAMA_PORT")) {
+      config.ollama_port = parse_integer(port, "WARDY_OLLAMA_PORT");
+    }
+    if (const char* timeout = std::getenv("WARDY_LLM_TIMEOUT_SECONDS")) {
+      config.llm_timeout_seconds = parse_integer(timeout, "WARDY_LLM_TIMEOUT_SECONDS");
     }
     if (argc > 1) config.port = parse_integer(argv[1], "port");
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
