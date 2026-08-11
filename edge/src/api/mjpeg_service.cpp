@@ -383,6 +383,18 @@ std::optional<std::string> event_media_path(const std::string& path) {
   return action->first;
 }
 
+std::optional<std::string> dataset_sample_media_path(const std::string& path) {
+  constexpr const char* prefix = "/api/data-samples/";
+  if (path.rfind(prefix, 0) != 0) return std::nullopt;
+  const std::string remainder = path.substr(std::strlen(prefix));
+  const std::size_t separator = remainder.find('/');
+  if (separator == std::string::npos || remainder.substr(separator + 1) != "media") {
+    return std::nullopt;
+  }
+  const std::string sample_id = remainder.substr(0, separator);
+  return safe_item_id(sample_id) ? std::optional<std::string>{sample_id} : std::nullopt;
+}
+
 std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
                                         const storage::EventRecord& event) {
   if (!event.media_path) throw std::invalid_argument("event media is not ready");
@@ -391,6 +403,33 @@ std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& stat
     throw std::runtime_error("invalid event media path in SQLite");
   }
   return state->event_media->root_path() / relative;
+}
+
+std::filesystem::path stored_dataset_file(
+    const std::shared_ptr<StreamState>& state,
+    const storage::DatasetSampleRecord& sample) {
+  const std::filesystem::path relative(sample.image_path);
+  if (relative.empty() || relative.is_absolute()) {
+    throw std::runtime_error("invalid dataset image path in SQLite");
+  }
+  const std::filesystem::path root =
+      std::filesystem::weakly_canonical(state->training_data_path);
+  const std::filesystem::path candidate =
+      std::filesystem::weakly_canonical(root / relative);
+  const auto [root_end, candidate_end] = std::mismatch(
+      root.begin(), root.end(), candidate.begin(), candidate.end());
+  if (root_end != root.end()) {
+    throw std::runtime_error("dataset image path escapes storage root");
+  }
+  return candidate;
+}
+
+std::string dataset_image_content_type(const std::filesystem::path& path) {
+  const std::string extension = lowercase(path.extension().string());
+  if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
+  if (extension == ".png") return "image/png";
+  if (extension == ".webp") return "image/webp";
+  throw std::runtime_error("unsupported stored dataset image type");
 }
 
 std::optional<std::string> decoded_optional_header(const std::string& request,
@@ -886,6 +925,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const std::string request = read_request(socket_fd);
   const auto [method, path] = request_method_path(request);
   const auto media_event_id = event_media_path(path);
+  const auto dataset_sample_media_id = dataset_sample_media_path(path);
   const auto event_action = event_action_path(path);
   const auto subject_id_path = resource_id_path(path, "/api/subjects/");
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
@@ -1051,6 +1091,24 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     send_text(socket_fd, json_response(200, "OK",
         dataset_samples_json(state->database->list_dataset_samples()),
         config.allowed_origin));
+  } else if (method == "GET" && dataset_sample_media_id) {
+    const auto sample = state->database->get_dataset_sample(*dataset_sample_media_id);
+    if (!sample) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"Dataset sample not found\"}", config.allowed_origin));
+    } else {
+      const std::filesystem::path image_file = stored_dataset_file(state, *sample);
+      std::ifstream input(image_file, std::ios::binary);
+      if (!input) {
+        send_text(socket_fd, json_response(404, "Not Found",
+            "{\"error\":\"Dataset sample image not found\"}", config.allowed_origin));
+      } else {
+        const std::vector<unsigned char> image(
+            std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+        send_binary_response(socket_fd, image, dataset_image_content_type(image_file),
+                             config.allowed_origin);
+      }
+    }
   } else if (method == "POST" && path == "/api/data-samples/camera") {
     try {
       send_text(socket_fd, json_response(201, "Created",
@@ -1080,14 +1138,17 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
           "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
     }
   } else if (method == "DELETE" && dataset_sample_id_path) {
-    const auto image_path = state->database->delete_dataset_sample(*dataset_sample_id_path);
-    if (!image_path) {
+    const auto sample = state->database->get_dataset_sample(*dataset_sample_id_path);
+    if (!sample) {
       send_text(socket_fd, json_response(404, "Not Found",
           "{\"error\":\"Dataset sample not found\"}", config.allowed_origin));
     } else {
       std::error_code error;
-      std::filesystem::remove(state->training_data_path / *image_path, error);
+      std::filesystem::remove(stored_dataset_file(state, *sample), error);
       if (error) throw std::runtime_error("failed to delete dataset sample file");
+      if (!state->database->delete_dataset_sample(*dataset_sample_id_path)) {
+        throw std::runtime_error("failed to delete dataset sample record");
+      }
       send_text(socket_fd, json_response(200, "OK",
           dataset_samples_json(state->database->list_dataset_samples()),
           config.allowed_origin));

@@ -680,6 +680,30 @@ void SqliteStore::add_dataset_sample(const DatasetSampleRecord& sample) {
   require_done(impl_->database, statement.get());
 }
 
+std::optional<DatasetSampleRecord> SqliteStore::get_dataset_sample(
+    const std::string& sample_id) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT sample_id, model_id, requirement_id, label, review_status,
+           capture_session, source, image_path, original_filename, captured_at,
+           width, height
+    FROM dataset_samples WHERE sample_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, sample_id);
+  const int result = sqlite3_step(statement.get());
+  if (result == SQLITE_DONE) return std::nullopt;
+  if (result != SQLITE_ROW) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return DatasetSampleRecord{
+      column_text(statement.get(), 0), column_text(statement.get(), 1),
+      column_text(statement.get(), 2), column_text(statement.get(), 3),
+      column_text(statement.get(), 4), column_text(statement.get(), 5),
+      column_text(statement.get(), 6), column_text(statement.get(), 7),
+      optional_column_text(statement.get(), 8), column_text(statement.get(), 9),
+      sqlite3_column_int(statement.get(), 10), sqlite3_column_int(statement.get(), 11),
+  };
+}
+
 std::vector<DatasetSampleRecord> SqliteStore::list_dataset_samples() const {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
   const std::lock_guard lock(impl_->mutex);

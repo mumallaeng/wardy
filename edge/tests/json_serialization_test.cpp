@@ -39,6 +39,8 @@ int main() {
       "2026-08-11T05:00:00Z", 640, 480};
   const std::string samples = wardy::api::dataset_samples_json({sample});
   assert(samples.find("\"reviewStatus\":\"approved\"") != std::string::npos);
+  assert(samples.find("\"mediaResource\":\"/api/data-samples/dataset-sample-001/media\"") !=
+         std::string::npos);
   assert(samples.find("\"originalFilename\":\"pose.png\"") != std::string::npos);
   return 0;
 }

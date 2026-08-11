@@ -129,6 +129,8 @@ class SqliteStore {
   [[nodiscard]] std::size_t count_subject_reference_samples(
       const std::string& subject_id) const;
   void add_dataset_sample(const DatasetSampleRecord& sample);
+  [[nodiscard]] std::optional<DatasetSampleRecord> get_dataset_sample(
+      const std::string& sample_id) const;
   [[nodiscard]] std::vector<DatasetSampleRecord> list_dataset_samples() const;
   bool update_dataset_sample(const std::string& sample_id, const std::string& label,
                              const std::string& review_status);

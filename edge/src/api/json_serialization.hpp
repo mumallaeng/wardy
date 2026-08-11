@@ -258,6 +258,8 @@ inline std::string dataset_samples_json(
         ",\"captureSession\":" + json_string(sample.capture_session) +
         ",\"source\":" + json_string(sample.source) +
         ",\"imagePath\":" + json_string(sample.image_path) +
+        ",\"mediaResource\":" +
+        json_string("/api/data-samples/" + sample.sample_id + "/media") +
         ",\"originalFilename\":" + json_string(sample.original_filename) +
         ",\"capturedAt\":" + json_string(sample.captured_at) +
         ",\"width\":" + std::to_string(sample.width) +

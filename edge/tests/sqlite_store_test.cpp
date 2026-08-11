@@ -196,6 +196,11 @@ int main() {
   assert(dataset_samples.size() == 1);
   assert(dataset_samples[0].model_id == "M-01");
   assert(dataset_samples[0].review_status == "pending");
+  const auto stored_dataset_sample = store.get_dataset_sample("dataset-sample-001");
+  assert(stored_dataset_sample.has_value());
+  assert(stored_dataset_sample->image_path ==
+         "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
+  assert(!store.get_dataset_sample("missing").has_value());
   assert(store.update_dataset_sample("dataset-sample-001", "care-person", "approved"));
   dataset_samples = store.list_dataset_samples();
   assert(dataset_samples[0].label == "care-person");

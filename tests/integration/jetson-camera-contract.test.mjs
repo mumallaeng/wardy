@@ -207,6 +207,14 @@ test("데이터 작업실은 camera와 로컬 파일 원본을 Jetson SQLite에 
   const storage = await readFile(path.join(root, "edge/src/storage/sqlite_store.cpp"), "utf8");
   assert.match(source, /path == "\/api\/data-samples\/camera"/);
   assert.match(source, /path == "\/api\/data-samples\/upload"/);
+  assert.match(source, /dataset_sample_media_path/);
+  assert.match(source, /get_dataset_sample/);
+  const datasetFileRemoval = source.indexOf("std::filesystem::remove(stored_dataset_file");
+  const datasetRecordRemoval = source.indexOf(
+    "database->delete_dataset_sample", datasetFileRemoval,
+  );
+  assert.ok(datasetFileRemoval >= 0);
+  assert.ok(datasetRecordRemoval > datasetFileRemoval);
   assert.match(source, /cv::imdecode/);
   assert.match(source, /maximum_body_size = 8 \* 1024 \* 1024/);
   assert.match(source, /std::filesystem::path\("datasets"\)/);
