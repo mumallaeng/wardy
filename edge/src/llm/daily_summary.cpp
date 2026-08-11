@@ -156,7 +156,9 @@ std::string post_to_ollama(int port, std::chrono::seconds timeout,
       "\r\n\r\n" + request_body;
   std::size_t sent = 0;
   while (sent < request.size()) {
-    const ssize_t count = ::send(socket_fd, request.data() + sent, request.size() - sent, 0);
+    const ssize_t count = ::send(socket_fd, request.data() + sent,
+                                 request.size() - sent, MSG_NOSIGNAL);
+    if (count < 0 && errno == EINTR) continue;
     if (count <= 0) {
       ::close(socket_fd);
       throw std::runtime_error("Ollama request failed");
@@ -170,6 +172,7 @@ std::string post_to_ollama(int port, std::chrono::seconds timeout,
     const ssize_t count = ::recv(socket_fd, buffer.data(), buffer.size(), 0);
     if (count == 0) break;
     if (count < 0) {
+      if (errno == EINTR) continue;
       ::close(socket_fd);
       throw std::runtime_error(errno == EAGAIN || errno == EWOULDBLOCK
                                    ? "Ollama request timed out" : "Ollama response failed");
@@ -316,16 +319,14 @@ DailySummaryResult DailySummaryService::summarize(
   const auto started = std::chrono::steady_clock::now();
   try {
     const std::string response = generate_request_(build_anonymized_prompt(date, events));
-    result.summary = extract_generated_summary(response);
-    if (!valid_generated_summary(result.summary, events)) {
-      if (result.summary.rfind(fallback, 0) == 0) {
-        result.summary = fallback;
-        result.filtered = true;
-      } else {
-        result.summary = fallback;
-        result.fallback = true;
-        result.fallback_reason = "invalid_output";
-      }
+    const std::string generated = extract_generated_summary(response);
+    if (generated.rfind(fallback, 0) == 0) {
+      result.summary = fallback;
+      result.filtered = generated != fallback;
+    } else {
+      result.summary = fallback;
+      result.fallback = true;
+      result.fallback_reason = "invalid_output";
     }
   } catch (const std::exception&) {
     result.summary = fallback;
