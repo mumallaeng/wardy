@@ -1103,8 +1103,8 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
         send_text(socket_fd, json_response(404, "Not Found",
             "{\"error\":\"Dataset sample image not found\"}", config.allowed_origin));
       } else {
-        const std::vector<unsigned char> image(
-            std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+        const std::vector<unsigned char> image{
+            std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         send_binary_response(socket_fd, image, dataset_image_content_type(image_file),
                              config.allowed_origin);
       }
