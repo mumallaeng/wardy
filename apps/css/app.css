@@ -68,6 +68,20 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .status-dot.is-fault { background: var(--emergency); box-shadow: 0 0 0 4px rgba(195, 60, 60, .14); }
 .status-dot.is-muted { background: var(--fault); }
 
+.system-guidance { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 18px; padding: 15px 16px; border: 1px solid #d5ddd6; border-radius: 14px; background: #f8faf6; }
+.system-guidance-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: white; background: var(--forest-2); font-weight: 850; }
+.system-guidance-copy { display: grid; gap: 2px; }
+.system-guidance-copy strong { font-size: .95rem; }
+.system-guidance-copy p { color: var(--muted); font-size: .82rem; }
+.system-guidance.is-ok { border-color: #badbc9; background: #f1faf5; }
+.system-guidance.is-ok .system-guidance-icon { background: var(--normal); }
+.system-guidance.is-checking { border-color: #d7cfaa; background: #fffbee; }
+.system-guidance.is-checking .system-guidance-icon { background: var(--caution); }
+.system-guidance.is-limited { border-color: #e6c89b; background: #fff8ec; }
+.system-guidance.is-limited .system-guidance-icon { background: var(--warning); }
+.system-guidance.is-fault { border-color: #e3b8b4; background: #fff3f1; }
+.system-guidance.is-fault .system-guidance-icon { background: var(--emergency); }
+
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(310px, .7fr); gap: 18px; }
 .card { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
@@ -208,6 +222,8 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
   .camera-stage video { min-height: 310px; }
   .card { padding: 16px; border-radius: 14px; }
   .system-strip, .summary-grid { grid-template-columns: 1fr 1fr; }
+  .system-guidance { grid-template-columns: auto 1fr; align-items: start; }
+  .system-guidance .button { grid-column: 1 / -1; width: 100%; }
   .filters, .inline-form { grid-template-columns: 1fr; }
   .latest-event { align-items: flex-start; flex-direction: column; }
   .protocol-grid { grid-template-columns: 1fr; }
