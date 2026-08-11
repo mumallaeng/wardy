@@ -624,7 +624,8 @@ async function generateDailySummary(): Promise<void> {
       new Date().toISOString().slice(0, 10),
     );
     output.textContent = result.summary;
-    badge.textContent = result.fallback ? "규칙 요약" : result.model.replace(":", " ");
+    badge.textContent = result.fallback ? "규칙 요약" :
+      `${result.model.replace(":", " ")}${result.filtered ? " · 출력 필터" : ""}`;
     badge.className = `badge${result.fallback ? "" : " is-connected"}`;
   } catch (error) {
     output.textContent = "요약을 만들지 못했습니다. Jetson 연결과 로컬 LLM 상태를 확인해 주세요.";

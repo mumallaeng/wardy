@@ -318,9 +318,14 @@ DailySummaryResult DailySummaryService::summarize(
     const std::string response = generate_request_(build_anonymized_prompt(date, events));
     result.summary = extract_generated_summary(response);
     if (!valid_generated_summary(result.summary, events)) {
-      result.summary = fallback;
-      result.fallback = true;
-      result.fallback_reason = "invalid_output";
+      if (result.summary.rfind(fallback, 0) == 0) {
+        result.summary = fallback;
+        result.filtered = true;
+      } else {
+        result.summary = fallback;
+        result.fallback = true;
+        result.fallback_reason = "invalid_output";
+      }
     }
   } catch (const std::exception&) {
     result.summary = fallback;

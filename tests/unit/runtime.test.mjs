@@ -98,6 +98,7 @@ test("오늘의 이벤트 요약은 인증된 Jetson LLM endpoint를 사용한�
       summary: "오늘 기록된 안전 확인 이벤트가 없습니다.",
       model: "qwen3.5:4b",
       fallback: true,
+      filtered: false,
       fallback_reason: "no_events",
       event_count: 0,
       unconfirmed_count: 0,

@@ -178,6 +178,7 @@ export interface DailySummaryResult {
   summary: string;
   model: string;
   fallback: boolean;
+  filtered: boolean;
   fallback_reason: "" | "disabled" | "no_events" | "unavailable" | "invalid_output";
   event_count: number;
   unconfirmed_count: number;
