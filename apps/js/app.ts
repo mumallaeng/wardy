@@ -10,6 +10,7 @@ import {
   renderIdentityReviews,
 } from "./data-workspace.ts";
 import { OverlayController } from "./overlay.ts";
+import { registerWardyServiceWorker } from "./pwa.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
@@ -63,6 +64,7 @@ let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
+let knownEventIds: Set<string> | null = null;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 
@@ -85,7 +87,51 @@ function runtimeConnection(): { baseUrl: string; accessToken: string; origin: st
 function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent[] }): void {
   runtimeState = snapshot.state;
   store.applyRuntimeSnapshot(snapshot.state, snapshot.events);
+  notifyNewEvents(snapshot.events);
   renderSystemState();
+}
+
+function notifyNewEvents(events: readonly WardyEvent[]): void {
+  const currentIds = new Set(events.map((event) => event.event_id));
+  if (knownEventIds === null) {
+    knownEventIds = currentIds;
+    return;
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    const settings = store.getState().settings.notifications;
+    events.filter((event) => event.event_status === "new"
+      && !knownEventIds?.has(event.event_id)
+      && settings[event.event_type] !== "off")
+      .forEach((event) => {
+        const notification = new Notification(`Wardy · ${EVENT_TYPES[event.event_type]}`, {
+          body: `${event.subject_location ?? "위치 확인 필요"} · ${event.reason}`,
+          icon: "/icons/wardy-icon-192.png",
+          tag: event.event_id,
+        });
+        notification.addEventListener("click", () => {
+          window.focus();
+          openView("events");
+          notification.close();
+        });
+      });
+  }
+  knownEventIds = currentIds;
+}
+
+function renderNotificationPermission(): void {
+  const supported = "Notification" in window;
+  const permission = supported ? Notification.permission : "unsupported";
+  const labels: Record<string, string> = {
+    default: "브라우저 권한을 허용하면 새 이벤트를 화면 밖에서도 알립니다.",
+    granted: "브라우저 알림이 허용되었습니다. ON인 새 이벤트만 알립니다.",
+    denied: "브라우저에서 알림이 차단되었습니다. 브라우저 사이트 설정에서 변경할 수 있습니다.",
+    unsupported: "이 브라우저는 시스템 알림을 지원하지 않습니다.",
+  };
+  $("#notification-permission").textContent = labels[permission]
+    ?? "브라우저 권한을 허용하면 새 이벤트를 화면 밖에서도 알립니다.";
+  const button = $<HTMLButtonElement>("#enable-browser-notifications");
+  button.disabled = !supported || permission === "granted";
+  button.textContent = permission === "granted" ? "브라우저 알림 허용됨" : "브라우저 알림 허용";
 }
 
 function renderSystemState(): void {
@@ -340,7 +386,9 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
     }
   } catch (error) {
     if (startCamera && reconnectTimer === null) {
-      reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true); }, 5000);
+      reconnectTimer = window.setTimeout(() => {
+        void connectConfiguredJetson(true).catch(() => undefined);
+      }, 5000);
     }
     throw error;
   }
@@ -772,6 +820,7 @@ function render(state: WardyState = store.getState()): void {
   const configured = state.settings.jetson.baseUrl || window.location.origin;
   $("#jetson-resolved-url").textContent = configured;
   renderSystemState();
+  renderNotificationPermission();
 }
 
 store.subscribe(render);
@@ -858,6 +907,12 @@ $<HTMLFormElement>("#item-form").addEventListener("submit", async (event: Submit
   } catch (error) { toast(errorMessage(error)); }
 });
 $("#draw-zone").addEventListener("click", () => { openView("dashboard"); overlay.beginZoneDrawing(); toast("카메라 화면에서 주의 구역을 드래그하세요."); });
+$("#enable-browser-notifications").addEventListener("click", async () => {
+  if (!("Notification" in window)) return;
+  const permission = await Notification.requestPermission();
+  renderNotificationPermission();
+  toast(permission === "granted" ? "브라우저 알림을 허용했습니다." : "브라우저 알림이 허용되지 않았습니다.");
+});
 
 $("#export-events").addEventListener("click", () => {
   downloadJson(`wardy-events-${new Date().toISOString().slice(0, 10)}.json`, store.getState().events);
@@ -930,4 +985,5 @@ window.addEventListener("beforeunload", () => { closeDatasetPreview(); camera.st
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);
+void registerWardyServiceWorker();
 void connectConfiguredJetson(true).catch(() => undefined);

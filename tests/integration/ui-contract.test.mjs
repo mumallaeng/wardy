@@ -24,6 +24,8 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /카메라 표시 항목/);
   assert.match(html, /돌봄 인물 등록/);
   assert.match(html, /알림 설정/);
+  assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(html, /id="enable-browser-notifications"/);
   assert.doesNotMatch(html, /상황별 알림/);
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
@@ -56,6 +58,22 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /event·state 동기화<\/dt><dd>인증 WebSocket · 자동 재연결/);
   assert.match(html, /<code>\/dev\/video0<\/code>/);
   assert.match(html, /V4L2/);
+});
+
+test("설치형 웹앱 shell과 새 이벤트 브라우저 알림을 제공한다", async () => {
+  const manifest = JSON.parse(await readFile(
+    path.join(root, "apps/public/manifest.webmanifest"), "utf8",
+  ));
+  assert.equal(manifest.display, "standalone");
+  assert.deepEqual(manifest.icons.map((icon) => icon.sizes), ["192x192", "512x512"]);
+  const serviceWorker = await readFile(path.join(root, "apps/js/service-worker.ts"), "utf8");
+  assert.match(serviceWorker, /request\.mode === "navigate"/);
+  assert.match(serviceWorker, /Wardy is offline/);
+  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  assert.match(app, /Notification\.requestPermission\(\)/);
+  assert.match(app, /event\.event_status === "new"/);
+  assert.match(app, /settings\[event\.event_type\] !== "off"/);
+  assert.match(app, /knownEventIds === null/);
 });
 
 test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 전환된다", async () => {
