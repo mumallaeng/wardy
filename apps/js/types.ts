@@ -174,6 +174,16 @@ export interface EventSummary extends Record<CareStatus, number> {
   unconfirmed: number;
 }
 
+export interface DailySummaryResult {
+  summary: string;
+  model: string;
+  fallback: boolean;
+  fallback_reason: "" | "disabled" | "no_events" | "unavailable" | "invalid_output";
+  event_count: number;
+  unconfirmed_count: number;
+  duration_ms: number;
+}
+
 export interface JetsonStatusDetail {
   endpoint?: string;
   service?: string;
