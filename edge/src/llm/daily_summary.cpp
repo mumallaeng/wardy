@@ -208,7 +208,7 @@ std::string request_body(const DailySummaryConfig& config, const std::string& pr
   return "{\"model\":" + api::json_string(config.model) +
       ",\"system\":" + api::json_string(system) +
       ",\"prompt\":" + api::json_string(prompt) +
-      ",\"stream\":false,\"think\":false,\"keep_alive\":\"0s\"," 
+      ",\"stream\":false,\"think\":false,\"keep_alive\":\"0s\","
       "\"format\":{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}},"
       "\"required\":[\"summary\"]},"
       "\"options\":{\"num_ctx\":2048,\"num_predict\":100,\"temperature\":0,\"seed\":7}}";
