@@ -58,6 +58,7 @@ export function renderDatasetSamples(
   container: HTMLTableSectionElement,
   samples: readonly DatasetSample[],
   onReview: (sampleId: string, label: string, status: DatasetReviewStatus) => void,
+  onPreview: (sampleId: string) => void,
   onDelete: (sampleId: string) => void,
 ): void {
   container.replaceChildren();
@@ -99,6 +100,12 @@ export function renderDatasetSamples(
 
       const actions = document.createElement("td");
       actions.className = "row-actions dataset-row-actions";
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "button button-secondary button-small";
+      preview.textContent = "미리보기";
+      preview.addEventListener("click", () => onPreview(sample.id));
+      actions.append(preview);
       const actionsList: ReadonlyArray<readonly [string, DatasetReviewStatus, string]> = [
         ["승인", "approved", "button button-small"],
         ["대기", "pending", "button button-secondary button-small"],
@@ -109,7 +116,11 @@ export function renderDatasetSamples(
         button.type = "button";
         button.className = className;
         button.textContent = text;
-        button.disabled = sample.reviewStatus === status;
+        const updateDisabled = () => {
+          button.disabled = sample.reviewStatus === status && label.value.trim() === sample.label;
+        };
+        updateDisabled();
+        label.addEventListener("input", updateDisabled);
         button.addEventListener("click", () => onReview(sample.id, label.value.trim(), status));
         actions.append(button);
       });

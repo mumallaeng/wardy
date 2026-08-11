@@ -101,6 +101,7 @@ export interface DatasetSample {
   captureSession: string;
   source: DatasetSampleSource;
   imagePath: string;
+  mediaResource: string;
   originalFilename: string | null;
   capturedAt: string;
   width: number;

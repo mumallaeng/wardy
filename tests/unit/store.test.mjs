@@ -30,7 +30,8 @@ test("Jetson 데이터 sample 목록은 계약에 맞는 항목만 보존한다"
   store.replaceDatasetSamples([{
     id: "sample-1", modelId: "M-01", requirementId: "DS-001", label: "person",
     reviewStatus: "approved", captureSession: "session-0811-am", source: "local_file",
-    imagePath: "datasets/M-01/DS-001/sample-1.jpg", originalFilename: "person.jpg",
+    imagePath: "datasets/M-01/DS-001/sample-1.jpg",
+    mediaResource: "/api/data-samples/sample-1/media", originalFilename: "person.jpg",
     capturedAt: "2026-08-11T01:00:00Z", width: 640, height: 480,
   }, { id: "invalid" }]);
   const restored = new WardyStore(storage, "dataset-samples").getState();

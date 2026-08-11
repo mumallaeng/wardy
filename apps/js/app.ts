@@ -62,6 +62,7 @@ let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
+let datasetPreviewUrl: string | null = null;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 
@@ -512,6 +513,33 @@ async function reviewDatasetSample(
   } catch (error) { toast(errorMessage(error)); }
 }
 
+function closeDatasetPreview(): void {
+  const dialog = $<HTMLDialogElement>("#dataset-preview-dialog");
+  if (dialog.open) dialog.close();
+  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
+  if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
+  datasetPreviewUrl = null;
+}
+
+async function previewDatasetSample(sampleId: string): Promise<void> {
+  const state = store.getState();
+  const sample = state.datasetSamples.find((candidate) => candidate.id === sampleId);
+  if (!sample) { toast("sample 정보를 찾을 수 없습니다."); return; }
+  try {
+    const connection = runtimeConnection();
+    const media = await trainingSamples.loadDatasetSampleMedia(
+      sample, connection.baseUrl, connection.accessToken, connection.origin,
+    );
+    closeDatasetPreview();
+    datasetPreviewUrl = URL.createObjectURL(media);
+    $<HTMLImageElement>("#dataset-preview-image").src = datasetPreviewUrl;
+    $("#dataset-preview-title").textContent = `${sample.modelId} · ${sample.label}`;
+    $("#dataset-preview-meta").textContent =
+      `${sample.requirementId} · ${sample.captureSession} · ${sample.width}×${sample.height}`;
+    $<HTMLDialogElement>("#dataset-preview-dialog").showModal();
+  } catch (error) { toast(errorMessage(error)); }
+}
+
 async function deleteDatasetSample(sampleId: string): Promise<void> {
   if (!window.confirm("Jetson에 저장된 원본 sample과 metadata를 삭제할까요?")) return;
   try {
@@ -637,6 +665,7 @@ function render(state: WardyState = store.getState()): void {
   renderDatasetSamples(
     $<HTMLTableSectionElement>("#dataset-sample-list"), state.datasetSamples,
     (sampleId, label, status) => { void reviewDatasetSample(sampleId, label, status); },
+    (sampleId) => { void previewDatasetSample(sampleId); },
     (sampleId) => { void deleteDatasetSample(sampleId); },
   );
   $("#dataset-sample-empty").toggleAttribute("hidden", state.datasetSamples.length > 0);
@@ -810,6 +839,12 @@ $<HTMLFormElement>("#dataset-sample-form").addEventListener("submit", (event) =>
   void captureDatasetSample();
 });
 $("#choose-dataset-files").addEventListener("click", () => $<HTMLInputElement>("#dataset-file-input").click());
+$("#close-dataset-preview").addEventListener("click", closeDatasetPreview);
+$<HTMLDialogElement>("#dataset-preview-dialog").addEventListener("close", () => {
+  if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
+  datasetPreviewUrl = null;
+  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
+});
 $<HTMLInputElement>("#dataset-file-input").addEventListener("change", (event) => {
   const input = event.currentTarget as HTMLInputElement;
   const files = [...(input.files ?? [])];
@@ -850,7 +885,7 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
 $("#system-guidance-action").addEventListener("click", () => openView("jetson"));
 
-window.addEventListener("beforeunload", () => { camera.stop(); runtime.stop(); });
+window.addEventListener("beforeunload", () => { closeDatasetPreview(); camera.stop(); runtime.stop(); });
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);

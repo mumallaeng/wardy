@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { TrainingSampleClient, datasetSamplesUrl, subjectReferenceUrl, trainingSampleUrl } from "../../apps/js/training.ts";
+import { TrainingSampleClient, datasetSampleMediaUrl, datasetSamplesUrl, subjectReferenceUrl, trainingSampleUrl } from "../../apps/js/training.ts";
 
 const datasetSample = {
   id: "dataset-sample-001",
@@ -12,6 +12,7 @@ const datasetSample = {
   captureSession: "session-0811-pm",
   source: "jetson_camera",
   imagePath: "datasets/M-03_4/DS-002/dataset-sample-001.jpg",
+  mediaResource: "/api/data-samples/dataset-sample-001/media",
   originalFilename: null,
   capturedAt: "2026-08-11T05:00:00Z",
   width: 640,
@@ -113,4 +114,21 @@ test("로컬 이미지는 허용 형식과 크기를 확인한 뒤 원본 이름
     new File(["bad"], "bad.txt", { type: "text/plain" }), metadata,
     "https://jetson.local:8443", "access-token",
   ), /지원하지 않는/);
+});
+
+test("데이터 sample 원본은 인증된 media endpoint에서 읽는다", async () => {
+  assert.equal(datasetSampleMediaUrl(datasetSample, "https://jetson.local:8443"),
+    "https://jetson.local:8443/api/data-samples/dataset-sample-001/media");
+  const calls = [];
+  const client = new TrainingSampleClient(async (url, options) => {
+    calls.push({ url, options });
+    return new Response(new Uint8Array([1, 2, 3]), {
+      status: 200, headers: { "Content-Type": "image/jpeg" },
+    });
+  });
+  const media = await client.loadDatasetSampleMedia(
+    datasetSample, "https://jetson.local:8443", "access-token",
+  );
+  assert.equal(calls[0].options.headers["X-Wardy-Access-Token"], "access-token");
+  assert.equal(media.type, "image/jpeg");
 });

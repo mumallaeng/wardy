@@ -23,6 +23,11 @@ export function datasetSamplesUrl(value: string, fallbackOrigin = ""): string {
   return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/data-samples`;
 }
 
+export function datasetSampleMediaUrl(sample: DatasetSample, value: string,
+                                      fallbackOrigin = ""): string {
+  return new URL(sample.mediaResource, `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/`).toString();
+}
+
 function requireSecureEndpoint(endpoint: string): string {
   if (new URL(endpoint).protocol !== "https:") {
     throw new Error("인증된 Jetson 요청에는 https가 필요합니다.");
@@ -50,6 +55,7 @@ function isDatasetSample(value: unknown): value is DatasetSample {
     && typeof sample.captureSession === "string"
     && ["jetson_camera", "local_file"].includes(String(sample.source))
     && typeof sample.imagePath === "string"
+    && typeof sample.mediaResource === "string"
     && (sample.originalFilename === null || typeof sample.originalFilename === "string")
     && typeof sample.capturedAt === "string"
     && typeof sample.width === "number" && typeof sample.height === "number";
@@ -198,6 +204,25 @@ export class TrainingSampleClient {
     });
     const body = await readDatasetResponse(response);
     return datasetSampleList(body);
+  }
+
+  async loadDatasetSampleMedia(sample: DatasetSample, baseUrl: string, accessToken: string,
+                               fallbackOrigin = globalThis.location?.origin ?? ""): Promise<Blob> {
+    const endpoint = requireSecureEndpoint(datasetSampleMediaUrl(sample, baseUrl, fallbackOrigin));
+    const response = await this.fetchImpl(endpoint, {
+      headers: { Accept: "image/*", "X-Wardy-Access-Token": accessToken },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+      throw new Error(typeof body.error === "string"
+        ? body.error : `sample 미리보기를 불러오지 못했습니다. HTTP ${response.status}`);
+    }
+    const media = await response.blob();
+    if (!media.type.startsWith("image/")) {
+      throw new Error("Jetson이 올바르지 않은 sample 미리보기를 반환했습니다.");
+    }
+    return media;
   }
 
   async deleteDatasetSample(sampleId: string, baseUrl: string, accessToken: string,

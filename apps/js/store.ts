@@ -45,6 +45,7 @@ function isDatasetSample(value: unknown): value is DatasetSample {
     && typeof value.captureSession === "string"
     && ["jetson_camera", "local_file"].includes(String(value.source))
     && typeof value.imagePath === "string"
+    && typeof value.mediaResource === "string"
     && isStringOrNull(value.originalFilename)
     && typeof value.capturedAt === "string"
     && typeof value.width === "number" && Number.isInteger(value.width) && value.width > 0
@@ -67,6 +68,14 @@ function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
   if (value.datasetSamples === undefined) value.datasetSamples = [];
+  if (Array.isArray(value.datasetSamples)) {
+    value.datasetSamples.forEach((sample) => {
+      if (isRecord(sample) && typeof sample.id === "string" &&
+          typeof sample.mediaResource !== "string") {
+        sample.mediaResource = `/api/data-samples/${encodeURIComponent(sample.id)}/media`;
+      }
+    });
+  }
   if (Array.isArray(value.events)) {
     value.events = value.events.filter(
       (event) => !isRecord(event) || event.event_type !== "managed_item_moved",

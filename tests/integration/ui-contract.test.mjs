@@ -25,6 +25,9 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   for (const id of ["dataset-sample-form", "dataset-file-input", "dataset-sample-list", "dataset-version", "export-dataset-manifest"]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+  assert.match(html, /id="dataset-preview-dialog"/);
+  const dataWorkspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
+  assert.match(dataWorkspace, /sample\.reviewStatus === status && label\.value\.trim\(\) === sample\.label/);
   assert.match(html, /Jetson camera 촬영/);
   assert.match(html, /Dataset manifest 내보내기/);
   assert.match(html, /원본을 덮어쓰지 않고/);

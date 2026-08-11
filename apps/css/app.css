@@ -168,6 +168,10 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
 .dataset-status.is-rejected { color: #9c2929; background: #f9dddd; }
 .dataset-status.is-pending { color: #8c620e; background: #fbefcc; }
 .dataset-row-actions { display: flex; align-items: center; gap: 6px; min-width: 245px; flex-wrap: wrap; }
+.dataset-preview-dialog { width: min(900px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--ink); background: var(--surface); box-shadow: 0 24px 80px rgba(0, 0, 0, .3); }
+.dataset-preview-dialog::backdrop { background: rgba(12, 23, 17, .7); backdrop-filter: blur(4px); }
+.dataset-preview-stage { display: grid; place-items: center; min-height: 320px; overflow: hidden; border-radius: 13px; background: #101813; }
+.dataset-preview-stage img { display: block; max-width: 100%; max-height: calc(100dvh - 190px); object-fit: contain; }
 .review-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .review-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .review-placeholder { display: grid; place-items: center; min-height: 150px; color: #b8c9bf; background: linear-gradient(145deg, #17251f, #2f5a48); font-weight: 800; }

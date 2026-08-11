@@ -7,6 +7,7 @@ test("Notebook manifest에는 승인된 원본 sample만 포함한다", () => {
   const base = {
     modelId: "M-05", requirementId: "DS-004", label: "knife",
     captureSession: "session-0811-pm", source: "local_file",
+    mediaResource: "/api/data-samples/sample/media",
     originalFilename: "knife.png", capturedAt: "2026-08-11T06:00:00Z",
     width: 1280, height: 720,
   };
