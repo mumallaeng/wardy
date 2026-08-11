@@ -135,6 +135,7 @@ export function createDemoEvents(): WardyEvent[] {
  * @returns The initial application state
  */
 export function createInitialState(): WardyState {
+  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return {
     version: 1,
     careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
@@ -144,6 +145,7 @@ export function createInitialState(): WardyState {
       notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       camera: { mirrored: false },
       jetson: { baseUrl: "" },
+      dataWorkspace: { captureSession: `session-${day}`, datasetVersion: `wardy-${day}-v1` },
     },
     managedItems: [
       { id: "item-scissors", label: "가위", policy: "included" },
@@ -153,6 +155,7 @@ export function createInitialState(): WardyState {
     zones: [],
     subjects: [{ id: "subject-demo-01", name: "조정민", role: "돌봄 대상", createdAt: new Date().toISOString() }],
     identityReviews: [],
+    datasetSamples: [],
   };
 }
 

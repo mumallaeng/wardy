@@ -89,3 +89,30 @@ test("이벤트 자료 조회와 삭제는 인증된 Jetson API를 사용한다"
   assert.equal(calls[1].init.method, "DELETE");
   assert.ok(calls.every((call) => call.init.signal instanceof AbortSignal));
 });
+
+test("오늘의 이벤트 요약은 인증된 Jetson LLM endpoint를 사용한다", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({
+      summary: "오늘 기록된 안전 확인 이벤트가 없습니다.",
+      model: "qwen3.5:4b",
+      fallback: true,
+      filtered: false,
+      fallback_reason: "no_events",
+      event_count: 0,
+      unconfirmed_count: 0,
+      duration_ms: 0,
+    });
+  };
+  const client = new WardyRuntimeClient(fetchImpl);
+  const result = await client.loadDailySummary(
+    "https://jetson.local:8443", "token", "", "2026-08-11",
+  );
+  assert.equal(result.model, "qwen3.5:4b");
+  assert.equal(calls[0].url, "https://jetson.local:8443/api/llm/daily-summary");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers["X-Wardy-Access-Token"], "token");
+  assert.equal(calls[0].init.headers["X-Wardy-Summary-Date"], "2026-08-11");
+  assert.ok(calls[0].init.signal instanceof AbortSignal);
+});

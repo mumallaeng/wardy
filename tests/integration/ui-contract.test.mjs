@@ -13,6 +13,12 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   for (const id of ["start-camera", "event-table-body", "jetson-form", "check-jetson"]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+  for (const id of ["generate-ai-summary", "ai-summary-output", "ai-summary-badge"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(html, /ON-DEVICE LLM/);
+  assert.match(html, /이름·식별자·사진·영상은 프롬프트에 포함하지 않으며/);
+  assert.match(html, /요청형 로컬 이벤트 요약/);
   assert.match(html, /AI 미연결/);
   assert.match(html, /AI 결과 아님/);
   assert.match(html, /카메라 표시 항목/);
@@ -22,6 +28,18 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
   assert.match(html, /데이터 작업실/);
+  for (const id of ["dataset-sample-form", "dataset-file-input", "dataset-sample-list", "dataset-version", "export-dataset-manifest"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(html, /id="dataset-preview-dialog"/);
+  const dataWorkspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
+  assert.match(dataWorkspace, /sample\.reviewStatus === status && label\.value\.trim\(\) === sample\.label/);
+  const appSource = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  assert.match(appSource, /generation !== datasetPreviewGeneration/);
+  assert.match(appSource, /if \(!dialog\.open\) dialog\.showModal\(\)/);
+  assert.match(html, /Jetson camera 촬영/);
+  assert.match(html, /Dataset manifest 내보내기/);
+  assert.match(html, /원본을 덮어쓰지 않고/);
   assert.match(html, /식별 검토 갤러리/);
   assert.match(html, /기준 사진 촬영/);
   assert.match(html, /현재 실행 중인 모델은 바뀌지 않습니다/);
