@@ -118,9 +118,19 @@ function currentSystemGuidance(): SystemGuidance {
     };
   }
   if (!credentials.accessToken && jetsonStatus === "connected") {
+    const hasViewerToken = Boolean(credentials.viewerToken.trim());
     return {
       tone: "limited", label: "기능 제한", title: "이벤트·상태 동기화 토큰이 없습니다",
-      message: "카메라 영상만 연결될 수 있으며 이벤트와 돌봄 상태는 갱신되지 않습니다. 데이터 API 토큰을 저장해 주세요.",
+      message: hasViewerToken
+        ? "카메라 영상만 연결할 수 있으며 이벤트와 돌봄 상태는 갱신되지 않습니다. 데이터 API 토큰을 저장해 주세요."
+        : "카메라 미리보기와 이벤트·상태 동기화를 사용할 수 없습니다. 데이터 API 토큰과 카메라 읽기 토큰을 저장해 주세요.",
+      actionLabel: "토큰 입력하기",
+    };
+  }
+  if (!credentials.viewerToken.trim() && jetsonStatus === "connected") {
+    return {
+      tone: "limited", label: "기능 제한", title: "카메라 읽기 토큰이 없습니다",
+      message: "이벤트와 돌봄 상태는 동기화할 수 있지만 카메라 미리보기는 시작할 수 없습니다. 카메라 읽기 토큰을 저장해 주세요.",
       actionLabel: "토큰 입력하기",
     };
   }
