@@ -88,6 +88,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "gstreamer1.0-tools",
     "gstreamer1.0-plugins-ugly",
     "gstreamer1.0-rtsp",
+    "jq",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -159,6 +160,9 @@ test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을
   assert.match(versions, /^WARDY_LLM_MODEL_DIGEST=[a-f0-9]{64}$/m);
   assert.match(installer, /sha256sum --check --status/);
   assert.match(installer, /api\/tags/);
+  assert.match(installer, /jq --raw-output --arg model/);
+  assert.match(installer, /--connect-timeout 5 --max-time 30/);
+  assert.doesNotMatch(installer, /sed 's\/\},\{\//);
   assert.match(installer, /ollama pull "\$\{WARDY_LLM_MODEL\}"/);
   assert.match(installer, /ollama stop "\$\{WARDY_LLM_MODEL\}"/);
   assert.match(serviceInstaller, /Wants=network-online\.target ollama\.service/);

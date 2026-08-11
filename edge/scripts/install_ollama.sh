@@ -12,7 +12,7 @@ if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
   echo "Wardy Ollama installation requires Linux aarch64" >&2
   exit 1
 fi
-for command_name in curl sha256sum sudo; do
+for command_name in curl jq sha256sum sudo; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "required command not found: ${command_name}" >&2
     exit 1
@@ -46,7 +46,8 @@ fi
 sudo systemctl enable --now ollama.service
 ollama_ready=false
 for _ in {1..60}; do
-  if curl --fail --silent --show-error http://127.0.0.1:11434/api/version >/dev/null; then
+  if curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+      http://127.0.0.1:11434/api/version >/dev/null; then
     ollama_ready=true
     break
   fi
@@ -58,11 +59,10 @@ if [[ "${ollama_ready}" != true ]]; then
 fi
 
 ollama_model_digest() {
-  curl --fail --silent --show-error http://127.0.0.1:11434/api/tags |
-    sed 's/},{/\}\n\{/g' |
-    grep -F "\"name\":\"${WARDY_LLM_MODEL}\"" |
-    head -n 1 |
-    sed -n 's/.*"digest":"\([a-f0-9]\{64\}\)".*/\1/p'
+  curl --fail --silent --show-error --connect-timeout 5 --max-time 30 \
+      http://127.0.0.1:11434/api/tags |
+    jq --raw-output --arg model "${WARDY_LLM_MODEL}" \
+      'first(.models[] | select(.name == $model or .model == $model) | .digest) // empty'
 }
 
 if [[ "$(ollama_model_digest)" != "${WARDY_LLM_MODEL_DIGEST}" ]]; then
