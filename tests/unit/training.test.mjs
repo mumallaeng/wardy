@@ -131,4 +131,15 @@ test("데이터 sample 원본은 인증된 media endpoint에서 읽는다", asyn
   );
   assert.equal(calls[0].options.headers["X-Wardy-Access-Token"], "access-token");
   assert.equal(media.type, "image/jpeg");
+  assert.equal(
+    datasetSampleMediaUrl({
+      ...datasetSample,
+      mediaResource: "https://jetson.local:8443/api/data-samples/dataset-sample-001/media",
+    }, "https://jetson.local:8443"),
+    "https://jetson.local:8443/api/data-samples/dataset-sample-001/media",
+  );
+  assert.throws(() => datasetSampleMediaUrl({
+    ...datasetSample,
+    mediaResource: "https://outside.example/sample.jpg",
+  }, "https://jetson.local:8443"), /일치하지 않습니다/);
 });

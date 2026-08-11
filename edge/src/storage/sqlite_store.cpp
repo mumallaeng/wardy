@@ -2,6 +2,8 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <limits>
 #include <mutex>
@@ -68,6 +70,19 @@ std::optional<std::string> optional_column_text(sqlite3_stmt* statement, int ind
 void require_done(sqlite3* database, sqlite3_stmt* statement) {
   if (sqlite3_step(statement) != SQLITE_DONE) {
     throw std::runtime_error(sqlite3_errmsg(database));
+  }
+}
+
+bool is_blank(const std::string& value) {
+  return value.empty() || std::all_of(value.begin(), value.end(), [](unsigned char character) {
+    return std::isspace(character) != 0;
+  });
+}
+
+void validate_approved_dataset_label(const std::string& label,
+                                     const std::string& review_status) {
+  if (review_status == "approved" && is_blank(label)) {
+    throw std::invalid_argument("approved dataset sample label must not be blank");
   }
 }
 
@@ -658,6 +673,7 @@ std::size_t SqliteStore::count_subject_reference_samples(
 
 void SqliteStore::add_dataset_sample(const DatasetSampleRecord& sample) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  validate_approved_dataset_label(sample.label, sample.review_status);
   const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     INSERT INTO dataset_samples(
@@ -733,6 +749,7 @@ bool SqliteStore::update_dataset_sample(const std::string& sample_id,
                                         const std::string& label,
                                         const std::string& review_status) {
   if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  validate_approved_dataset_label(label, review_status);
   const std::lock_guard lock(impl_->mutex);
   Statement statement(impl_->database, R"SQL(
     UPDATE dataset_samples SET label=?, review_status=? WHERE sample_id=?;

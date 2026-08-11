@@ -202,9 +202,28 @@ int main() {
          "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
   assert(!store.get_dataset_sample("missing").has_value());
   assert(store.update_dataset_sample("dataset-sample-001", "care-person", "approved"));
+  bool rejected_blank_approved_label = false;
+  try {
+    store.update_dataset_sample("dataset-sample-001", "   ", "approved");
+  } catch (const std::invalid_argument&) {
+    rejected_blank_approved_label = true;
+  }
+  assert(rejected_blank_approved_label);
   dataset_samples = store.list_dataset_samples();
   assert(dataset_samples[0].label == "care-person");
   assert(dataset_samples[0].review_status == "approved");
+  bool rejected_blank_approved_insert = false;
+  try {
+    store.add_dataset_sample({
+        "dataset-sample-blank", "M-01", "DS-001", " ", "approved",
+        "session-0811-am", "jetson_camera",
+        "datasets/M-01/session-0811-am/dataset-sample-blank.jpg", std::nullopt,
+        "2026-08-11T00:01:00Z", 640, 480,
+    });
+  } catch (const std::invalid_argument&) {
+    rejected_blank_approved_insert = true;
+  }
+  assert(rejected_blank_approved_insert);
   assert(store.delete_dataset_sample("dataset-sample-001") ==
          "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
   assert(store.list_dataset_samples().empty());

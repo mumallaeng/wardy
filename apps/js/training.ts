@@ -25,7 +25,12 @@ export function datasetSamplesUrl(value: string, fallbackOrigin = ""): string {
 
 export function datasetSampleMediaUrl(sample: DatasetSample, value: string,
                                       fallbackOrigin = ""): string {
-  return new URL(sample.mediaResource, `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/`).toString();
+  const baseUrl = new URL(`${normalizeJetsonBaseUrl(value, fallbackOrigin)}/`);
+  const endpoint = new URL(sample.mediaResource, baseUrl);
+  if (endpoint.origin !== baseUrl.origin) {
+    throw new Error("데이터 sample 원본 주소가 Jetson 서비스 주소와 일치하지 않습니다.");
+  }
+  return endpoint.toString();
 }
 
 function requireSecureEndpoint(endpoint: string): string {

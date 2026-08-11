@@ -20,6 +20,14 @@ function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
 
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSafeDatasetSampleId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);
+}
+
 function isOptionalCount(value: unknown): boolean {
   return value === undefined || (typeof value === "number" && Number.isInteger(value) && value >= 0);
 }
@@ -37,7 +45,7 @@ function isIdentityReview(value: unknown): boolean {
 
 function isDatasetSample(value: unknown): value is DatasetSample {
   if (!isRecord(value)) return false;
-  return typeof value.id === "string"
+  return isSafeDatasetSampleId(value.id)
     && typeof value.modelId === "string"
     && typeof value.requirementId === "string"
     && typeof value.label === "string"
@@ -69,10 +77,14 @@ function migratePersistedState(value: unknown): void {
   if (value.identityReviews === undefined) value.identityReviews = [];
   if (value.datasetSamples === undefined) value.datasetSamples = [];
   if (Array.isArray(value.datasetSamples)) {
-    value.datasetSamples.forEach((sample) => {
-      if (isRecord(sample) && typeof sample.id === "string" &&
+    const datasetSamples = value.datasetSamples.filter(
+      (sample) => isRecord(sample) && isSafeDatasetSampleId(sample.id),
+    );
+    value.datasetSamples = datasetSamples;
+    datasetSamples.forEach((sample) => {
+      if (isRecord(sample) && isSafeDatasetSampleId(sample.id) &&
           typeof sample.mediaResource !== "string") {
-        sample.mediaResource = `/api/data-samples/${encodeURIComponent(sample.id)}/media`;
+        sample.mediaResource = `/api/data-samples/${sample.id}/media`;
       }
     });
   }
@@ -95,11 +107,15 @@ function migratePersistedState(value: unknown): void {
   const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   if (!isRecord(settings.dataWorkspace)) settings.dataWorkspace = {};
   const dataWorkspace = settings.dataWorkspace as Record<string, unknown>;
-  if (typeof dataWorkspace.captureSession !== "string") {
+  if (!isNonBlankString(dataWorkspace.captureSession)) {
     dataWorkspace.captureSession = `session-${day}`;
+  } else {
+    dataWorkspace.captureSession = dataWorkspace.captureSession.trim();
   }
-  if (typeof dataWorkspace.datasetVersion !== "string") {
+  if (!isNonBlankString(dataWorkspace.datasetVersion)) {
     dataWorkspace.datasetVersion = `wardy-${day}-v1`;
+  } else {
+    dataWorkspace.datasetVersion = dataWorkspace.datasetVersion.trim();
   }
   if (!isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
@@ -182,8 +198,8 @@ function isWardyState(value: unknown): value is WardyState {
     || !isRecord(settings.jetson)
     || typeof settings.jetson.baseUrl !== "string"
     || !isRecord(settings.dataWorkspace)
-    || typeof settings.dataWorkspace.captureSession !== "string"
-    || typeof settings.dataWorkspace.datasetVersion !== "string") return false;
+    || !isNonBlankString(settings.dataWorkspace.captureSession)
+    || !isNonBlankString(settings.dataWorkspace.datasetVersion)) return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
     && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
@@ -291,10 +307,15 @@ export class WardyStore {
   }
 
   setDataWorkspace(captureSession: string, datasetVersion: string): WardyState {
+    const nextCaptureSession = captureSession.trim();
+    const nextDatasetVersion = datasetVersion.trim();
+    if (!nextCaptureSession || !nextDatasetVersion) {
+      throw new Error("capture session과 dataset version을 모두 입력해야 합니다.");
+    }
     return this.#commit((state) => {
       state.settings.dataWorkspace = {
-        captureSession: captureSession.trim(),
-        datasetVersion: datasetVersion.trim(),
+        captureSession: nextCaptureSession,
+        datasetVersion: nextDatasetVersion,
       };
     });
   }

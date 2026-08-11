@@ -63,6 +63,7 @@ let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 let datasetPreviewUrl: string | null = null;
+let datasetPreviewGeneration = 0;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 
@@ -514,14 +515,16 @@ async function reviewDatasetSample(
 }
 
 function closeDatasetPreview(): void {
+  datasetPreviewGeneration += 1;
   const dialog = $<HTMLDialogElement>("#dataset-preview-dialog");
-  if (dialog.open) dialog.close();
-  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
   if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
   datasetPreviewUrl = null;
+  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
+  if (dialog.open) dialog.close();
 }
 
 async function previewDatasetSample(sampleId: string): Promise<void> {
+  const generation = ++datasetPreviewGeneration;
   const state = store.getState();
   const sample = state.datasetSamples.find((candidate) => candidate.id === sampleId);
   if (!sample) { toast("sample 정보를 찾을 수 없습니다."); return; }
@@ -530,14 +533,18 @@ async function previewDatasetSample(sampleId: string): Promise<void> {
     const media = await trainingSamples.loadDatasetSampleMedia(
       sample, connection.baseUrl, connection.accessToken, connection.origin,
     );
-    closeDatasetPreview();
+    if (generation !== datasetPreviewGeneration) return;
+    if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
     datasetPreviewUrl = URL.createObjectURL(media);
     $<HTMLImageElement>("#dataset-preview-image").src = datasetPreviewUrl;
     $("#dataset-preview-title").textContent = `${sample.modelId} · ${sample.label}`;
     $("#dataset-preview-meta").textContent =
       `${sample.requirementId} · ${sample.captureSession} · ${sample.width}×${sample.height}`;
-    $<HTMLDialogElement>("#dataset-preview-dialog").showModal();
-  } catch (error) { toast(errorMessage(error)); }
+    const dialog = $<HTMLDialogElement>("#dataset-preview-dialog");
+    if (!dialog.open) dialog.showModal();
+  } catch (error) {
+    if (generation === datasetPreviewGeneration) toast(errorMessage(error));
+  }
 }
 
 async function deleteDatasetSample(sampleId: string): Promise<void> {
@@ -550,6 +557,18 @@ async function deleteDatasetSample(sampleId: string): Promise<void> {
     store.replaceDatasetSamples(samples);
     toast("원본 sample을 Jetson에서 삭제했습니다.");
   } catch (error) { toast(errorMessage(error)); }
+}
+
+function saveDataWorkspaceSettings(): void {
+  try {
+    store.setDataWorkspace(
+      $<HTMLInputElement>("#dataset-session").value,
+      $<HTMLInputElement>("#dataset-version").value,
+    );
+  } catch (error) {
+    render();
+    toast(errorMessage(error));
+  }
 }
 
 async function deleteSubject(subjectId: string): Promise<void> {
@@ -845,24 +864,18 @@ $<HTMLDialogElement>("#dataset-preview-dialog").addEventListener("close", () => 
   datasetPreviewUrl = null;
   $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
 });
+$<HTMLDialogElement>("#dataset-preview-dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeDatasetPreview();
+});
 $<HTMLInputElement>("#dataset-file-input").addEventListener("change", (event) => {
   const input = event.currentTarget as HTMLInputElement;
   const files = [...(input.files ?? [])];
   input.value = "";
   void uploadDatasetSamples(files);
 });
-$<HTMLInputElement>("#dataset-session").addEventListener("change", () => {
-  store.setDataWorkspace(
-    $<HTMLInputElement>("#dataset-session").value,
-    $<HTMLInputElement>("#dataset-version").value,
-  );
-});
-$<HTMLInputElement>("#dataset-version").addEventListener("change", () => {
-  store.setDataWorkspace(
-    $<HTMLInputElement>("#dataset-session").value,
-    $<HTMLInputElement>("#dataset-version").value,
-  );
-});
+$<HTMLInputElement>("#dataset-session").addEventListener("change", saveDataWorkspaceSettings);
+$<HTMLInputElement>("#dataset-version").addEventListener("change", saveDataWorkspaceSettings);
 $("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
