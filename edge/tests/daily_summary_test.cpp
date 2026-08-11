@@ -42,6 +42,8 @@ int main() {
   assert(prompt.find("고정 집계 문장(수정 금지)") != std::string::npos);
   assert(prompt.find("거실") != std::string::npos);
   assert(prompt.find("가위") != std::string::npos);
+  assert(prompt.find("낙상 의심") != std::string::npos);
+  assert(prompt.find("13:15") == std::string::npos);
   for (const std::string& private_value : {
            "private-id", "subject-private", "홍길동", "object-private",
            "zone-private", "private detector rationale", "secret", "video.mp4"}) {
@@ -64,6 +66,7 @@ int main() {
   assert(wardy::llm::extract_generated_summary(response) == generated);
   assert(wardy::llm::valid_generated_summary(generated, events));
   assert(!wardy::llm::valid_generated_summary(generated + " 사고 확정", events));
+  assert(!wardy::llm::valid_generated_summary(generated + " 사건 발생", events));
 
   wardy::llm::DailySummaryConfig success_config;
   success_config.timeout = std::chrono::seconds{5};
