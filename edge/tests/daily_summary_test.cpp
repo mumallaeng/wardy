@@ -74,6 +74,7 @@ int main() {
       success_config, [response](const std::string&) { return response; });
   const auto success_result = success.summarize("2026-08-11", events);
   assert(!success_result.fallback);
+  assert(!success_result.filtered);
   assert(success_result.summary == generated);
   assert(success_result.event_count == 3);
   assert(success_result.unconfirmed_count == 2);
@@ -89,4 +90,16 @@ int main() {
   assert(empty_result.fallback);
   assert(empty_result.fallback_reason == "no_events");
   assert(empty_result.summary == "오늘 기록된 안전 확인 이벤트가 없습니다.");
+
+  const std::string unsafe_suffix_response =
+      "{\"response\":\"{\\\"summary\\\":\\\"" + generated +
+      " 사건 발생\\\"}\"}";
+  wardy::llm::DailySummaryService filtered(
+      success_config, [unsafe_suffix_response](const std::string&) {
+        return unsafe_suffix_response;
+      });
+  const auto filtered_result = filtered.summarize("2026-08-11", events);
+  assert(!filtered_result.fallback);
+  assert(filtered_result.filtered);
+  assert(filtered_result.summary == generated);
 }

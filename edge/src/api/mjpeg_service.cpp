@@ -164,6 +164,7 @@ std::string daily_summary_json(const llm::DailySummaryResult& result) {
   return "{\"summary\":" + json_string(result.summary) +
       ",\"model\":" + json_string(result.model) +
       ",\"fallback\":" + (result.fallback ? "true" : "false") +
+      ",\"filtered\":" + (result.filtered ? "true" : "false") +
       ",\"fallback_reason\":" + json_string(result.fallback_reason) +
       ",\"event_count\":" + std::to_string(result.event_count) +
       ",\"unconfirmed_count\":" + std::to_string(result.unconfirmed_count) +

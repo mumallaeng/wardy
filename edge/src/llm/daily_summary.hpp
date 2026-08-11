@@ -22,6 +22,7 @@ struct DailySummaryResult {
   std::string summary;
   std::string model;
   bool fallback = false;
+  bool filtered = false;
   std::string fallback_reason;
   std::size_t event_count = 0;
   std::size_t unconfirmed_count = 0;
