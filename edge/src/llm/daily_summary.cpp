@@ -55,6 +55,18 @@ std::string korean_event_status(const std::string& status) {
   return "미확인";
 }
 
+std::string korean_event_type(const std::string& type) {
+  if (type == "fall_suspected") return "낙상 의심";
+  if (type == "inactivity") return "장시간 정지";
+  if (type == "hazard_detected") return "위험물 감지";
+  if (type == "hazard_proximity") return "위험물 접근";
+  if (type == "zone_entry") return "구역 진입";
+  if (type == "zone_dwell") return "구역 체류";
+  if (type == "camera_fault") return "카메라 연결 이상";
+  if (type == "detection_fault") return "감지 기능 이상";
+  return "안전 확인";
+}
+
 std::string decode_json_string_at(const std::string& value, std::size_t position) {
   if (position >= value.size() || value[position] != '"') {
     throw std::runtime_error("expected JSON string");
@@ -187,8 +199,9 @@ std::string request_body(const DailySummaryConfig& config, const std::string& pr
   const std::string system =
       "당신은 Wardy 가정 안전 기록의 한국어 문장 편집기다. 프롬프트의 고정 집계 "
       "문장을 한 글자도 바꾸지 않고 summary의 첫 문장으로 복사하라. 둘째 문장은 "
-      "관찰 기록의 이벤트 종류, 시간, 위치만 자연스럽게 정리하라. 의료 진단, 사고 "
-      "확정, 위험 추측, 행동 지시, 이름, 식별자, 사진, 영상은 절대 추가하지 마라.";
+      "제공된 한국어 이벤트명과 위치만 사용해 관찰되었다는 표현으로 정리할 수 있다. "
+      "의료 진단, 사고나 사건의 발생 및 확정, 위험 추측, 행동 지시, 시간, 이름, "
+      "식별자, 사진, 영상은 절대 추가하지 마라.";
   return "{\"model\":" + api::json_string(config.model) +
       ",\"system\":" + api::json_string(system) +
       ",\"prompt\":" + api::json_string(prompt) +
@@ -231,9 +244,7 @@ std::string build_anonymized_prompt(
          << "고정 집계 문장(수정 금지): " << deterministic_summary(events)
          << "\n관찰 기록:\n";
   for (const auto& event : events) {
-    const std::string time = event.occurred_at.size() >= 16
-        ? event.occurred_at.substr(11, 5) : event.occurred_at;
-    prompt << "- " << time << " | 이벤트 " << event.event_type
+    prompt << "- 이벤트 " << korean_event_type(event.event_type)
            << " | 상태 " << korean_care_status(event.care_status)
            << " | 처리 " << korean_event_status(event.event_status)
            << " | 위치 " << event.subject_location;
@@ -253,7 +264,8 @@ std::string extract_generated_summary(const std::string& ollama_response) {
 bool valid_generated_summary(const std::string& summary,
                              const std::vector<storage::EventRecord>& events) {
   if (summary.empty() || summary.size() > 1500) return false;
-  for (const std::string_view banned : {"환자", "진단", "사고", "확정", "즉시 조치"}) {
+  for (const std::string_view banned : {
+           "환자", "진단", "사고", "사건", "발생", "확정", "즉시 조치"}) {
     if (summary.find(banned) != std::string::npos) return false;
   }
   const auto counts = count_events(events);
