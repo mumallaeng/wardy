@@ -4,7 +4,9 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$UiOrigin,
   [Parameter(Mandatory = $true)]
-  [SecureString]$ViewerToken
+  [SecureString]$ViewerToken,
+  [Parameter(Mandatory = $true)]
+  [SecureString]$AccessToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +29,30 @@ try {
   $authorization = "Basic $([Convert]::ToBase64String($credentialBytes))"
 } finally {
   $plainToken = $null
+}
+
+$plainAccessToken = [Net.NetworkCredential]::new("", $AccessToken).Password
+try {
+  $apiHeaders = @{
+    Origin = $UiOrigin
+    "X-Wardy-Access-Token" = $plainAccessToken
+  }
+  $runtimeEndpoints = @(
+    "/api/state",
+    "/api/events",
+    "/api/subjects",
+    "/api/managed-items",
+    "/api/zones",
+    "/api/notification-settings",
+    "/api/identity-reviews"
+  )
+  foreach ($endpoint in $runtimeEndpoints) {
+    Invoke-RestMethod -Uri "${baseUrl}${endpoint}" -Method Get `
+      -Headers $apiHeaders -TimeoutSec 5 | Out-Null
+    Write-Host "Jetson runtime API ready: ${endpoint}"
+  }
+} finally {
+  $plainAccessToken = $null
 }
 
 $offer = @"
