@@ -347,7 +347,7 @@ void SqliteStore::initialize() {
       image_path TEXT NOT NULL UNIQUE,
       captured_at TEXT NOT NULL,
       predicted_name TEXT,
-      confidence REAL CHECK(confidence >= 0.0 AND confidence <= 1.0 OR confidence IS NULL),
+      confidence REAL CHECK(confidence IS NULL OR (confidence >= 0.0 AND confidence <= 1.0)),
       decision TEXT NOT NULL CHECK(decision IN ('pending','subject','unknown','excluded')),
       subject_id TEXT REFERENCES subjects(subject_id) ON DELETE SET NULL,
       updated_at TEXT NOT NULL

@@ -161,7 +161,8 @@ export function renderIdentityReviews(
   container: HTMLElement,
   reviews: readonly IdentityReview[],
   subjects: readonly Subject[],
-  onResolve: (reviewId: string, decision: IdentityReviewDecision, subjectId?: string | null) => void,
+  onResolve: (reviewId: string, decision: Exclude<IdentityReviewDecision, "pending">,
+              subjectId?: string | null) => void,
 ): void {
   container.replaceChildren();
   if (!reviews.length) {
@@ -211,6 +212,7 @@ export function renderIdentityReviews(
       confirm.textContent = "선택한 인물";
       confirm.disabled = true;
       confirm.dataset.reviewAction = review.id;
+      confirm.dataset.reviewRequiresSubject = "true";
       confirm.addEventListener("click", () => onResolve(review.id, "subject", select.value));
       const unknown = document.createElement("button");
       unknown.type = "button";
@@ -230,6 +232,7 @@ export function renderIdentityReviews(
       body.append(select, actions);
       const notice = document.createElement("small");
       notice.dataset.reviewNotice = review.id;
+      notice.setAttribute("aria-live", "polite");
       notice.textContent = "보안된 장면 미리보기를 불러오는 중입니다.";
       body.append(notice);
     } else {

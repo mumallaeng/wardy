@@ -10,6 +10,7 @@ import {
   renderIdentityReviews,
 } from "./data-workspace.ts";
 import { OverlayController } from "./overlay.ts";
+import { newNotifiableEvents } from "./notifications.ts";
 import { registerWardyServiceWorker } from "./pwa.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
@@ -66,6 +67,8 @@ let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
 const identityReviewUrls = new Map<string, string>();
+const identityReviewLoads = new Map<string, Promise<string>>();
+let activeIdentityReviewIds = new Set<string>();
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 
@@ -100,21 +103,25 @@ function notifyNewEvents(events: readonly WardyEvent[]): void {
   }
   if ("Notification" in window && Notification.permission === "granted") {
     const settings = store.getState().settings.notifications;
-    events.filter((event) => event.event_status === "new"
-      && !knownEventIds?.has(event.event_id)
-      && settings[event.event_type] !== "off")
-      .forEach((event) => {
-        const notification = new Notification(`Wardy · ${EVENT_TYPES[event.event_type]}`, {
-          body: `${event.subject_location ?? "위치 확인 필요"} · ${event.reason}`,
-          icon: "/icons/wardy-icon-192.png",
-          tag: event.event_id,
-        });
-        notification.addEventListener("click", () => {
-          window.focus();
-          openView("events");
-          notification.close();
-        });
+    const eligibleEvents = newNotifiableEvents(events, knownEventIds, settings);
+    const displayedEvents = eligibleEvents.length > 3 ? eligibleEvents.slice(0, 1) : eligibleEvents;
+    displayedEvents.forEach((event) => {
+      const isSummary = eligibleEvents.length > 3;
+      const notification = new Notification(isSummary
+        ? "Wardy · 새 이벤트"
+        : `Wardy · ${EVENT_TYPES[event.event_type]}`, {
+        body: isSummary
+          ? `새 이벤트 ${eligibleEvents.length}건을 확인해 주세요.`
+          : `${event.subject_location ?? "위치 확인 필요"} · ${event.reason}`,
+        icon: "/icons/wardy-icon-192.png",
+        tag: isSummary ? "wardy-event-summary" : event.event_id,
       });
+      notification.addEventListener("click", () => {
+        window.focus();
+        openView("events");
+        notification.close();
+      });
+    });
   }
   knownEventIds = currentIds;
 }
@@ -304,11 +311,14 @@ async function saveNotificationSetting(eventType: EventType,
       connection.baseUrl, connection.accessToken, connection.origin, eventType, value);
     store.replaceNotificationSettings(settings);
     toast(`${EVENT_TYPES[eventType]} 알림을 ${value.toUpperCase()}로 저장했습니다.`);
-  } catch (error) { toast(errorMessage(error)); }
+  } catch (error) {
+    render();
+    toast(errorMessage(error));
+  }
 }
 
 async function resolveIdentityReview(reviewId: string,
-                                     decision: IdentityReviewDecision,
+                                     decision: Exclude<IdentityReviewDecision, "pending">,
                                      subjectId: string | null = null): Promise<void> {
   try {
     const connection = runtimeConnection();
@@ -323,36 +333,64 @@ async function resolveIdentityReview(reviewId: string,
 async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
                                              hasSubjects: boolean): Promise<void> {
   const currentIds = new Set(reviews.map((review) => review.id));
+  activeIdentityReviewIds = currentIds;
   identityReviewUrls.forEach((url, reviewId) => {
     if (!currentIds.has(reviewId)) {
       URL.revokeObjectURL(url);
       identityReviewUrls.delete(reviewId);
     }
   });
+  identityReviewLoads.forEach((loading, reviewId) => {
+    if (currentIds.has(reviewId)) return;
+    void loading.then((url) => {
+      if (!activeIdentityReviewIds.has(reviewId)
+          && identityReviewUrls.get(reviewId) === url) {
+        URL.revokeObjectURL(url);
+        identityReviewUrls.delete(reviewId);
+      }
+    }).catch(() => undefined);
+  });
   await Promise.all(reviews.map(async (review) => {
     const image = document.querySelector<HTMLImageElement>(
       `[data-review-image="${CSS.escape(review.id)}"]`,
     );
     if (!image) return;
+    document.querySelectorAll<HTMLButtonElement>(
+      `[data-review-action="${CSS.escape(review.id)}"]`,
+    ).forEach((button) => {
+      button.disabled = button.dataset.reviewRequiresSubject === "true" && !hasSubjects;
+    });
+    const subject = document.querySelector<HTMLSelectElement>(
+      `[data-review-subject="${CSS.escape(review.id)}"]`,
+    );
+    if (subject) subject.disabled = !hasSubjects;
     try {
       let url = identityReviewUrls.get(review.id);
       if (!url) {
-        const connection = runtimeConnection();
-        const blob = await runtime.loadIdentityReviewMedia(
-          connection.baseUrl, connection.accessToken, connection.origin, review.id);
-        url = URL.createObjectURL(blob);
-        identityReviewUrls.set(review.id, url);
+        let loading = identityReviewLoads.get(review.id);
+        if (!loading) {
+          loading = (async () => {
+            const connection = runtimeConnection();
+            const blob = await runtime.loadIdentityReviewMedia(
+              connection.baseUrl, connection.accessToken, connection.origin, review.id);
+            const createdUrl = URL.createObjectURL(blob);
+            if (!activeIdentityReviewIds.has(review.id)) {
+              URL.revokeObjectURL(createdUrl);
+              throw new Error("식별 검토 항목이 더 이상 표시되지 않습니다.");
+            }
+            identityReviewUrls.set(review.id, createdUrl);
+            return createdUrl;
+          })();
+          identityReviewLoads.set(review.id, loading);
+          void loading.finally(() => {
+            if (identityReviewLoads.get(review.id) === loading) {
+              identityReviewLoads.delete(review.id);
+            }
+          }).catch(() => undefined);
+        }
+        url = await loading;
       }
       image.src = url;
-      document.querySelectorAll<HTMLButtonElement>(
-        `[data-review-action="${CSS.escape(review.id)}"]`,
-      ).forEach((button) => {
-        button.disabled = button.textContent === "선택한 인물" && !hasSubjects;
-      });
-      const subject = document.querySelector<HTMLSelectElement>(
-        `[data-review-subject="${CSS.escape(review.id)}"]`,
-      );
-      if (subject) subject.disabled = !hasSubjects;
       const notice = document.querySelector<HTMLElement>(
         `[data-review-notice="${CSS.escape(review.id)}"]`,
       );
@@ -434,11 +472,11 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
         ),
       ]);
       applyRuntimeSnapshot(snapshot);
-      store.replaceSubjects(collections.subjects);
-      store.replaceManagedItems(collections.managedItems);
-      store.replaceZones(collections.zones);
-      store.replaceNotificationSettings(collections.notifications);
-      store.replaceIdentityReviews(collections.identityReviews);
+      if (collections.subjects) store.replaceSubjects(collections.subjects);
+      if (collections.managedItems) store.replaceManagedItems(collections.managedItems);
+      if (collections.zones) store.replaceZones(collections.zones);
+      if (collections.notifications) store.replaceNotificationSettings(collections.notifications);
+      if (collections.identityReviews) store.replaceIdentityReviews(collections.identityReviews);
       store.replaceDatasetSamples(datasetSamples);
       runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
     } else {
@@ -1049,6 +1087,7 @@ $("#system-guidance-action").addEventListener("click", () => openView("jetson"))
 
 window.addEventListener("beforeunload", () => {
   closeDatasetPreview();
+  activeIdentityReviewIds.clear();
   identityReviewUrls.forEach((url) => URL.revokeObjectURL(url));
   camera.stop();
   runtime.stop();

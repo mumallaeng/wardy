@@ -99,8 +99,28 @@ export WARDY_CAMERA_PIPELINE="${camera_source} ! tee name=wardy_camera \
 wardy_camera. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1 sync=false \
 wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! nvvidconv ! video/x-raw,format=I420 ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=${software_bitrate_kbps} key-int-max=${keyframe_interval} bframes=0 threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0 byte-stream=true ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://wardy-publisher:${publish_token}@127.0.0.1:8554/wardy protocols=tcp latency=0"
 
-mkdir -p "$(dirname "${database_path}")" "${training_data_path}" "${event_media_path}"
-chmod 0700 "$(dirname "${database_path}")" "${training_data_path}" "${event_media_path}"
+ensure_private_directory() {
+  local directory="$1"
+  if [[ -e "${directory}" && ! -d "${directory}" ]]; then
+    echo "Wardy storage path is not a directory: ${directory}" >&2
+    exit 1
+  fi
+  if [[ ! -e "${directory}" ]]; then
+    mkdir -p "${directory}"
+    chmod 0700 "${directory}"
+  fi
+  local owner mode
+  owner="$(stat -c '%u' "${directory}")"
+  mode="$(stat -c '%a' "${directory}")"
+  if [[ "${owner}" != "$(id -u)" || ! "${mode}" =~ ^[0-7]+$ || $((8#${mode} & 077)) -ne 0 ]]; then
+    echo "Wardy storage directory must be owned by the service user and deny group/other access: ${directory}" >&2
+    exit 1
+  fi
+}
+
+ensure_private_directory "$(dirname "${database_path}")"
+ensure_private_directory "${training_data_path}"
+ensure_private_directory "${event_media_path}"
 
 export MTX_WEBRTCALLOWORIGINS="${ui_origin}"
 export MTX_WEBRTCLOCALTCPADDRESS="${MTX_WEBRTCLOCALTCPADDRESS:-:8189}"

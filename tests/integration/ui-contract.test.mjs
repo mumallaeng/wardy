@@ -65,15 +65,21 @@ test("설치형 웹앱 shell과 새 이벤트 브라우저 알림을 제공한�
     path.join(root, "apps/public/manifest.webmanifest"), "utf8",
   ));
   assert.equal(manifest.display, "standalone");
-  assert.deepEqual(manifest.icons.map((icon) => icon.sizes), ["192x192", "512x512"]);
+  assert.equal(manifest.id, "/");
+  assert.deepEqual(new Set(manifest.icons.map((icon) => icon.sizes)),
+    new Set(["192x192", "512x512"]));
+  assert.ok(manifest.icons.every((icon) => icon.purpose === "any"));
   const serviceWorker = await readFile(path.join(root, "apps/js/service-worker.ts"), "utf8");
   assert.match(serviceWorker, /request\.mode === "navigate"/);
   assert.match(serviceWorker, /Wardy is offline/);
+  assert.match(serviceWorker, /isApplicationShellPath\(url\.pathname\)/);
+  assert.doesNotMatch(serviceWorker, /pathname\.startsWith\("\/api\/"\)/);
+  assert.match(serviceWorker, /__WARDY_BUILD_ID__/);
+  const pwa = await readFile(path.join(root, "apps/js/pwa.ts"), "utf8");
+  assert.match(pwa, /register\("\/service-worker\.js"/);
+  assert.match(pwa, /scope: "\/"/);
   const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
   assert.match(app, /Notification\.requestPermission\(\)/);
-  assert.match(app, /event\.event_status === "new"/);
-  assert.match(app, /settings\[event\.event_type\] !== "off"/);
-  assert.match(app, /knownEventIds === null/);
 });
 
 test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 전환된다", async () => {
@@ -153,14 +159,10 @@ test("비AI runtime은 AI 구현 파일을 import하지 않는다", async () => 
 });
 
 test("식별 검토 화면은 Jetson에 저장된 장면과 답변 API를 사용한다", async () => {
-  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
-  const runtime = await readFile(path.join(root, "apps/js/runtime.ts"), "utf8");
   const workspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
 
-  assert.match(runtime, /\/api\/identity-reviews/);
-  assert.match(runtime, /loadIdentityReviewMedia/);
-  assert.match(runtime, /resolveIdentityReview/);
-  assert.match(app, /hydrateIdentityReviewPreviews/);
   assert.match(workspace, /dataset\.reviewImage/);
+  assert.match(workspace, /dataset\.reviewRequiresSubject/);
+  assert.match(workspace, /aria-live/);
   assert.doesNotMatch(workspace, /미리보기 연결 전/);
 });

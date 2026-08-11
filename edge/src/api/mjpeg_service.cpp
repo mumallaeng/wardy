@@ -153,7 +153,12 @@ bool configurable_event_type(const std::string& value) {
 
 double normalized_coordinate(const std::string& value) {
   std::size_t parsed = 0;
-  const double result = std::stod(value, &parsed);
+  double result = 0.0;
+  try {
+    result = std::stod(value, &parsed);
+  } catch (const std::out_of_range&) {
+    throw std::invalid_argument("invalid normalized zone coordinate");
+  }
   if (parsed != value.size() || !std::isfinite(result) || result < 0.0 || result > 1.0) {
     throw std::invalid_argument("invalid normalized zone coordinate");
   }
@@ -442,28 +447,24 @@ std::optional<std::string> event_media_path(const std::string& path) {
   return action->first;
 }
 
-std::optional<std::string> dataset_sample_media_path(const std::string& path) {
-  constexpr const char* prefix = "/api/data-samples/";
+std::optional<std::string> resource_media_path(const std::string& path,
+                                               const std::string& prefix) {
   if (path.rfind(prefix, 0) != 0) return std::nullopt;
-  const std::string remainder = path.substr(std::strlen(prefix));
+  const std::string remainder = path.substr(prefix.size());
   const std::size_t separator = remainder.find('/');
   if (separator == std::string::npos || remainder.substr(separator + 1) != "media") {
     return std::nullopt;
   }
-  const std::string sample_id = remainder.substr(0, separator);
-  return safe_item_id(sample_id) ? std::optional<std::string>{sample_id} : std::nullopt;
+  const std::string identifier = remainder.substr(0, separator);
+  return safe_item_id(identifier) ? std::optional<std::string>{identifier} : std::nullopt;
+}
+
+std::optional<std::string> dataset_sample_media_path(const std::string& path) {
+  return resource_media_path(path, "/api/data-samples/");
 }
 
 std::optional<std::string> identity_review_media_path(const std::string& path) {
-  constexpr const char* prefix = "/api/identity-reviews/";
-  if (path.rfind(prefix, 0) != 0) return std::nullopt;
-  const std::string remainder = path.substr(std::strlen(prefix));
-  const std::size_t separator = remainder.find('/');
-  if (separator == std::string::npos || remainder.substr(separator + 1) != "media") {
-    return std::nullopt;
-  }
-  const std::string review_id = remainder.substr(0, separator);
-  return safe_item_id(review_id) ? std::optional<std::string>{review_id} : std::nullopt;
+  return resource_media_path(path, "/api/identity-reviews/");
 }
 
 std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
@@ -476,31 +477,12 @@ std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& stat
   return state->event_media->root_path() / relative;
 }
 
-std::filesystem::path stored_dataset_file(
-    const std::shared_ptr<StreamState>& state,
-    const storage::DatasetSampleRecord& sample) {
-  const std::filesystem::path relative(sample.image_path);
+std::filesystem::path resolve_under_training_root(
+    const std::shared_ptr<StreamState>& state, const std::string& image_path,
+    const char* invalid_path_message, const char* escape_message) {
+  const std::filesystem::path relative(image_path);
   if (relative.empty() || relative.is_absolute()) {
-    throw std::runtime_error("invalid dataset image path in SQLite");
-  }
-  const std::filesystem::path root =
-      std::filesystem::weakly_canonical(state->training_data_path);
-  const std::filesystem::path candidate =
-      std::filesystem::weakly_canonical(root / relative);
-  const auto [root_end, candidate_end] = std::mismatch(
-      root.begin(), root.end(), candidate.begin(), candidate.end());
-  if (root_end != root.end()) {
-    throw std::runtime_error("dataset image path escapes storage root");
-  }
-  return candidate;
-}
-
-std::filesystem::path stored_identity_review_file(
-    const std::shared_ptr<StreamState>& state,
-    const storage::IdentityReviewRecord& review) {
-  const std::filesystem::path relative(review.image_path);
-  if (relative.empty() || relative.is_absolute()) {
-    throw std::runtime_error("invalid identity review image path in SQLite");
+    throw std::runtime_error(invalid_path_message);
   }
   const std::filesystem::path root =
       std::filesystem::weakly_canonical(state->training_data_path);
@@ -510,9 +492,25 @@ std::filesystem::path stored_identity_review_file(
       root.begin(), root.end(), candidate.begin(), candidate.end());
   (void)candidate_end;
   if (root_end != root.end()) {
-    throw std::runtime_error("identity review image path escapes storage root");
+    throw std::runtime_error(escape_message);
   }
   return candidate;
+}
+
+std::filesystem::path stored_dataset_file(
+    const std::shared_ptr<StreamState>& state,
+    const storage::DatasetSampleRecord& sample) {
+  return resolve_under_training_root(
+      state, sample.image_path, "invalid dataset image path in SQLite",
+      "dataset image path escapes storage root");
+}
+
+std::filesystem::path stored_identity_review_file(
+    const std::shared_ptr<StreamState>& state,
+    const storage::IdentityReviewRecord& review) {
+  return resolve_under_training_root(
+      state, review.image_path, "invalid identity review image path in SQLite",
+      "identity review image path escapes storage root");
 }
 
 std::string dataset_image_content_type(const std::filesystem::path& path) {
