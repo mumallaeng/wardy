@@ -24,6 +24,7 @@
 #include <cerrno>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <ctime>
@@ -141,6 +142,22 @@ bool safe_item_id(const std::string& value) {
          std::all_of(value.begin(), value.end(), [](unsigned char character) {
            return std::isalnum(character) || character == '-' || character == '_';
          });
+}
+
+bool configurable_event_type(const std::string& value) {
+  return value == "fall_suspected" || value == "inactivity" ||
+      value == "hazard_detected" || value == "hazard_proximity" ||
+      value == "zone_entry" || value == "zone_dwell" ||
+      value == "camera_fault" || value == "detection_fault";
+}
+
+double normalized_coordinate(const std::string& value) {
+  std::size_t parsed = 0;
+  const double result = std::stod(value, &parsed);
+  if (parsed != value.size() || !std::isfinite(result) || result < 0.0 || result > 1.0) {
+    throw std::invalid_argument("invalid normalized zone coordinate");
+  }
+  return result;
 }
 
 bool valid_summary_date(const std::string& value) {
@@ -574,6 +591,43 @@ std::string create_managed_item(const std::string& request,
   return managed_items_json(state->database->list_managed_items());
 }
 
+std::string create_zone(const std::string& request,
+                        const std::shared_ptr<StreamState>& state) {
+  const std::string zone_id = request_header(request, "x-wardy-zone-id").value_or("");
+  const std::string name = percent_decode(
+      request_header(request, "x-wardy-zone-name").value_or(""));
+  if (!safe_item_id(zone_id) || name.empty() || name.size() > 120) {
+    throw std::invalid_argument("invalid zone metadata");
+  }
+  const double x = normalized_coordinate(
+      request_header(request, "x-wardy-zone-x").value_or(""));
+  const double y = normalized_coordinate(
+      request_header(request, "x-wardy-zone-y").value_or(""));
+  const double width = normalized_coordinate(
+      request_header(request, "x-wardy-zone-width").value_or(""));
+  const double height = normalized_coordinate(
+      request_header(request, "x-wardy-zone-height").value_or(""));
+  if (width <= 0.0 || height <= 0.0 || x + width > 1.0 || y + height > 1.0) {
+    throw std::invalid_argument("zone rectangle must stay inside the camera frame");
+  }
+  const std::string now = utc_now();
+  state->database->upsert_zone({zone_id, name, x, y, width, height, now, now});
+  return zones_json(state->database->list_zones());
+}
+
+std::string update_notification_setting(
+    const std::string& request, const std::shared_ptr<StreamState>& state) {
+  const std::string event_type =
+      request_header(request, "x-wardy-event-type").value_or("");
+  const std::string value = lowercase(
+      request_header(request, "x-wardy-notification").value_or(""));
+  if (!configurable_event_type(event_type) || (value != "on" && value != "off")) {
+    throw std::invalid_argument("invalid notification setting");
+  }
+  state->database->upsert_notification_setting({event_type, value == "on", utc_now()});
+  return notification_settings_json(state->database->list_notification_settings());
+}
+
 std::string capture_training_sample(const std::string& request,
                                     const std::shared_ptr<StreamState>& state) {
   const std::string item_id = request_header(request, "x-wardy-item-id").value_or("");
@@ -971,6 +1025,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const auto event_action = event_action_path(path);
   const auto subject_id_path = resource_id_path(path, "/api/subjects/");
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
+  const auto zone_id_path = resource_id_path(path, "/api/zones/");
   const auto dataset_sample_id_path = resource_id_path(path, "/api/data-samples/");
   try {
   const bool protected_api = protected_api_path(path);
@@ -1121,6 +1176,23 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     }
     send_text(socket_fd, json_response(deleted ? 200 : 404, deleted ? "OK" : "Not Found",
         managed_items_json(state->database->list_managed_items()), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/zones") {
+    send_text(socket_fd, json_response(200, "OK",
+        zones_json(state->database->list_zones()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/zones") {
+    send_text(socket_fd, json_response(201, "Created", create_zone(request, state),
+                                       config.allowed_origin));
+  } else if (method == "DELETE" && zone_id_path) {
+    const bool deleted = state->database->delete_zone(*zone_id_path);
+    send_text(socket_fd, json_response(deleted ? 200 : 404, deleted ? "OK" : "Not Found",
+        zones_json(state->database->list_zones()), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/notification-settings") {
+    send_text(socket_fd, json_response(200, "OK",
+        notification_settings_json(state->database->list_notification_settings()),
+        config.allowed_origin));
+  } else if (method == "POST" && path == "/api/notification-settings") {
+    send_text(socket_fd, json_response(200, "OK",
+        update_notification_setting(request, state), config.allowed_origin));
   } else if (method == "POST" && path == "/api/training/items/sample") {
     try {
       send_text(socket_fd, json_response(201, "Created",

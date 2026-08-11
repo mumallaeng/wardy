@@ -15,16 +15,46 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
     if (String(url).endsWith("/api/state")) return Response.json(state);
     if (String(url).endsWith("/api/events")) return Response.json({ events: [] });
     if (String(url).endsWith("/api/subjects")) return Response.json({ subjects: [] });
-    return Response.json({ managedItems: [] });
+    if (String(url).endsWith("/api/managed-items")) return Response.json({ managedItems: [] });
+    if (String(url).endsWith("/api/zones")) return Response.json({ zones: [] });
+    return Response.json({ notifications: { fall_suspected: "on" } });
   };
   const client = new WardyRuntimeClient(fetchImpl);
   const snapshot = await client.loadSnapshot("https://10.10.20.40:8443", "token", "https://ui.local");
   const collections = await client.loadCollections("https://10.10.20.40:8443", "token", "https://ui.local");
   assert.equal(snapshot.state.camera_state, "connected");
-  assert.deepEqual(collections, { subjects: [], managedItems: [] });
-  assert.equal(calls.length, 4);
+  assert.deepEqual(collections, {
+    subjects: [], managedItems: [], zones: [],
+    notifications: { fall_suspected: "on" },
+  });
+  assert.equal(calls.length, 6);
   assert.ok(calls.every((call) => call.init.headers["X-Wardy-Access-Token"] === "token"));
   assert.ok(calls.every((call) => call.init.signal instanceof AbortSignal));
+});
+
+test("주의 구역과 알림 설정은 Jetson 운영 설정 API에 저장한다", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (init.method === "DELETE") return Response.json({ zones: [] });
+    if (String(url).endsWith("/api/zones")) return Response.json({ zones: [{
+      id: "zone-1", name: "현관", x: 0.1, y: 0.2, width: 0.3, height: 0.4,
+    }] });
+    return Response.json({ notifications: { fall_suspected: "off" } });
+  };
+  const client = new WardyRuntimeClient(fetchImpl);
+  const zones = await client.createZone("https://jetson.local:8443", "token", "", {
+    name: "현관", x: 0.1, y: 0.2, width: 0.3, height: 0.4,
+  });
+  await client.deleteZone("https://jetson.local:8443", "token", "", zones[0].id);
+  const notifications = await client.setNotificationSetting(
+    "https://jetson.local:8443", "token", "", "fall_suspected", "off",
+  );
+  assert.equal(notifications.fall_suspected, "off");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(decodeURIComponent(calls[0].init.headers["X-Wardy-Zone-Name"]), "현관");
+  assert.equal(calls[1].init.method, "DELETE");
+  assert.equal(calls[2].init.headers["X-Wardy-Notification"], "off");
 });
 
 test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 번만 재연결한다", () => {
