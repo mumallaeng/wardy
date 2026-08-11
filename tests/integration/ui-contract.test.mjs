@@ -13,6 +13,12 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   for (const id of ["start-camera", "event-table-body", "jetson-form", "check-jetson"]) {
     assert.match(html, new RegExp(`id=["']${id}["']`));
   }
+  for (const id of ["generate-ai-summary", "ai-summary-output", "ai-summary-badge"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(html, /ON-DEVICE LLM/);
+  assert.match(html, /이름·식별자·사진·영상은 프롬프트에 포함하지 않으며/);
+  assert.match(html, /요청형 로컬 이벤트 요약/);
   assert.match(html, /AI 미연결/);
   assert.match(html, /AI 결과 아님/);
   assert.match(html, /카메라 표시 항목/);
