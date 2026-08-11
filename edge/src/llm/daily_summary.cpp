@@ -185,10 +185,10 @@ std::string post_to_ollama(int port, std::chrono::seconds timeout,
 
 std::string request_body(const DailySummaryConfig& config, const std::string& prompt) {
   const std::string system =
-      "당신은 가정용 안전 확인 기록을 한국어로 정리하는 Wardy 문장 편집기다. "
-      "입력에 있는 수치와 관찰 사실만 사용하고 의료 진단, 사고 확정, 위험도 추측, "
-      "행동 지시를 추가하지 마라. 이름, 식별자, 사진, 영상은 언급하지 마라. "
-      "모든 집계 수치를 빠짐없이 포함한 2~3문장으로 작성하라.";
+      "당신은 Wardy 가정 안전 기록의 한국어 문장 편집기다. 프롬프트의 고정 집계 "
+      "문장을 한 글자도 바꾸지 않고 summary의 첫 문장으로 복사하라. 둘째 문장은 "
+      "관찰 기록의 이벤트 종류, 시간, 위치만 자연스럽게 정리하라. 의료 진단, 사고 "
+      "확정, 위험 추측, 행동 지시, 이름, 식별자, 사진, 영상은 절대 추가하지 마라.";
   return "{\"model\":" + api::json_string(config.model) +
       ",\"system\":" + api::json_string(system) +
       ",\"prompt\":" + api::json_string(prompt) +
@@ -226,13 +226,10 @@ std::string deterministic_summary(const std::vector<storage::EventRecord>& event
 
 std::string build_anonymized_prompt(
     const std::string& date, const std::vector<storage::EventRecord>& events) {
-  const auto counts = count_events(events);
   std::ostringstream prompt;
   prompt << "날짜: " << date << '\n'
-         << "필수 집계: 총 " << events.size() << "건, 기본 " << counts.normal
-         << "건, 주의 " << counts.caution << "건, 경고 " << counts.warning
-         << "건, 긴급 " << counts.emergency << "건, 미확인 "
-         << counts.unconfirmed << "건\n관찰 기록:\n";
+         << "고정 집계 문장(수정 금지): " << deterministic_summary(events)
+         << "\n관찰 기록:\n";
   for (const auto& event : events) {
     const std::string time = event.occurred_at.size() >= 16
         ? event.occurred_at.substr(11, 5) : event.occurred_at;
