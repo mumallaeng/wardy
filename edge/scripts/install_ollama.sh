@@ -20,6 +20,7 @@ for command_name in curl sha256sum sudo; do
 done
 if [[ ! "${WARDY_OLLAMA_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ||
       ! "${WARDY_OLLAMA_INSTALL_SHA256}" =~ ^[a-f0-9]{64}$ ||
+      ! "${WARDY_LLM_MODEL_DIGEST}" =~ ^[a-f0-9]{64}$ ||
       -z "${WARDY_LLM_MODEL}" ]]; then
   echo "invalid pinned Ollama configuration" >&2
   exit 1
@@ -56,8 +57,20 @@ if [[ "${ollama_ready}" != true ]]; then
   exit 1
 fi
 
-if ! ollama list | awk 'NR > 1 {print $1}' | grep -Fxq "${WARDY_LLM_MODEL}"; then
+ollama_model_digest() {
+  curl --fail --silent --show-error http://127.0.0.1:11434/api/tags |
+    sed 's/},{/\}\n\{/g' |
+    grep -F "\"name\":\"${WARDY_LLM_MODEL}\"" |
+    head -n 1 |
+    sed -n 's/.*"digest":"\([a-f0-9]\{64\}\)".*/\1/p'
+}
+
+if [[ "$(ollama_model_digest)" != "${WARDY_LLM_MODEL_DIGEST}" ]]; then
   ollama pull "${WARDY_LLM_MODEL}"
+fi
+if [[ "$(ollama_model_digest)" != "${WARDY_LLM_MODEL_DIGEST}" ]]; then
+  echo "Ollama model digest does not match the Wardy manifest" >&2
+  exit 1
 fi
 ollama stop "${WARDY_LLM_MODEL}" >/dev/null 2>&1 || true
 echo "Wardy on-device LLM is ready: ${WARDY_LLM_MODEL}"

@@ -1,7 +1,7 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { JetsonCredentialStore } from "./credentials.ts";
-import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
+import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import {
   datasetManifest,
@@ -614,6 +614,7 @@ async function generateDailySummary(): Promise<void> {
   const output = $("#ai-summary-output");
   const badge = $("#ai-summary-badge");
   button.disabled = true;
+  output.setAttribute("aria-busy", "true");
   output.textContent = "Jetson에서 오늘의 이벤트를 요약하고 있습니다…";
   badge.textContent = "생성 중";
   badge.className = "badge";
@@ -621,7 +622,7 @@ async function generateDailySummary(): Promise<void> {
     const connection = runtimeConnection();
     const result = await runtime.loadDailySummary(
       connection.baseUrl, connection.accessToken, connection.origin,
-      new Date().toISOString().slice(0, 10),
+      kstDateKey(),
     );
     output.textContent = result.summary;
     badge.textContent = result.fallback ? "규칙 요약" :
@@ -634,6 +635,7 @@ async function generateDailySummary(): Promise<void> {
     toast(errorMessage(error));
   } finally {
     button.disabled = false;
+    output.removeAttribute("aria-busy");
   }
 }
 

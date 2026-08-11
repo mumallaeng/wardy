@@ -68,6 +68,12 @@ add_executable(http_response_test
 target_include_directories(http_response_test PRIVATE src)
 add_test(NAME http_response_test COMMAND http_response_test)
 
+add_executable(request_security_test
+  tests/request_security_test.cpp
+)
+target_include_directories(request_security_test PRIVATE src)
+add_test(NAME request_security_test COMMAND request_security_test)
+
 add_executable(json_serialization_test
   tests/json_serialization_test.cpp
 )

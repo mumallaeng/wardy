@@ -156,18 +156,25 @@ test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을
   assert.match(versions, /^WARDY_OLLAMA_VERSION=0\.32\.5$/m);
   assert.match(versions, /^WARDY_OLLAMA_INSTALL_SHA256=[a-f0-9]{64}$/m);
   assert.match(versions, /^WARDY_LLM_MODEL=qwen3\.5:4b$/m);
+  assert.match(versions, /^WARDY_LLM_MODEL_DIGEST=[a-f0-9]{64}$/m);
   assert.match(installer, /sha256sum --check --status/);
-  assert.match(installer, /ollama pull/);
-  assert.match(installer, /ollama stop/);
+  assert.match(installer, /api\/tags/);
+  assert.match(installer, /ollama pull "\$\{WARDY_LLM_MODEL\}"/);
+  assert.match(installer, /ollama stop "\$\{WARDY_LLM_MODEL\}"/);
   assert.match(serviceInstaller, /Wants=network-online\.target ollama\.service/);
+  assert.match(serviceInstaller, /After=network-online\.target ollama\.service/);
   assert.match(source, /htonl\(INADDR_LOOPBACK\)/);
   assert.match(source, /\\"keep_alive\\":\\"0s\\"/);
   assert.match(source, /\\"num_ctx\\":2048/);
+  assert.match(source, /\\"num_predict\\":100,\\"temperature\\":0,\\"seed\\":7/);
   assert.match(source, /deterministic_summary/);
   assert.match(source, /invalid_output/);
   assert.doesNotMatch(source, /event\.(?:subject_name|subject_id|media_path|source_results_json|reason)/);
   assert.match(api, /path == "\/api\/llm\/daily-summary"/);
   assert.match(api, /daily_summary_mutex/);
+  assert.match(api, /std::try_to_lock/);
+  assert.match(api, /429, "Too Many Requests"/);
+  assert.doesNotMatch(api, /list_events\(1000\)/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
@@ -214,12 +221,13 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const security = await readFile(path.join(root, "edge/src/api/request_security.hpp"), "utf8");
   assert.match(source, /method == "POST" && path == "\/api\/training\/items\/sample"/);
   assert.match(source, /sample_capture_requests/);
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
   assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
-  assert.match(source, /x-wardy-access-token/);
+  assert.match(security, /x-wardy-access-token/);
   assert.match(source, /origin_allowed/);
 });
 

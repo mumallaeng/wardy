@@ -35,9 +35,6 @@ std::string build_anonymized_prompt(
     const std::string& date, const std::vector<storage::EventRecord>& events);
 std::string deterministic_summary(const std::vector<storage::EventRecord>& events);
 std::string extract_generated_summary(const std::string& ollama_response);
-bool valid_generated_summary(const std::string& summary,
-                             const std::vector<storage::EventRecord>& events);
-
 class DailySummaryService {
  public:
   explicit DailySummaryService(DailySummaryConfig config,

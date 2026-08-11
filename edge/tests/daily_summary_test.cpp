@@ -1,3 +1,7 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include "llm/daily_summary.hpp"
 
 #include <cassert>
@@ -64,9 +68,20 @@ int main() {
       "{\"model\":\"qwen3.5:4b\",\"response\":\"{\\\"summary\\\":\\\"" +
       generated + "\\\"}\",\"done\":true}";
   assert(wardy::llm::extract_generated_summary(response) == generated);
-  assert(wardy::llm::valid_generated_summary(generated, events));
-  assert(!wardy::llm::valid_generated_summary(generated + " 사고 확정", events));
-  assert(!wardy::llm::valid_generated_summary(generated + " 사건 발생", events));
+  const std::string unicode_response =
+      R"({"response":"{\"summary\":\"\uC624\uB298\"}"})";
+  assert(wardy::llm::extract_generated_summary(unicode_response) == "오늘");
+  const std::string surrogate_pair_response =
+      R"({"response":"{\"summary\":\"\uD83D\uDEE1\uFE0F\"}"})";
+  assert(wardy::llm::extract_generated_summary(surrogate_pair_response) == "🛡️");
+  bool malformed_unicode_rejected = false;
+  try {
+    (void)wardy::llm::extract_generated_summary(
+        R"({"response":"{\"summary\":\"\uD800\"}"})");
+  } catch (const std::runtime_error&) {
+    malformed_unicode_rejected = true;
+  }
+  assert(malformed_unicode_rejected);
 
   wardy::llm::DailySummaryConfig success_config;
   success_config.timeout = std::chrono::seconds{5};

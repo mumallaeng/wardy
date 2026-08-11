@@ -54,9 +54,6 @@ int main(int argc, char* argv[]) {
     if (const char* model = std::getenv("WARDY_LLM_MODEL")) {
       config.llm_model = model;
     }
-    if (const char* port = std::getenv("WARDY_OLLAMA_PORT")) {
-      config.ollama_port = parse_integer(port, "WARDY_OLLAMA_PORT");
-    }
     if (const char* timeout = std::getenv("WARDY_LLM_TIMEOUT_SECONDS")) {
       config.llm_timeout_seconds = parse_integer(timeout, "WARDY_LLM_TIMEOUT_SECONDS");
     }

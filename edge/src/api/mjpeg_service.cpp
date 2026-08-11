@@ -2,6 +2,7 @@
 
 #include "api/http_response.hpp"
 #include "api/json_serialization.hpp"
+#include "api/request_security.hpp"
 #include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
 #include "llm/daily_summary.hpp"
@@ -184,6 +185,19 @@ std::string utc_now() {
   return stream.str();
 }
 
+std::string kst_date_now() {
+  const std::time_t now = std::time(nullptr) + 9 * 60 * 60;
+  std::tm value{};
+#if defined(_WIN32)
+  gmtime_s(&value, &now);
+#else
+  gmtime_r(&now, &value);
+#endif
+  std::ostringstream stream;
+  stream << std::put_time(&value, "%Y-%m-%d");
+  return stream.str();
+}
+
 void save_camera_state(const std::shared_ptr<StreamState>& state,
                        const std::string& camera_state,
                        const std::string& reason) noexcept {
@@ -303,10 +317,6 @@ bool apply_socket_timeouts(int socket_fd) {
 bool origin_allowed(const std::string& request, const std::string& allowed_origin) {
   const auto origin = request_header(request, "origin");
   return !origin || *origin == allowed_origin;
-}
-
-bool authorized(const std::string& request, const std::string& access_token) {
-  return request_header(request, "x-wardy-access-token").value_or("") == access_token;
 }
 
 bool websocket_authorized(const std::string& request,
@@ -963,8 +973,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
   const auto dataset_sample_id_path = resource_id_path(path, "/api/data-samples/");
   try {
-  const bool protected_api = path.rfind("/api/", 0) == 0 &&
-      path != "/api/health" && path != "/api/ws";
+  const bool protected_api = protected_api_path(path);
   if (method == "OPTIONS") {
     if (origin_allowed(request, config.allowed_origin)) {
       send_text(socket_fd, options_response(config.allowed_origin));
@@ -974,7 +983,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     }
   } else if (protected_api &&
              (!origin_allowed(request, config.allowed_origin) ||
-              !authorized(request, config.access_token))) {
+              !access_token_authorized(request, config.access_token))) {
     send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
                                        config.allowed_origin));
   } else if (method == "GET" && path == "/api/health") {
@@ -988,22 +997,22 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
         events_json(state->database->list_events()), config.allowed_origin));
   } else if (method == "POST" && path == "/api/llm/daily-summary") {
     const std::string date = request_header(request, "X-Wardy-Summary-Date")
-        .value_or(utc_now().substr(0, 10));
+        .value_or(kst_date_now());
     if (!valid_summary_date(date)) {
       send_text(socket_fd, json_response(400, "Bad Request",
           "{\"error\":\"Summary date must use YYYY-MM-DD\"}", config.allowed_origin));
     } else {
-      std::vector<storage::EventRecord> daily_events;
-      for (const auto& event : state->database->list_events(1000)) {
-        if (event.occurred_at.rfind(date, 0) == 0) daily_events.push_back(event);
+      const auto daily_events = state->database->list_events_for_kst_date(date);
+      std::unique_lock lock(state->daily_summary_mutex, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        send_text(socket_fd, json_response(429, "Too Many Requests",
+            "{\"error\":\"Daily summary generation is already running\"}",
+            config.allowed_origin));
+      } else {
+        const auto summary = state->daily_summary->summarize(date, daily_events);
+        send_text(socket_fd, json_response(200, "OK", daily_summary_json(summary),
+                                           config.allowed_origin));
       }
-      llm::DailySummaryResult summary;
-      {
-        const std::lock_guard lock(state->daily_summary_mutex);
-        summary = state->daily_summary->summarize(date, daily_events);
-      }
-      send_text(socket_fd, json_response(200, "OK", daily_summary_json(summary),
-                                         config.allowed_origin));
     }
   } else if (method == "GET" && path == "/api/state") {
     const auto current = state->database->load_system_state();
@@ -1339,7 +1348,6 @@ void MjpegServiceConfig::validate() const {
   llm::DailySummaryConfig llm_config;
   llm_config.enabled = llm_enabled;
   llm_config.model = llm_model;
-  llm_config.ollama_port = ollama_port;
   llm_config.timeout = std::chrono::seconds{llm_timeout_seconds};
   llm_config.validate();
 }
@@ -1355,7 +1363,6 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   llm::DailySummaryConfig llm_config;
   llm_config.enabled = config_.llm_enabled;
   llm_config.model = config_.llm_model;
-  llm_config.ollama_port = config_.ollama_port;
   llm_config.timeout = std::chrono::seconds{config_.llm_timeout_seconds};
   state->daily_summary = std::make_shared<llm::DailySummaryService>(llm_config);
   state->training_data_path = config_.training_data_path;
