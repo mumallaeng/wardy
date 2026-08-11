@@ -1,4 +1,6 @@
-# M-04 temporal fall-detection data preparation
+# M-04 temporal fall-detection training and export
 -r m03.txt
 torch>=2.2,<2.3
+torchvision>=0.17,<0.18
 matplotlib>=3.7,<4
+onnx>=1.16,<2
