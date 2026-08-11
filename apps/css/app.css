@@ -57,6 +57,7 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .button-danger:hover { background: #fff0ee; }
 .button-small { min-height: 32px; padding: 6px 9px; font-size: .74rem; }
 .text-button { padding: 5px 0; border: 0; color: var(--forest-2); background: transparent; font-weight: 750; }
+.text-button.is-danger { color: var(--emergency); }
 
 .system-strip { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .system-strip > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0 9px; padding: 13px 16px; border-right: 1px solid var(--line); }
@@ -150,6 +151,23 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
 .empty-state { padding: 50px 20px; color: var(--muted); text-align: center; }
 
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr); gap: 18px; margin-bottom: 18px; }
+.data-capture-card, .dataset-review-card { margin-bottom: 18px; }
+.dataset-form-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)) auto; align-items: end; gap: 11px; }
+.dataset-form-grid label, .dataset-version-control label { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
+.dataset-capture-actions { display: flex; gap: 8px; }
+.dataset-version-control { display: flex; align-items: flex-end; gap: 10px; }
+.dataset-version-control label { min-width: 210px; }
+.dataset-table { min-width: 1040px; }
+.dataset-table th:nth-child(1) { width: 22%; }
+.dataset-table th:nth-child(2) { width: 15%; }
+.dataset-table th:nth-child(3) { width: 28%; }
+.dataset-table th:nth-child(4) { width: 10%; }
+.dataset-label-input { min-width: 130px; min-height: 36px; padding: 6px 8px; }
+.path-text { max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-status.is-approved { color: #176749; background: #dff1e6; }
+.dataset-status.is-rejected { color: #9c2929; background: #f9dddd; }
+.dataset-status.is-pending { color: #8c620e; background: #fbefcc; }
+.dataset-row-actions { display: flex; align-items: center; gap: 6px; min-width: 245px; flex-wrap: wrap; }
 .review-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .review-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .review-placeholder { display: grid; place-items: center; min-height: 150px; color: #b8c9bf; background: linear-gradient(145deg, #17251f, #2f5a48); font-weight: 800; }
@@ -203,6 +221,8 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
   .privacy-pill { grid-column: 2; }
   .shell { width: min(100% - 28px, 1450px); padding-top: 34px; }
   .dashboard-grid, .settings-grid, .connection-grid, .workspace-grid { grid-template-columns: 1fr; }
+  .dataset-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dataset-capture-actions { grid-column: 1 / -1; }
   .review-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wide-card { grid-column: auto; }
   .boundary-card { display: block; }
@@ -225,6 +245,12 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
   .system-guidance { grid-template-columns: auto 1fr; align-items: start; }
   .system-guidance .button { grid-column: 1 / -1; width: 100%; }
   .filters, .inline-form { grid-template-columns: 1fr; }
+  .dataset-form-grid { grid-template-columns: 1fr; }
+  .dataset-capture-actions { display: grid; grid-column: auto; }
+  .dataset-version-control { width: 100%; align-items: stretch; flex-direction: column; }
+  .dataset-version-control label { min-width: 0; }
+  .dataset-review-card .card-heading { align-items: stretch; flex-direction: column; }
+  .dataset-review-card .dataset-version-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
   .latest-event { align-items: flex-start; flex-direction: column; }
   .protocol-grid { grid-template-columns: 1fr; }
   .review-gallery { grid-template-columns: 1fr; }

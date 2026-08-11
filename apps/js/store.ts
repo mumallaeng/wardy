@@ -1,5 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
-import type { CareStatus, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CareStatus, DatasetSample, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -35,6 +35,22 @@ function isIdentityReview(value: unknown): boolean {
     && isStringOrNull(value.subjectId);
 }
 
+function isDatasetSample(value: unknown): value is DatasetSample {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string"
+    && typeof value.modelId === "string"
+    && typeof value.requirementId === "string"
+    && typeof value.label === "string"
+    && ["pending", "approved", "rejected"].includes(String(value.reviewStatus))
+    && typeof value.captureSession === "string"
+    && ["jetson_camera", "local_file"].includes(String(value.source))
+    && typeof value.imagePath === "string"
+    && isStringOrNull(value.originalFilename)
+    && typeof value.capturedAt === "string"
+    && typeof value.width === "number" && Number.isInteger(value.width) && value.width > 0
+    && typeof value.height === "number" && Number.isInteger(value.height) && value.height > 0;
+}
+
 function migrateJetsonBaseUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -50,6 +66,7 @@ function migrateJetsonBaseUrl(value: string): string {
 function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
+  if (value.datasetSamples === undefined) value.datasetSamples = [];
   if (Array.isArray(value.events)) {
     value.events = value.events.filter(
       (event) => !isRecord(event) || event.event_type !== "managed_item_moved",
@@ -66,6 +83,15 @@ function migratePersistedState(value: unknown): void {
   jetson.baseUrl = migrateJetsonBaseUrl(baseUrl);
   delete jetson.accessToken;
   delete jetson.viewerToken;
+  const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  if (!isRecord(settings.dataWorkspace)) settings.dataWorkspace = {};
+  const dataWorkspace = settings.dataWorkspace as Record<string, unknown>;
+  if (typeof dataWorkspace.captureSession !== "string") {
+    dataWorkspace.captureSession = `session-${day}`;
+  }
+  if (typeof dataWorkspace.datasetVersion !== "string") {
+    dataWorkspace.datasetVersion = `wardy-${day}-v1`;
+  }
   if (!isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
   delete notifications.managed_item_moved;
@@ -145,7 +171,10 @@ function isWardyState(value: unknown): value is WardyState {
     || !isRecord(settings.notifications)
     || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
     || !isRecord(settings.jetson)
-    || typeof settings.jetson.baseUrl !== "string") return false;
+    || typeof settings.jetson.baseUrl !== "string"
+    || !isRecord(settings.dataWorkspace)
+    || typeof settings.dataWorkspace.captureSession !== "string"
+    || typeof settings.dataWorkspace.datasetVersion !== "string") return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
     && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
@@ -158,7 +187,8 @@ function isWardyState(value: unknown): value is WardyState {
       && typeof subject.id === "string" && typeof subject.name === "string"
       && typeof subject.role === "string" && typeof subject.createdAt === "string"
       && isOptionalCount(subject.referenceSampleCount))
-    && Array.isArray(value.identityReviews) && value.identityReviews.every(isIdentityReview);
+    && Array.isArray(value.identityReviews) && value.identityReviews.every(isIdentityReview)
+    && Array.isArray(value.datasetSamples) && value.datasetSamples.every(isDatasetSample);
 }
 
 export class MemoryStorage implements StorageLike {
@@ -245,6 +275,19 @@ export class WardyStore {
 
   replaceManagedItems(items: ManagedItem[]): WardyState {
     return this.#commit((state) => { state.managedItems = clone(items.filter(isManagedItem)); });
+  }
+
+  replaceDatasetSamples(samples: DatasetSample[]): WardyState {
+    return this.#commit((state) => { state.datasetSamples = clone(samples.filter(isDatasetSample)); });
+  }
+
+  setDataWorkspace(captureSession: string, datasetVersion: string): WardyState {
+    return this.#commit((state) => {
+      state.settings.dataWorkspace = {
+        captureSession: captureSession.trim(),
+        datasetVersion: datasetVersion.trim(),
+      };
+    });
   }
 
   setOverlaySetting(key: OverlaySettingKey, value: boolean): WardyState {
