@@ -175,9 +175,13 @@ export function renderIdentityReviews(
   reviews.forEach((review) => {
     const card = document.createElement("article");
     card.className = "review-card";
+    card.dataset.reviewId = review.id;
     const visual = document.createElement("div");
     visual.className = "review-placeholder";
-    visual.textContent = "미리보기 연결 전";
+    const image = document.createElement("img");
+    image.alt = "식별 검토 장면";
+    image.dataset.reviewImage = review.id;
+    visual.append(image);
     const body = document.createElement("div");
     body.className = "review-body";
     const title = document.createElement("strong");
@@ -191,6 +195,7 @@ export function renderIdentityReviews(
     if (review.decision === "pending") {
       const select = document.createElement("select");
       select.setAttribute("aria-label", "등록 인물 선택");
+      select.dataset.reviewSubject = review.id;
       subjects.forEach((subject) => {
         const option = document.createElement("option");
         option.value = subject.id;
@@ -205,23 +210,27 @@ export function renderIdentityReviews(
       confirm.className = "button button-small";
       confirm.textContent = "선택한 인물";
       confirm.disabled = true;
+      confirm.dataset.reviewAction = review.id;
       confirm.addEventListener("click", () => onResolve(review.id, "subject", select.value));
       const unknown = document.createElement("button");
       unknown.type = "button";
       unknown.className = "button button-secondary button-small";
       unknown.textContent = "미등록 인물";
       unknown.disabled = true;
+      unknown.dataset.reviewAction = review.id;
       unknown.addEventListener("click", () => onResolve(review.id, "unknown"));
       const excluded = document.createElement("button");
       excluded.type = "button";
       excluded.className = "text-button";
       excluded.textContent = "학습 제외";
       excluded.disabled = true;
+      excluded.dataset.reviewAction = review.id;
       excluded.addEventListener("click", () => onResolve(review.id, "excluded"));
       actions.append(confirm, unknown, excluded);
       body.append(select, actions);
       const notice = document.createElement("small");
-      notice.textContent = "보안된 장면 미리보기 연결 뒤 답변할 수 있습니다.";
+      notice.dataset.reviewNotice = review.id;
+      notice.textContent = "보안된 장면 미리보기를 불러오는 중입니다.";
       body.append(notice);
     } else {
       const result = document.createElement("span");

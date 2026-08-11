@@ -454,6 +454,18 @@ std::optional<std::string> dataset_sample_media_path(const std::string& path) {
   return safe_item_id(sample_id) ? std::optional<std::string>{sample_id} : std::nullopt;
 }
 
+std::optional<std::string> identity_review_media_path(const std::string& path) {
+  constexpr const char* prefix = "/api/identity-reviews/";
+  if (path.rfind(prefix, 0) != 0) return std::nullopt;
+  const std::string remainder = path.substr(std::strlen(prefix));
+  const std::size_t separator = remainder.find('/');
+  if (separator == std::string::npos || remainder.substr(separator + 1) != "media") {
+    return std::nullopt;
+  }
+  const std::string review_id = remainder.substr(0, separator);
+  return safe_item_id(review_id) ? std::optional<std::string>{review_id} : std::nullopt;
+}
+
 std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
                                         const storage::EventRecord& event) {
   if (!event.media_path) throw std::invalid_argument("event media is not ready");
@@ -479,6 +491,26 @@ std::filesystem::path stored_dataset_file(
       root.begin(), root.end(), candidate.begin(), candidate.end());
   if (root_end != root.end()) {
     throw std::runtime_error("dataset image path escapes storage root");
+  }
+  return candidate;
+}
+
+std::filesystem::path stored_identity_review_file(
+    const std::shared_ptr<StreamState>& state,
+    const storage::IdentityReviewRecord& review) {
+  const std::filesystem::path relative(review.image_path);
+  if (relative.empty() || relative.is_absolute()) {
+    throw std::runtime_error("invalid identity review image path in SQLite");
+  }
+  const std::filesystem::path root =
+      std::filesystem::weakly_canonical(state->training_data_path);
+  const std::filesystem::path candidate =
+      std::filesystem::weakly_canonical(root / relative);
+  const auto [root_end, candidate_end] = std::mismatch(
+      root.begin(), root.end(), candidate.begin(), candidate.end());
+  (void)candidate_end;
+  if (root_end != root.end()) {
+    throw std::runtime_error("identity review image path escapes storage root");
   }
   return candidate;
 }
@@ -626,6 +658,36 @@ std::string update_notification_setting(
   }
   state->database->upsert_notification_setting({event_type, value == "on", utc_now()});
   return notification_settings_json(state->database->list_notification_settings());
+}
+
+std::string update_identity_review(
+    const std::string& request, const std::string& review_id,
+    const std::shared_ptr<StreamState>& state) {
+  const std::string decision =
+      request_header(request, "x-wardy-review-decision").value_or("");
+  const auto subject_id = decoded_optional_header(request, "x-wardy-subject-id");
+  if (decision != "subject" && decision != "unknown" && decision != "excluded") {
+    throw std::invalid_argument("invalid identity review decision");
+  }
+  if (decision == "subject") {
+    if (!subject_id || !safe_item_id(*subject_id)) {
+      throw std::invalid_argument("subject decision requires a valid subject ID");
+    }
+    const auto subjects = state->database->list_subjects();
+    if (std::none_of(subjects.begin(), subjects.end(), [&](const auto& subject) {
+          return subject.subject_id == *subject_id;
+        })) {
+      throw std::invalid_argument("identity review subject does not exist");
+    }
+  } else if (subject_id) {
+    throw std::invalid_argument("only a subject decision can include a subject ID");
+  }
+  if (!state->database->update_identity_review_decision(
+          review_id, decision, decision == "subject" ? subject_id : std::nullopt,
+          utc_now())) {
+    throw std::out_of_range("identity review not found");
+  }
+  return identity_reviews_json(state->database->list_identity_reviews());
 }
 
 std::string capture_training_sample(const std::string& request,
@@ -1022,11 +1084,13 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const auto [method, path] = request_method_path(request);
   const auto media_event_id = event_media_path(path);
   const auto dataset_sample_media_id = dataset_sample_media_path(path);
+  const auto identity_review_media_id = identity_review_media_path(path);
   const auto event_action = event_action_path(path);
   const auto subject_id_path = resource_id_path(path, "/api/subjects/");
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
   const auto zone_id_path = resource_id_path(path, "/api/zones/");
   const auto dataset_sample_id_path = resource_id_path(path, "/api/data-samples/");
+  const auto identity_review_id_path = resource_id_path(path, "/api/identity-reviews/");
   try {
   const bool protected_api = protected_api_path(path);
   if (method == "OPTIONS") {
@@ -1193,6 +1257,37 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "POST" && path == "/api/notification-settings") {
     send_text(socket_fd, json_response(200, "OK",
         update_notification_setting(request, state), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/identity-reviews") {
+    send_text(socket_fd, json_response(200, "OK",
+        identity_reviews_json(state->database->list_identity_reviews()),
+        config.allowed_origin));
+  } else if (method == "GET" && identity_review_media_id) {
+    const auto review = state->database->get_identity_review(*identity_review_media_id);
+    if (!review) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"Identity review not found\"}", config.allowed_origin));
+    } else {
+      const auto image_file = stored_identity_review_file(state, *review);
+      std::ifstream input(image_file, std::ios::binary);
+      if (!input) {
+        send_text(socket_fd, json_response(404, "Not Found",
+            "{\"error\":\"Identity review image not found\"}", config.allowed_origin));
+      } else {
+        const std::vector<unsigned char> image{
+            std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        send_binary_response(socket_fd, image, dataset_image_content_type(image_file),
+                             config.allowed_origin);
+      }
+    }
+  } else if (method == "POST" && identity_review_id_path) {
+    try {
+      send_text(socket_fd, json_response(200, "OK",
+          update_identity_review(request, *identity_review_id_path, state),
+          config.allowed_origin));
+    } catch (const std::out_of_range& error) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
   } else if (method == "POST" && path == "/api/training/items/sample") {
     try {
       send_text(socket_fd, json_response(201, "Created",

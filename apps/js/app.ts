@@ -15,7 +15,7 @@ import { renderManagedItems, renderNotifications, renderOverlaySettings, renderS
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -65,6 +65,7 @@ let runtimeState: SystemState | null = null;
 let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
+const identityReviewUrls = new Map<string, string>();
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 
@@ -306,6 +307,67 @@ async function saveNotificationSetting(eventType: EventType,
   } catch (error) { toast(errorMessage(error)); }
 }
 
+async function resolveIdentityReview(reviewId: string,
+                                     decision: IdentityReviewDecision,
+                                     subjectId: string | null = null): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const reviews = await runtime.resolveIdentityReview(
+      connection.baseUrl, connection.accessToken, connection.origin,
+      reviewId, decision, subjectId);
+    store.replaceIdentityReviews(reviews);
+    toast("식별 검토 답변을 Jetson에 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
+                                             hasSubjects: boolean): Promise<void> {
+  const currentIds = new Set(reviews.map((review) => review.id));
+  identityReviewUrls.forEach((url, reviewId) => {
+    if (!currentIds.has(reviewId)) {
+      URL.revokeObjectURL(url);
+      identityReviewUrls.delete(reviewId);
+    }
+  });
+  await Promise.all(reviews.map(async (review) => {
+    const image = document.querySelector<HTMLImageElement>(
+      `[data-review-image="${CSS.escape(review.id)}"]`,
+    );
+    if (!image) return;
+    try {
+      let url = identityReviewUrls.get(review.id);
+      if (!url) {
+        const connection = runtimeConnection();
+        const blob = await runtime.loadIdentityReviewMedia(
+          connection.baseUrl, connection.accessToken, connection.origin, review.id);
+        url = URL.createObjectURL(blob);
+        identityReviewUrls.set(review.id, url);
+      }
+      image.src = url;
+      document.querySelectorAll<HTMLButtonElement>(
+        `[data-review-action="${CSS.escape(review.id)}"]`,
+      ).forEach((button) => {
+        button.disabled = button.textContent === "선택한 인물" && !hasSubjects;
+      });
+      const subject = document.querySelector<HTMLSelectElement>(
+        `[data-review-subject="${CSS.escape(review.id)}"]`,
+      );
+      if (subject) subject.disabled = !hasSubjects;
+      const notice = document.querySelector<HTMLElement>(
+        `[data-review-notice="${CSS.escape(review.id)}"]`,
+      );
+      if (notice) notice.textContent = hasSubjects
+        ? "장면을 확인하고 답변을 선택해 주세요."
+        : "등록 인물이 없어 미등록 또는 학습 제외로 답할 수 있습니다.";
+    } catch (error) {
+      const notice = document.querySelector<HTMLElement>(
+        `[data-review-notice="${CSS.escape(review.id)}"]`,
+      );
+      if (notice) notice.textContent = errorMessage(error);
+    }
+  }));
+}
+
 /**
  * Updates the camera status display and controls to reflect the current state.
  *
@@ -376,6 +438,7 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
       store.replaceManagedItems(collections.managedItems);
       store.replaceZones(collections.zones);
       store.replaceNotificationSettings(collections.notifications);
+      store.replaceIdentityReviews(collections.identityReviews);
       store.replaceDatasetSamples(datasetSamples);
       runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
     } else {
@@ -787,8 +850,11 @@ function render(state: WardyState = store.getState()): void {
   renderSubjects($("#data-subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderIdentityReviews(
     $("#identity-review-gallery"), state.identityReviews, state.subjects,
-    (reviewId, decision, subjectId) => store.resolveIdentityReview(reviewId, decision, subjectId),
+    (reviewId, decision, subjectId) => {
+      void resolveIdentityReview(reviewId, decision, subjectId ?? null);
+    },
   );
+  void hydrateIdentityReviewPreviews(state.identityReviews, state.subjects.length > 0);
   const pendingReviews = state.identityReviews.filter((review) => review.decision === "pending").length;
   $("#review-count").textContent = `${pendingReviews}건 대기`;
   renderDatasetSamples(
@@ -981,7 +1047,12 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
 $("#system-guidance-action").addEventListener("click", () => openView("jetson"));
 
-window.addEventListener("beforeunload", () => { closeDatasetPreview(); camera.stop(); runtime.stop(); });
+window.addEventListener("beforeunload", () => {
+  closeDatasetPreview();
+  identityReviewUrls.forEach((url) => URL.revokeObjectURL(url));
+  camera.stop();
+  runtime.stop();
+});
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);

@@ -151,3 +151,16 @@ test("비AI runtime은 AI 구현 파일을 import하지 않는다", async () => 
     assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);
   }
 });
+
+test("식별 검토 화면은 Jetson에 저장된 장면과 답변 API를 사용한다", async () => {
+  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  const runtime = await readFile(path.join(root, "apps/js/runtime.ts"), "utf8");
+  const workspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
+
+  assert.match(runtime, /\/api\/identity-reviews/);
+  assert.match(runtime, /loadIdentityReviewMedia/);
+  assert.match(runtime, /resolveIdentityReview/);
+  assert.match(app, /hydrateIdentityReviewPreviews/);
+  assert.match(workspace, /dataset\.reviewImage/);
+  assert.doesNotMatch(workspace, /미리보기 연결 전/);
+});

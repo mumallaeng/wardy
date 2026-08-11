@@ -17,7 +17,10 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
     if (String(url).endsWith("/api/subjects")) return Response.json({ subjects: [] });
     if (String(url).endsWith("/api/managed-items")) return Response.json({ managedItems: [] });
     if (String(url).endsWith("/api/zones")) return Response.json({ zones: [] });
-    return Response.json({ notifications: { fall_suspected: "on" } });
+    if (String(url).endsWith("/api/notification-settings")) {
+      return Response.json({ notifications: { fall_suspected: "on" } });
+    }
+    return Response.json({ reviews: [] });
   };
   const client = new WardyRuntimeClient(fetchImpl);
   const snapshot = await client.loadSnapshot("https://10.10.20.40:8443", "token", "https://ui.local");
@@ -26,10 +29,38 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
   assert.deepEqual(collections, {
     subjects: [], managedItems: [], zones: [],
     notifications: { fall_suspected: "on" },
+    identityReviews: [],
   });
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
   assert.ok(calls.every((call) => call.init.headers["X-Wardy-Access-Token"] === "token"));
   assert.ok(calls.every((call) => call.init.signal instanceof AbortSignal));
+});
+
+test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).endsWith("/media")) {
+      return new Response(new Blob(["image"], { type: "image/jpeg" }));
+    }
+    return Response.json({ reviews: [{
+      id: "review-1", imagePath: "identity/review-1.jpg",
+      mediaResource: "/api/identity-reviews/review-1/media",
+      capturedAt: "2026-08-11T00:00:00Z", predictedName: null,
+      confidence: null, decision: "unknown", subjectId: null,
+    }] });
+  };
+  const client = new WardyRuntimeClient(fetchImpl);
+  const blob = await client.loadIdentityReviewMedia(
+    "https://jetson.local:8443", "token", "", "review-1",
+  );
+  const reviews = await client.resolveIdentityReview(
+    "https://jetson.local:8443", "token", "", "review-1", "unknown",
+  );
+  assert.equal(blob.type, "image/jpeg");
+  assert.equal(reviews[0].decision, "unknown");
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.headers["X-Wardy-Review-Decision"], "unknown");
 });
 
 test("주의 구역과 알림 설정은 Jetson 운영 설정 API에 저장한다", async () => {

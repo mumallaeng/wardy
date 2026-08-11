@@ -271,6 +271,26 @@ inline std::string notification_settings_json(
   return body + "}}";
 }
 
+inline std::string identity_reviews_json(
+    const std::vector<storage::IdentityReviewRecord>& reviews) {
+  std::string body = "{\"reviews\":[";
+  for (std::size_t index = 0; index < reviews.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& review = reviews[index];
+    body += "{\"id\":" + json_string(review.review_id) +
+        ",\"imagePath\":" + json_string(review.image_path) +
+        ",\"mediaResource\":" +
+        json_string("/api/identity-reviews/" + review.review_id + "/media") +
+        ",\"capturedAt\":" + json_string(review.captured_at) +
+        ",\"predictedName\":" + json_string(review.predicted_name) +
+        ",\"confidence\":" +
+        (review.confidence ? std::to_string(*review.confidence) : "null") +
+        ",\"decision\":" + json_string(review.decision) +
+        ",\"subjectId\":" + json_string(review.subject_id) + "}";
+  }
+  return body + "]}";
+}
+
 inline std::string dataset_samples_json(
     const std::vector<storage::DatasetSampleRecord>& samples) {
   std::string body = "{\"samples\":[";

@@ -205,7 +205,7 @@ void SqliteStore::initialize() {
         throw std::runtime_error(sqlite3_errmsg(impl_->database));
       }
     }
-    if (stored_version < 0 || stored_version > 5) {
+    if (stored_version < 0 || stored_version > 6) {
       throw std::runtime_error("unsupported SQLite schema version: " +
                                std::to_string(stored_version));
     }
@@ -341,10 +341,23 @@ void SqliteStore::initialize() {
       ('zone_dwell',1,'1970-01-01T00:00:00Z'),
       ('camera_fault',1,'1970-01-01T00:00:00Z'),
       ('detection_fault',1,'1970-01-01T00:00:00Z');
+
+    CREATE TABLE IF NOT EXISTS identity_reviews (
+      review_id TEXT PRIMARY KEY,
+      image_path TEXT NOT NULL UNIQUE,
+      captured_at TEXT NOT NULL,
+      predicted_name TEXT,
+      confidence REAL CHECK(confidence >= 0.0 AND confidence <= 1.0 OR confidence IS NULL),
+      decision TEXT NOT NULL CHECK(decision IN ('pending','subject','unknown','excluded')),
+      subject_id TEXT REFERENCES subjects(subject_id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS identity_reviews_status_idx
+      ON identity_reviews(decision, captured_at DESC);
     )SQL");
-      if (stored_version < 5) {
+      if (stored_version < 6) {
         execute(impl_->database, R"SQL(
-        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '5')
+        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '6')
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
       )SQL");
       }
@@ -936,6 +949,101 @@ std::vector<NotificationSettingRecord> SqliteStore::list_notification_settings()
   }
   if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
   return settings;
+}
+
+void SqliteStore::upsert_identity_review(const IdentityReviewRecord& review) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO identity_reviews(
+      review_id,image_path,captured_at,predicted_name,confidence,decision,subject_id,updated_at
+    ) VALUES(?,?,?,?,?,?,?,?)
+    ON CONFLICT(review_id) DO UPDATE SET
+      image_path=excluded.image_path, captured_at=excluded.captured_at,
+      predicted_name=excluded.predicted_name, confidence=excluded.confidence,
+      decision=excluded.decision, subject_id=excluded.subject_id,
+      updated_at=excluded.updated_at;
+  )SQL");
+  bind_text(statement.get(), 1, review.review_id);
+  bind_text(statement.get(), 2, review.image_path);
+  bind_text(statement.get(), 3, review.captured_at);
+  bind_optional_text(statement.get(), 4, review.predicted_name);
+  if (review.confidence) {
+    sqlite3_bind_double(statement.get(), 5, *review.confidence);
+  } else {
+    sqlite3_bind_null(statement.get(), 5);
+  }
+  bind_text(statement.get(), 6, review.decision);
+  bind_optional_text(statement.get(), 7, review.subject_id);
+  bind_text(statement.get(), 8, review.updated_at);
+  require_done(impl_->database, statement.get());
+}
+
+std::optional<IdentityReviewRecord> SqliteStore::get_identity_review(
+    const std::string& review_id) const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT review_id,image_path,captured_at,predicted_name,confidence,
+           decision,subject_id,updated_at
+    FROM identity_reviews WHERE review_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, review_id);
+  const int result = sqlite3_step(statement.get());
+  if (result == SQLITE_DONE) return std::nullopt;
+  if (result != SQLITE_ROW) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  std::optional<double> confidence;
+  if (sqlite3_column_type(statement.get(), 4) != SQLITE_NULL) {
+    confidence = sqlite3_column_double(statement.get(), 4);
+  }
+  return IdentityReviewRecord{
+      column_text(statement.get(), 0), column_text(statement.get(), 1),
+      column_text(statement.get(), 2), optional_column_text(statement.get(), 3),
+      confidence, column_text(statement.get(), 5),
+      optional_column_text(statement.get(), 6), column_text(statement.get(), 7),
+  };
+}
+
+std::vector<IdentityReviewRecord> SqliteStore::list_identity_reviews() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT review_id,image_path,captured_at,predicted_name,confidence,
+           decision,subject_id,updated_at
+    FROM identity_reviews ORDER BY captured_at DESC;
+  )SQL");
+  std::vector<IdentityReviewRecord> reviews;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    std::optional<double> confidence;
+    if (sqlite3_column_type(statement.get(), 4) != SQLITE_NULL) {
+      confidence = sqlite3_column_double(statement.get(), 4);
+    }
+    reviews.push_back({
+        column_text(statement.get(), 0), column_text(statement.get(), 1),
+        column_text(statement.get(), 2), optional_column_text(statement.get(), 3),
+        confidence, column_text(statement.get(), 5),
+        optional_column_text(statement.get(), 6), column_text(statement.get(), 7),
+    });
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return reviews;
+}
+
+bool SqliteStore::update_identity_review_decision(
+    const std::string& review_id, const std::string& decision,
+    const std::optional<std::string>& subject_id, const std::string& updated_at) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    UPDATE identity_reviews SET decision=?,subject_id=?,updated_at=? WHERE review_id=?;
+  )SQL");
+  bind_text(statement.get(), 1, decision);
+  bind_optional_text(statement.get(), 2, subject_id);
+  bind_text(statement.get(), 3, updated_at);
+  bind_text(statement.get(), 4, review_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
 }
 
 std::string SqliteStore::schema_version() const {
