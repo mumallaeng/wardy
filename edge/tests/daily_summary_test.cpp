@@ -102,4 +102,16 @@ int main() {
   assert(!filtered_result.fallback);
   assert(filtered_result.filtered);
   assert(filtered_result.summary == generated);
+
+  const std::string unverified_detail_response =
+      "{\"response\":\"{\\\"summary\\\":\\\"" + generated +
+      " 거실에서 안전 확인 이벤트가 관찰되었습니다.\\\"}\"}";
+  wardy::llm::DailySummaryService unverified_detail(
+      success_config, [unverified_detail_response](const std::string&) {
+        return unverified_detail_response;
+      });
+  const auto unverified_detail_result = unverified_detail.summarize("2026-08-11", events);
+  assert(!unverified_detail_result.fallback);
+  assert(unverified_detail_result.filtered);
+  assert(unverified_detail_result.summary == generated);
 }
