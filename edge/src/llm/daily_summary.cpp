@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <sstream>
 #include <stdexcept>
-#include <string_view>
 #include <utility>
 
 namespace wardy::llm {
@@ -67,14 +66,53 @@ std::string korean_event_type(const std::string& type) {
   return "안전 확인";
 }
 
-std::string decode_json_string_at(const std::string& value, std::size_t position) {
+unsigned hex_value(char character) {
+  if (character >= '0' && character <= '9') return character - '0';
+  if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+  if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+  throw std::runtime_error("invalid JSON Unicode escape");
+}
+
+std::uint32_t unicode_escape(const std::string& value, std::size_t& position) {
+  if (position + 4 > value.size()) throw std::runtime_error("incomplete JSON Unicode escape");
+  std::uint32_t codepoint = 0;
+  for (int index = 0; index < 4; ++index) {
+    codepoint = codepoint * 16 + hex_value(value[position++]);
+  }
+  return codepoint;
+}
+
+void append_utf8(std::string& output, std::uint32_t codepoint) {
+  if (codepoint <= 0x7f) output.push_back(static_cast<char>(codepoint));
+  else if (codepoint <= 0x7ff) {
+    output.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+    output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  } else if (codepoint <= 0xffff) {
+    output.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+    output.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+    output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  } else if (codepoint <= 0x10ffff) {
+    output.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+    output.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+    output.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+    output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  } else {
+    throw std::runtime_error("invalid JSON Unicode codepoint");
+  }
+}
+
+std::string decode_json_string_at(const std::string& value, std::size_t position,
+                                  std::size_t* end_position = nullptr) {
   if (position >= value.size() || value[position] != '"') {
     throw std::runtime_error("expected JSON string");
   }
   std::string decoded;
   for (++position; position < value.size(); ++position) {
     const char character = value[position];
-    if (character == '"') return decoded;
+    if (character == '"') {
+      if (end_position) *end_position = position + 1;
+      return decoded;
+    }
     if (character != '\\') {
       decoded.push_back(character);
       continue;
@@ -90,21 +128,99 @@ std::string decode_json_string_at(const std::string& value, std::size_t position
       case 'n': decoded.push_back('\n'); break;
       case 'r': decoded.push_back('\r'); break;
       case 't': decoded.push_back('\t'); break;
+      case 'u': {
+        ++position;
+        std::uint32_t codepoint = unicode_escape(value, position);
+        if (codepoint >= 0xd800 && codepoint <= 0xdbff) {
+          if (position + 2 > value.size() || value[position] != '\\' ||
+              value[position + 1] != 'u') {
+            throw std::runtime_error("missing JSON low surrogate");
+          }
+          position += 2;
+          const std::uint32_t low = unicode_escape(value, position);
+          if (low < 0xdc00 || low > 0xdfff) {
+            throw std::runtime_error("invalid JSON low surrogate");
+          }
+          codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (low - 0xdc00);
+        } else if (codepoint >= 0xdc00 && codepoint <= 0xdfff) {
+          throw std::runtime_error("unexpected JSON low surrogate");
+        }
+        append_utf8(decoded, codepoint);
+        --position;
+        break;
+      }
       default: throw std::runtime_error("unsupported JSON escape");
     }
   }
   throw std::runtime_error("unterminated JSON string");
 }
 
+void skip_whitespace(const std::string& json, std::size_t& position) {
+  while (position < json.size() &&
+         (json[position] == ' ' || json[position] == '\n' ||
+          json[position] == '\r' || json[position] == '\t')) ++position;
+}
+
+void skip_json_value(const std::string& json, std::size_t& position) {
+  skip_whitespace(json, position);
+  if (position >= json.size()) throw std::runtime_error("JSON value is missing");
+  if (json[position] == '"') {
+    (void)decode_json_string_at(json, position, &position);
+    return;
+  }
+  if (json[position] == '{' || json[position] == '[') {
+    const char open = json[position++];
+    const char close = open == '{' ? '}' : ']';
+    while (position < json.size()) {
+      skip_whitespace(json, position);
+      if (position < json.size() && json[position] == close) { ++position; return; }
+      if (open == '{') {
+        (void)decode_json_string_at(json, position, &position);
+        skip_whitespace(json, position);
+        if (position >= json.size() || json[position++] != ':') {
+          throw std::runtime_error("JSON object is malformed");
+        }
+      }
+      skip_json_value(json, position);
+      skip_whitespace(json, position);
+      if (position < json.size() && json[position] == ',') { ++position; continue; }
+      if (position < json.size() && json[position] == close) { ++position; return; }
+      throw std::runtime_error("JSON collection is malformed");
+    }
+    throw std::runtime_error("unterminated JSON collection");
+  }
+  while (position < json.size() && json[position] != ',' &&
+         json[position] != '}' && json[position] != ']') ++position;
+}
+
 std::string string_property(const std::string& json, const std::string& name) {
-  const std::string key = "\"" + name + "\"";
-  const std::size_t key_position = json.find(key);
-  if (key_position == std::string::npos) throw std::runtime_error("JSON property is missing");
-  const std::size_t colon = json.find(':', key_position + key.size());
-  if (colon == std::string::npos) throw std::runtime_error("JSON property is malformed");
-  const std::size_t quote = json.find('"', colon + 1);
-  if (quote == std::string::npos) throw std::runtime_error("JSON string value is missing");
-  return decode_json_string_at(json, quote);
+  std::size_t position = 0;
+  skip_whitespace(json, position);
+  if (position >= json.size() || json[position++] != '{') {
+    throw std::runtime_error("expected JSON object");
+  }
+  while (position < json.size()) {
+    skip_whitespace(json, position);
+    if (position < json.size() && json[position] == '}') break;
+    const std::string key = decode_json_string_at(json, position, &position);
+    skip_whitespace(json, position);
+    if (position >= json.size() || json[position++] != ':') {
+      throw std::runtime_error("JSON property is malformed");
+    }
+    skip_whitespace(json, position);
+    if (key == name) {
+      if (position >= json.size() || json[position] != '"') {
+        throw std::runtime_error("JSON string value is missing");
+      }
+      return decode_json_string_at(json, position);
+    }
+    skip_json_value(json, position);
+    skip_whitespace(json, position);
+    if (position < json.size() && json[position] == ',') { ++position; continue; }
+    if (position < json.size() && json[position] == '}') break;
+    throw std::runtime_error("JSON object is malformed");
+  }
+  throw std::runtime_error("JSON property is missing");
 }
 
 std::string decode_chunked_body(const std::string& body) {
@@ -262,27 +378,6 @@ std::string build_anonymized_prompt(
 std::string extract_generated_summary(const std::string& ollama_response) {
   const std::string generated_json = string_property(ollama_response, "response");
   return string_property(generated_json, "summary");
-}
-
-bool valid_generated_summary(const std::string& summary,
-                             const std::vector<storage::EventRecord>& events) {
-  if (summary.empty() || summary.size() > 1500) return false;
-  for (const std::string_view banned : {
-           "환자", "진단", "사고", "사건", "발생", "확정", "즉시 조치"}) {
-    if (summary.find(banned) != std::string::npos) return false;
-  }
-  const auto counts = count_events(events);
-  const std::array<std::string, 6> required = {
-      "총 " + std::to_string(events.size()) + "건",
-      "기본 " + std::to_string(counts.normal) + "건",
-      "주의 " + std::to_string(counts.caution) + "건",
-      "경고 " + std::to_string(counts.warning) + "건",
-      "긴급 " + std::to_string(counts.emergency) + "건",
-      "미확인 " + std::to_string(counts.unconfirmed) + "건",
-  };
-  return std::all_of(required.begin(), required.end(), [&](const std::string& value) {
-    return summary.find(value) != std::string::npos;
-  });
 }
 
 DailySummaryService::DailySummaryService(DailySummaryConfig config,

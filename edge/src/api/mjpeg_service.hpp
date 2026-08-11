@@ -18,7 +18,6 @@ struct MjpegServiceConfig {
   std::string access_token;
   bool llm_enabled = true;
   std::string llm_model = "qwen3.5:4b";
-  int ollama_port = 11434;
   int llm_timeout_seconds = 30;
 
   void validate() const;

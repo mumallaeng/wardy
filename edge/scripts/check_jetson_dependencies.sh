@@ -73,10 +73,15 @@ else
   echo "missing Ollama loopback API" >&2
   missing=1
 fi
-if ollama list 2>/dev/null | awk 'NR > 1 {print $1}' | grep -Fxq "${WARDY_LLM_MODEL}"; then
-  echo "ok Ollama model ${WARDY_LLM_MODEL}"
+model_digest="$(curl --fail --silent --show-error http://127.0.0.1:11434/api/tags 2>/dev/null |
+  sed 's/},{/\}\n\{/g' |
+  grep -F "\"name\":\"${WARDY_LLM_MODEL}\"" |
+  head -n 1 |
+  sed -n 's/.*"digest":"\([a-f0-9]\{64\}\)".*/\1/p' || true)"
+if [[ "${model_digest}" == "${WARDY_LLM_MODEL_DIGEST}" ]]; then
+  echo "ok Ollama model ${WARDY_LLM_MODEL} ${model_digest}"
 else
-  echo "missing Ollama model ${WARDY_LLM_MODEL}" >&2
+  echo "missing or mismatched Ollama model ${WARDY_LLM_MODEL}" >&2
   missing=1
 fi
 
