@@ -2,8 +2,10 @@
 
 #include "api/http_response.hpp"
 #include "api/json_serialization.hpp"
+#include "api/request_security.hpp"
 #include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
+#include "llm/daily_summary.hpp"
 #include "media/event_media.hpp"
 #include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
@@ -56,6 +58,8 @@ struct StreamState {
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::shared_ptr<media::EventMediaRecorder> event_media;
+  std::shared_ptr<llm::DailySummaryService> daily_summary;
+  std::mutex daily_summary_mutex;
   std::filesystem::path training_data_path;
   std::mutex websocket_mutex;
   std::mutex websocket_send_mutex;
@@ -139,6 +143,35 @@ bool safe_item_id(const std::string& value) {
          });
 }
 
+bool valid_summary_date(const std::string& value) {
+  if (value.size() != 10 || value[4] != '-' || value[7] != '-') return false;
+  for (std::size_t index = 0; index < value.size(); ++index) {
+    if (index == 4 || index == 7) continue;
+    if (!std::isdigit(static_cast<unsigned char>(value[index]))) return false;
+  }
+  const int year = std::stoi(value.substr(0, 4));
+  const int month = std::stoi(value.substr(5, 2));
+  const int day = std::stoi(value.substr(8, 2));
+  if (month < 1 || month > 12) return false;
+  constexpr int days_by_month[] = {0, 31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  int maximum_day = days_by_month[month];
+  const bool leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  if (month == 2 && leap_year) maximum_day = 29;
+  return day >= 1 && day <= maximum_day;
+}
+
+std::string daily_summary_json(const llm::DailySummaryResult& result) {
+  return "{\"summary\":" + json_string(result.summary) +
+      ",\"model\":" + json_string(result.model) +
+      ",\"fallback\":" + (result.fallback ? "true" : "false") +
+      ",\"filtered\":" + (result.filtered ? "true" : "false") +
+      ",\"fallback_reason\":" + json_string(result.fallback_reason) +
+      ",\"event_count\":" + std::to_string(result.event_count) +
+      ",\"unconfirmed_count\":" + std::to_string(result.unconfirmed_count) +
+      ",\"duration_ms\":" + std::to_string(result.duration_ms) + "}";
+}
+
 std::string utc_now() {
   const std::time_t now = std::time(nullptr);
   std::tm value{};
@@ -149,6 +182,19 @@ std::string utc_now() {
 #endif
   std::ostringstream stream;
   stream << std::put_time(&value, "%Y-%m-%dT%H:%M:%SZ");
+  return stream.str();
+}
+
+std::string kst_date_now() {
+  const std::time_t now = std::time(nullptr) + 9 * 60 * 60;
+  std::tm value{};
+#if defined(_WIN32)
+  gmtime_s(&value, &now);
+#else
+  gmtime_r(&now, &value);
+#endif
+  std::ostringstream stream;
+  stream << std::put_time(&value, "%Y-%m-%d");
   return stream.str();
 }
 
@@ -271,10 +317,6 @@ bool apply_socket_timeouts(int socket_fd) {
 bool origin_allowed(const std::string& request, const std::string& allowed_origin) {
   const auto origin = request_header(request, "origin");
   return !origin || *origin == allowed_origin;
-}
-
-bool authorized(const std::string& request, const std::string& access_token) {
-  return request_header(request, "x-wardy-access-token").value_or("") == access_token;
 }
 
 bool websocket_authorized(const std::string& request,
@@ -931,8 +973,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
   const auto dataset_sample_id_path = resource_id_path(path, "/api/data-samples/");
   try {
-  const bool protected_api = path.rfind("/api/", 0) == 0 &&
-      path != "/api/health" && path != "/api/ws";
+  const bool protected_api = protected_api_path(path);
   if (method == "OPTIONS") {
     if (origin_allowed(request, config.allowed_origin)) {
       send_text(socket_fd, options_response(config.allowed_origin));
@@ -942,7 +983,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     }
   } else if (protected_api &&
              (!origin_allowed(request, config.allowed_origin) ||
-              !authorized(request, config.access_token))) {
+              !access_token_authorized(request, config.access_token))) {
     send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
                                        config.allowed_origin));
   } else if (method == "GET" && path == "/api/health") {
@@ -954,6 +995,25 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "GET" && path == "/api/events") {
     send_text(socket_fd, json_response(200, "OK",
         events_json(state->database->list_events()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/llm/daily-summary") {
+    const std::string date = request_header(request, "X-Wardy-Summary-Date")
+        .value_or(kst_date_now());
+    if (!valid_summary_date(date)) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"Summary date must use YYYY-MM-DD\"}", config.allowed_origin));
+    } else {
+      const auto daily_events = state->database->list_events_for_kst_date(date);
+      std::unique_lock lock(state->daily_summary_mutex, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        send_text(socket_fd, json_response(429, "Too Many Requests",
+            "{\"error\":\"Daily summary generation is already running\"}",
+            config.allowed_origin));
+      } else {
+        const auto summary = state->daily_summary->summarize(date, daily_events);
+        send_text(socket_fd, json_response(200, "OK", daily_summary_json(summary),
+                                           config.allowed_origin));
+      }
+    }
   } else if (method == "GET" && path == "/api/state") {
     const auto current = state->database->load_system_state();
     if (!current) {
@@ -1285,6 +1345,11 @@ void MjpegServiceConfig::validate() const {
     throw std::invalid_argument("allowed UI origin must be an HTTP(S) origin");
   }
   if (access_token.empty()) throw std::invalid_argument("WARDY_ACCESS_TOKEN must not be empty");
+  llm::DailySummaryConfig llm_config;
+  llm_config.enabled = llm_enabled;
+  llm_config.model = llm_model;
+  llm_config.timeout = std::chrono::seconds{llm_timeout_seconds};
+  llm_config.validate();
 }
 
 MjpegService::MjpegService(MjpegServiceConfig config) : config_(std::move(config)) {
@@ -1295,6 +1360,11 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   const auto state = std::make_shared<StreamState>();
   state->database = std::make_shared<storage::SqliteStore>(config_.database_path);
   state->database->initialize();
+  llm::DailySummaryConfig llm_config;
+  llm_config.enabled = config_.llm_enabled;
+  llm_config.model = config_.llm_model;
+  llm_config.timeout = std::chrono::seconds{config_.llm_timeout_seconds};
+  state->daily_summary = std::make_shared<llm::DailySummaryService>(llm_config);
   state->training_data_path = config_.training_data_path;
   const std::weak_ptr<StreamState> weak_state = state;
   state->event_media = std::make_shared<media::EventMediaRecorder>(

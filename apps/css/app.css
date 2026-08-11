@@ -127,6 +127,10 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .latest-event { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-top: 14px; padding: 14px 16px; border-left: 3px solid var(--caution); background: #fbf7e9; }
 .latest-event:empty { display: none; }
 
+.ai-summary-card { margin-bottom: 18px; background: linear-gradient(135deg, #edf4ee, #f8f5ea); }
+.ai-summary-actions { display: flex; align-items: center; gap: 10px; }
+.ai-summary-output { min-height: 72px; margin: 4px 0 0; padding: 16px; border-left: 3px solid var(--forest-2); border-radius: 0 10px 10px 0; color: var(--ink); background: rgba(255, 255, 255, .76); line-height: 1.75; white-space: pre-wrap; }
+
 .filters { display: grid; grid-template-columns: 1fr 220px 220px; gap: 12px; margin-bottom: 18px; }
 .filters label, .stack-form label { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
 input, select { width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; color: var(--ink); background: white; outline: none; }
@@ -256,6 +260,8 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
   .dataset-review-card .card-heading { align-items: stretch; flex-direction: column; }
   .dataset-review-card .dataset-version-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
   .latest-event { align-items: flex-start; flex-direction: column; }
+  .ai-summary-card .card-heading, .ai-summary-actions { align-items: stretch; flex-direction: column; }
+  .ai-summary-actions .button { width: 100%; }
   .protocol-grid { grid-template-columns: 1fr; }
   .review-gallery { grid-template-columns: 1fr; }
 }

@@ -40,7 +40,7 @@ if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
   exit 1
 fi
 
-for command_name in cmake c++ flock git gst-inspect-1.0 openssl pkg-config v4l2-ctl; do
+for command_name in cmake c++ curl flock git gst-inspect-1.0 jq ollama openssl pkg-config v4l2-ctl; do
   require_command "${command_name}"
 done
 
@@ -63,6 +63,27 @@ fi
 
 require_file "${edge_dir}/tools/caddy"
 require_file "${edge_dir}/tools/mediamtx"
+
+versions_file="${edge_dir}/config/jetson-tool-versions.env"
+# shellcheck disable=SC1090
+source "${versions_file}"
+if curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+    http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+  echo "ok Ollama loopback API"
+else
+  echo "missing Ollama loopback API" >&2
+  missing=1
+fi
+model_digest="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 30 \
+    http://127.0.0.1:11434/api/tags 2>/dev/null |
+  jq --raw-output --arg model "${WARDY_LLM_MODEL}" \
+    'first(.models[] | select(.name == $model or .model == $model) | .digest) // empty' || true)"
+if [[ "${model_digest}" == "${WARDY_LLM_MODEL_DIGEST}" ]]; then
+  echo "ok Ollama model ${WARDY_LLM_MODEL} ${model_digest}"
+else
+  echo "missing or mismatched Ollama model ${WARDY_LLM_MODEL}" >&2
+  missing=1
+fi
 
 if [[ -e /dev/video0 ]]; then
   echo "ok camera /dev/video0"

@@ -108,6 +108,8 @@ class SqliteStore {
   [[nodiscard]] std::optional<EventRecord> get_event(const std::string& event_id) const;
   [[nodiscard]] std::vector<EventRecord> list_events(std::size_t limit = 100,
                                                       std::size_t offset = 0) const;
+  [[nodiscard]] std::vector<EventRecord> list_events_for_kst_date(
+      const std::string& date) const;
   [[nodiscard]] std::vector<EventRecord> list_active_events() const;
   bool update_event_status(const std::string& event_id, const std::string& event_status,
                            const std::string& changed_at);
