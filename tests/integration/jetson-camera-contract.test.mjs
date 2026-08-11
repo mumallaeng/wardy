@@ -187,10 +187,27 @@ test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한
   assert.match(checker, /\/api\/health/);
   assert.match(checker, /\/wardy\/whep/);
   assert.match(checker, /SecureString/);
+  assert.match(checker, /SecureString\]\$AccessToken/);
+  assert.match(checker, /\/api\/identity-reviews/);
   assert.match(checker, /Origin/);
   assert.match(checker, /catch/);
   assert.match(checker, /UDP media on port 8189/);
   assert.doesNotMatch(checker, /SSH|macOS/);
+});
+
+test("Jetson 비AI runtime 점검은 운영 데이터를 변경하지 않고 인증 API를 확인한다", async () => {
+  const script = await readFile(path.join(root, "edge/scripts/test_jetson_runtime.sh"), "utf8");
+  assert.match(script, /X-Wardy-Access-Token/);
+  assert.match(script, /notification-settings/);
+  assert.match(script, /identity-reviews/);
+  assert.doesNotMatch(script, /--request\s+(?:POST|PUT|PATCH|DELETE)/);
+});
+
+test("Jetson 실행은 격리된 검증용 저장 경로를 허용한다", async () => {
+  const script = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  assert.match(script, /WARDY_DATABASE_PATH/);
+  assert.match(script, /WARDY_TRAINING_DATA_PATH/);
+  assert.match(script, /WARDY_EVENT_MEDIA_PATH/);
 });
 
 test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", async () => {
