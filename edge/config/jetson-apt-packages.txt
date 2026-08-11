@@ -21,6 +21,7 @@ v4l-utils
 ca-certificates
 coreutils
 curl
+jq
 openssl
 tar
 util-linux
