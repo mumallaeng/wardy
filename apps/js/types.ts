@@ -161,7 +161,16 @@ export interface Detection {
   role: string;
   name: string;
   posture: string;
+  confidence: number;
   color: string;
+}
+
+export interface InferenceSnapshot {
+  source: "none" | "temporary" | "model";
+  observed_at: string;
+  operational: boolean;
+  fault_reason: string;
+  detections: Detection[];
 }
 
 export interface EventFilters {

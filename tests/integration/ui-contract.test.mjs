@@ -144,7 +144,7 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
   }
 });
 
-test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () => {
+test("UI, event runtime, 승인된 AI inference 경계를 분리한다", async () => {
   const aiDirectories = {
     "edge/src/inference": [
       "person_detector.cpp",
@@ -153,6 +153,8 @@ test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () 
       "person_detector_postprocess.hpp",
       "person_inference_runtime.cpp",
       "person_inference_runtime.hpp",
+      "inference_output.cpp",
+      "inference_output.hpp",
       "pose_fall_client.cpp",
       "pose_fall_client.hpp",
       "pose_fall_probe.cpp",
@@ -170,6 +172,10 @@ test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () 
     const content = await readFile(path.join(root, file), "utf8");
     assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);
   }
+  const edgeService = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(edgeService, /inference\/inference_output\.hpp/);
+  assert.match(edgeService, /pose_fall_client/);
+  assert.doesNotMatch(edgeService, /ml\/src/);
 });
 
 test("식별 검토 화면은 Jetson에 저장된 장면과 답변 API를 사용한다", async () => {

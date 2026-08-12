@@ -7,6 +7,10 @@ const state = {
   care_state: "normal", camera_state: "connected", detection_state: "disconnected",
   event_state: "ready", reason: "ready", updated_at: "2026-08-10T00:00:00Z",
 };
+const inference = {
+  source: "temporary", observed_at: "2026-08-12T00:00:00Z", operational: true,
+  fault_reason: "", detections: [],
+};
 
 test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", async () => {
   const calls = [];
@@ -14,6 +18,7 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
     calls.push({ url: String(url), init });
     if (String(url).endsWith("/api/state")) return Response.json(state);
     if (String(url).endsWith("/api/events")) return Response.json({ events: [] });
+    if (String(url).endsWith("/api/inference")) return Response.json(inference);
     if (String(url).endsWith("/api/subjects")) return Response.json({ subjects: [] });
     if (String(url).endsWith("/api/managed-items")) return Response.json({ managedItems: [] });
     if (String(url).endsWith("/api/zones")) return Response.json({ zones: [] });
@@ -26,12 +31,13 @@ test("Jetson runtime snapshot과 등록 목록을 인증 API에서 읽는다", a
   const snapshot = await client.loadSnapshot("https://10.10.20.40:8443", "token", "https://ui.local");
   const collections = await client.loadCollections("https://10.10.20.40:8443", "token", "https://ui.local");
   assert.equal(snapshot.state.camera_state, "connected");
+  assert.equal(snapshot.inference.source, "temporary");
   assert.deepEqual(collections, {
     subjects: [], managedItems: [], zones: [],
     notifications: { fall_suspected: "on" },
     identityReviews: [],
   });
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, 8);
   assert.ok(calls.every((call) => call.init.headers["X-Wardy-Access-Token"] === "token"));
   assert.ok(calls.every((call) => call.init.signal instanceof AbortSignal));
 });
@@ -125,6 +131,7 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
   const scheduled = [];
   const cancelled = [];
   const snapshots = [];
+  const inferences = [];
   class FakeSocket extends EventTarget {
     close() { this.dispatchEvent(new Event("close")); }
   }
@@ -143,7 +150,8 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
     (handle) => cancelled.push(handle),
     () => 0.5,
   );
-  client.connect("https://10.10.20.40:8443", "session-token", "https://ui.local", (snapshot) => snapshots.push(snapshot));
+  client.connect("https://10.10.20.40:8443", "session-token", "https://ui.local",
+    (snapshot) => snapshots.push(snapshot), (snapshot) => inferences.push(snapshot));
   assert.equal(opened[0].url, "wss://10.10.20.40:8443/api/ws");
   assert.deepEqual(opened[0].protocols, ["wardy-events", "session-token"]);
 
@@ -155,6 +163,14 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
     data: JSON.stringify({ type: "snapshot", state, events: [] }),
   }));
   assert.deepEqual(snapshots, [{ state, events: [] }]);
+  opened[0].socket.dispatchEvent(new MessageEvent("message", {
+    data: JSON.stringify({ type: "inference", inference }),
+  }));
+  assert.deepEqual(inferences, [inference]);
+  opened[0].socket.dispatchEvent(new MessageEvent("message", {
+    data: JSON.stringify({ type: "inference", inference: { ...inference, detections: [{}] } }),
+  }));
+  assert.deepEqual(inferences, [inference]);
 
   opened[0].socket.dispatchEvent(new Event("close"));
   opened[0].socket.dispatchEvent(new Event("close"));
