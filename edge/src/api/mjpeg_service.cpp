@@ -1719,7 +1719,7 @@ void capture_frames(const MjpegServiceConfig& config,
   auto retry_delay = std::chrono::seconds(1);
   constexpr auto maximum_retry_delay = std::chrono::seconds(30);
   std::string last_reported_error;
-  bool camera_fault_active = false;
+  bool camera_fault_active = state->events->has_active_event_type("camera_fault");
   while (state->running) {
     try {
       input::CameraCapture camera(config.camera);
@@ -1903,6 +1903,8 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
           if (event.event_status == "new") schedule_event_media(locked, event);
         }
       });
+  state->detection_fault_active =
+      state->events->has_active_event_type("detection_fault");
 #if defined(WARDY_WITH_TENSORRT)
   if (!config_.person_detector_engine_path.empty()) {
     const auto pose_fall_client = std::make_shared<inference::PoseFallClient>(

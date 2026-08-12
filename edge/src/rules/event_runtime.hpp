@@ -41,6 +41,7 @@ class EventRuntime {
   EventTransition apply(const EventObservation& observation);
   bool update_status(const std::string& event_id, const std::string& status,
                      const std::string& changed_at);
+  [[nodiscard]] bool has_active_event_type(const std::string& event_type) const;
   [[nodiscard]] std::optional<std::string> current_care_status() const;
   [[nodiscard]] std::string current_reason() const;
 
