@@ -41,12 +41,14 @@ python3 -m venv --system-site-packages "${venv_dir}"
 import cv2
 import numpy
 import onnxruntime
+import scipy
 
 print(
     "Wardy Python dependencies:",
     f"opencv={cv2.__version__}",
     f"numpy={numpy.__version__}",
     f"onnxruntime={onnxruntime.__version__}",
+    f"scipy={scipy.__version__}",
 )
 PY
 
@@ -79,5 +81,5 @@ import os
 from pose_fall_worker import build_runtime
 
 build_runtime(Path(os.environ["WARDY_MODEL_ROOT"]))
-print("Wardy M-03/M-04 runtime is ready")
+print("Wardy M-02/M-03/M-04 runtime is ready")
 PY

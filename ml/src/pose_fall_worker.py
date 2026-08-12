@@ -13,6 +13,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from m02_tracking import M02TrackingAdapter, TrackingPoseFallRuntime
 from m03_pose import PersonInput, PoseEstimator
 from m04_fall import FallInferenceSession, PoseFallRuntime
 from model_manager import DEFAULT_MODEL_ROOT, install_model
@@ -21,28 +22,54 @@ from model_manager import DEFAULT_MODEL_ROOT, install_model
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 
 
-def decode_request(payload: dict[str, Any]) -> tuple[np.ndarray, PersonInput]:
-    required = (
-        "frame_id",
-        "timestamp_ms",
-        "track_id",
-        "bbox_xyxy",
-        "frame_jpeg_base64",
-    )
+def decode_frame(payload: dict[str, Any]) -> np.ndarray:
+    required = ("frame_id", "timestamp_ms", "frame_jpeg_base64")
     if any(key not in payload for key in required):
         raise ValueError(
-            "request requires frame_id, timestamp_ms, track_id, bbox_xyxy, and frame_jpeg_base64"
+            "request requires frame_id, timestamp_ms, and frame_jpeg_base64"
         )
     image_bytes = base64.b64decode(payload["frame_jpeg_base64"], validate=True)
     frame = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
         raise ValueError("unable to decode frame JPEG")
-    return frame, PersonInput(
+    return frame
+
+
+def decode_tracked_person(payload: dict[str, Any]) -> PersonInput:
+    if "track_id" not in payload or "bbox_xyxy" not in payload:
+        raise ValueError("tracked request requires track_id and bbox_xyxy")
+    return PersonInput(
         frame_id=str(payload["frame_id"]),
         timestamp_ms=int(payload["timestamp_ms"]),
         track_id=int(payload["track_id"]),
         bbox_xyxy=np.asarray(payload["bbox_xyxy"], dtype=np.float32),
     )
+
+
+def process_request(
+    payload: dict[str, Any], runtime: TrackingPoseFallRuntime
+) -> dict[str, Any]:
+    frame = decode_frame(payload)
+    if "person_detections" in payload:
+        person_detections = payload["person_detections"]
+        if not isinstance(person_detections, list):
+            raise ValueError("person_detections must be a list")
+        reset_tracking = payload.get("reset_tracking", False)
+        if not isinstance(reset_tracking, bool):
+            raise ValueError("reset_tracking must be a boolean")
+        if reset_tracking:
+            runtime.reset()
+        result = runtime.process_frame(
+            frame,
+            frame_id=str(payload["frame_id"]),
+            timestamp_ms=int(payload["timestamp_ms"]),
+            person_detections=person_detections,
+        )
+        return {"ok": True, **result}
+
+    # Keep the already-tracked request contract during the M-01 transition.
+    person = decode_tracked_person(payload)
+    return {"ok": True, **runtime.pose_fall.process(frame, person).to_dict()}
 
 
 class PoseFallRequestHandler(socketserver.StreamRequestHandler):
@@ -52,9 +79,11 @@ class PoseFallRequestHandler(socketserver.StreamRequestHandler):
             response = {"ok": False, "error": "request too large"}
         else:
             try:
-                frame, person = decode_request(json.loads(line))
-                result = self.server.runtime.process(frame, person)  # type: ignore[attr-defined]
-                response = {"ok": True, **result.to_dict()}
+                payload = json.loads(line)
+                response = process_request(
+                    payload,
+                    self.server.runtime,  # type: ignore[attr-defined]
+                )
             except Exception as error:
                 response = {"ok": False, "error": str(error)}
         self.wfile.write(
@@ -65,19 +94,20 @@ class PoseFallRequestHandler(socketserver.StreamRequestHandler):
 class PoseFallServer(socketserver.UnixStreamServer):
     allow_reuse_address = True
 
-    def __init__(self, socket_path: Path, runtime: PoseFallRuntime):
+    def __init__(self, socket_path: Path, runtime: TrackingPoseFallRuntime):
         self.runtime = runtime
         super().__init__(str(socket_path), PoseFallRequestHandler)
         os.chmod(socket_path, 0o600)
 
 
-def build_runtime(model_root: Path) -> PoseFallRuntime:
+def build_runtime(model_root: Path) -> TrackingPoseFallRuntime:
     m03 = install_model("m03_pose", model_root=model_root)
     m04 = install_model("m04_fall", model_root=model_root)
-    return PoseFallRuntime(
+    pose_fall = PoseFallRuntime(
         PoseEstimator(m03 / "model.onnx"),
         FallInferenceSession(m04 / "model.onnx", m04 / "metadata.json"),
     )
+    return TrackingPoseFallRuntime(M02TrackingAdapter(), pose_fall)
 
 
 def main() -> int:
