@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -20,14 +21,18 @@ class TrackingPoseFallRuntime:
         self,
         tracking: M02TrackingAdapter,
         pose_fall: PoseFallRuntime,
+        identity: Any | None = None,
     ) -> None:
         self.tracking = tracking
         self.pose_fall = pose_fall
+        self.identity = identity
         self._request_mode: str | None = None
 
     def reset(self) -> None:
         self.tracking.reset()
         self.pose_fall.reset_all()
+        if self.identity is not None:
+            self.identity.reset()
 
     def process_tracked_person(
         self,
@@ -58,6 +63,13 @@ class TrackingPoseFallRuntime:
             person_detections=person_detections,
         )
 
+        identity_results = {} if self.identity is None else self.identity.identify(
+            frame_bgr,
+            tracking_result["persons"],
+            captured_at=datetime.fromtimestamp(
+                timestamp_ms / 1000.0, tz=timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
+        )
         persons = []
         for tracked_person in tracking_result["persons"]:
             person = PersonInput(
@@ -67,10 +79,17 @@ class TrackingPoseFallRuntime:
                 bbox_xyxy=tracked_person["bbox_xyxy"],
             )
             inference = self.pose_fall.process(frame_bgr, person)
-            persons.append({**tracked_person, **inference.to_dict()})
+            identity = identity_results.get(tracked_person["track_id"])
+            persons.append({
+                **tracked_person,
+                **inference.to_dict(),
+                **({"identity": identity} if identity is not None else {}),
+            })
 
         # M04 history must not outlive the anonymous M02 track that owns it.
         self.pose_fall.retain_tracks(self.tracking.tracker.active_track_ids)
+        if self.identity is not None:
+            self.identity.retain_tracks(self.tracking.tracker.active_track_ids)
         return {
             "frame_id": frame_id,
             "timestamp_ms": timestamp_ms,
