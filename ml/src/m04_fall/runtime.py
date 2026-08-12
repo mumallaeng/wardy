@@ -66,3 +66,13 @@ class PoseFallRuntime:
     def reset_track(self, track_id: int) -> None:
         self.histories.pop(track_id, None)
         self.last_timestamp.pop(track_id, None)
+
+    def retain_tracks(self, active_track_ids: set[int] | frozenset[int]) -> None:
+        """Discard temporal state after the owning anonymous track expires."""
+        known_track_ids = set(self.histories) | set(self.last_timestamp)
+        for track_id in known_track_ids - set(active_track_ids):
+            self.reset_track(track_id)
+
+    def reset_all(self) -> None:
+        self.histories.clear()
+        self.last_timestamp.clear()

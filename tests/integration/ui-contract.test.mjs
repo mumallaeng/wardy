@@ -144,13 +144,20 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
   }
 });
 
-test("비AI runtime은 AI 구현 파일을 import하지 않는다", async () => {
-  const aiDirectories = [
-    "edge/src/inference", "edge/src/tracking", "edge/src/analysis",
-  ];
-  for (const directory of aiDirectories) {
+test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () => {
+  const aiDirectories = {
+    "edge/src/inference": [
+      ".gitkeep",
+      "pose_fall_client.cpp",
+      "pose_fall_client.hpp",
+      "pose_fall_probe.cpp",
+    ],
+    "edge/src/tracking": [".gitkeep"],
+    "edge/src/analysis": [".gitkeep"],
+  };
+  for (const [directory, allowedEntries] of Object.entries(aiDirectories)) {
     const entries = await readdir(path.join(root, directory));
-    assert.deepEqual(entries, [".gitkeep"], directory);
+    assert.deepEqual(entries.sort(), allowedEntries.sort(), directory);
   }
   for (const file of ["apps/js/app.ts", "edge/src/api/mjpeg_service.cpp", "edge/src/rules/event_runtime.cpp"]) {
     const content = await readFile(path.join(root, file), "utf8");
