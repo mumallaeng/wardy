@@ -85,6 +85,40 @@ class HuggingFaceInstallTest(unittest.TestCase):
             redirected.get_header("Authorization"), "Bearer test-token"
         )
 
+    def test_https_to_http_redirect_removes_authorization(self) -> None:
+        request = urllib.request.Request(
+            "https://huggingface.co/example/model",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        redirected = _SameHostAuthorizationRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "http://huggingface.co/example/model",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertIsNone(redirected.get_header("Authorization"))
+
+    def test_same_host_port_change_removes_authorization(self) -> None:
+        request = urllib.request.Request(
+            "https://huggingface.co/example/model",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        redirected = _SameHostAuthorizationRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://huggingface.co:8443/example/model",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertIsNone(redirected.get_header("Authorization"))
+
 
 if __name__ == "__main__":
     unittest.main()

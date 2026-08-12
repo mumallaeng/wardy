@@ -20,6 +20,14 @@ DEFAULT_MODEL_ROOT = PROJECT_ROOT / "ml" / "checkpoints" / "models"
 
 
 class _SameHostAuthorizationRedirectHandler(urllib.request.HTTPRedirectHandler):
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str | None, int | None]:
+        parsed = urllib.parse.urlsplit(url)
+        default_port = 443 if parsed.scheme.lower() == "https" else (
+            80 if parsed.scheme.lower() == "http" else None
+        )
+        return parsed.scheme.lower(), parsed.hostname, parsed.port or default_port
+
     def redirect_request(
         self,
         request: urllib.request.Request,
@@ -32,9 +40,10 @@ class _SameHostAuthorizationRedirectHandler(urllib.request.HTTPRedirectHandler):
         redirected = super().redirect_request(
             request, file_pointer, code, message, headers, new_url
         )
+        original_origin = self._origin(request.full_url)
+        redirected_origin = self._origin(new_url)
         if redirected is not None and (
-            urllib.parse.urlsplit(request.full_url).hostname
-            != urllib.parse.urlsplit(new_url).hostname
+            original_origin[0] != "https" or original_origin != redirected_origin
         ):
             redirected.remove_header("Authorization")
         return redirected
