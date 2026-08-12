@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "models": {
+    "m03_pose": {
+      "default_version": "openmmlab-rtmpose-t-20230504",
+      "versions": {
+        "openmmlab-rtmpose-t-20230504": {
+          "source": "archive_url",
+          "url": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-t_simcc-body7_pt-body7_420e-256x192-026a1439_20230504.zip",
+          "archive_sha256": "937003a70832d9cc34ea16927f504792f3133e92dda1b9c626236bbbe9e805cb",
+          "archive_member": "20230831/rtmpose_onnx/rtmpose-t_simcc-body7_pt-body7_420e-256x192-026a1439_20230504/end2end.onnx",
+          "files": {
+            "model.onnx": "a6c2f6a3896a4d51131d14d7a80a3d08b50f559af5a58a45d5b098aef510a70f"
+          }
+        }
+      }
+    },
+    "m04_fall": {
+      "default_version": "wardy-urfd-gru-v1",
+      "versions": {
+        "wardy-urfd-gru-v1": {
+          "source": "huggingface",
+          "repo_id": "mumallaeng/wardy-m04-fall",
+          "revision": "v1.0.0",
+          "files": {
+            "model.onnx": "5ba44fbd8dde2f8632b299bb29b342cf2f1da64d708341fc1c7339b05b4f1922",
+            "metadata.json": "8e7dc43e9f0c2cb67c523a66f80a2fbb5aea4e23f4c52fd703d9637bed715172"
+          },
+          "remote_files": {
+            "model.onnx": "m04_temporal_gru.onnx",
+            "metadata.json": "m04_temporal_gru.metadata.json"
+          }
+        }
+      }
+    }
+  }
+}
