@@ -55,6 +55,8 @@ export_onnx() {
   docker run --rm --pull=missing --runtime=nvidia --ipc=host \
     --user "$(id -u):$(id -g)" \
     -e YOLO_CONFIG_DIR=/tmp/ultralytics \
+    -e MPLCONFIGDIR=/tmp/matplotlib \
+    -e XDG_CACHE_HOME=/tmp/cache \
     -v "${model_dir}:/models" \
     "${ultralytics_image}" \
     python -c 'from ultralytics import YOLO; YOLO("/models/model.pt").export(format="onnx", imgsz=640, dynamic=False, simplify=True, opset=12)'
