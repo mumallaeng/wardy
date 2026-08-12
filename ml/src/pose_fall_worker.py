@@ -153,14 +153,21 @@ def main() -> int:
     parser.add_argument("--identity-match-threshold", type=float, default=0.45)
     parser.add_argument("--identity-review-threshold", type=float, default=0.30)
     args = parser.parse_args()
+    if (args.database is None) != (args.training_data is None):
+        parser.error("--database and --training-data must be provided together")
+    if not (
+        0.0
+        <= args.identity_review_threshold
+        < args.identity_match_threshold
+        <= 1.0
+    ):
+        parser.error("identity thresholds must satisfy 0 <= review < match <= 1")
     if args.socket.parent.exists():
         if not args.socket.parent.is_dir():
             raise NotADirectoryError(args.socket.parent)
     else:
         args.socket.parent.mkdir(parents=True, mode=0o700)
     args.socket.unlink(missing_ok=True)
-    if (args.database is None) != (args.training_data is None):
-        parser.error("--database and --training-data must be provided together")
     runtime = build_runtime(
         args.model_root,
         args.database,

@@ -222,7 +222,10 @@ def install_model(
         manifest = {
             "model_id": model_id,
             "version": selected,
+            "repo_id": specification.get("repo_id"),
+            "revision": specification.get("revision"),
             "files": specification["files"],
+            "remote_files": specification.get("remote_files", {}),
         }
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         if destination.exists():

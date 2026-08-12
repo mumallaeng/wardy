@@ -108,6 +108,40 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         self.assertEqual(row[1], "pending")
         self.assertTrue((self.training / row[0]).is_file())
 
+    def test_failed_review_write_does_not_start_cooldown(self) -> None:
+        frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        with patch.object(cv2, "imwrite", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "unable to save"):
+                self.runtime.identify(
+                    frame,
+                    [{"track_id": 9, "bbox_xyxy": [0, 0, 30, 30]}],
+                    captured_at="2026-08-12T00:00:00Z",
+                )
+        self.assertNotIn(9, self.runtime._last_review_by_track)
+
+    def test_uncertain_face_review_keeps_predicted_name(self) -> None:
+        candidate = _GalleryFeature(
+            _Subject("subject-2", "등록 인물", "돌봄 대상"),
+            np.array([[100.0]], dtype=np.float32),
+        )
+        frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        with patch.object(self.runtime, "_best_match", return_value=(candidate, 0.35)):
+            result = self.runtime.identify(
+                frame,
+                [{"track_id": 10, "bbox_xyxy": [0, 0, 30, 30]}],
+                captured_at="2026-08-12T00:00:00Z",
+            )
+        self.assertEqual(result[10]["status"], "uncertain")
+        predicted_name = self.runtime._connection.execute(
+            "SELECT predicted_name FROM identity_reviews"
+        ).fetchone()[0]
+        self.assertEqual(predicted_name, "등록 인물")
+
+    def test_stored_path_rejects_parent_directory_escape(self) -> None:
+        outside = self.training.parent / "outside.jpg"
+        outside.write_bytes(b"outside")
+        self.assertIsNone(self.runtime._stored_path("../outside.jpg"))
+
 
 if __name__ == "__main__":
     unittest.main()
