@@ -147,7 +147,12 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
 test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () => {
   const aiDirectories = {
     "edge/src/inference": [
-      ".gitkeep",
+      "person_detector.cpp",
+      "person_detector.hpp",
+      "person_detector_postprocess.cpp",
+      "person_detector_postprocess.hpp",
+      "person_inference_runtime.cpp",
+      "person_inference_runtime.hpp",
       "pose_fall_client.cpp",
       "pose_fall_client.hpp",
       "pose_fall_probe.cpp",
@@ -159,7 +164,10 @@ test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () 
     const entries = await readdir(path.join(root, directory));
     assert.deepEqual(entries.sort(), allowedEntries.sort(), directory);
   }
-  for (const file of ["apps/js/app.ts", "edge/src/api/mjpeg_service.cpp", "edge/src/rules/event_runtime.cpp"]) {
+  const service = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(service, /PersonInferenceRuntime/);
+  assert.match(service, /person_inference->submit/);
+  for (const file of ["apps/js/app.ts", "edge/src/rules/event_runtime.cpp"]) {
     const content = await readFile(path.join(root, file), "utf8");
     assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);
   }

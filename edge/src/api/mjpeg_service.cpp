@@ -10,6 +10,10 @@
 #include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
 
+#if defined(WARDY_WITH_TENSORRT)
+#include "inference/person_inference_runtime.hpp"
+#endif
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/select.h>
@@ -56,6 +60,9 @@ struct StreamState {
   std::atomic_int frame_width{0};
   std::atomic_int frame_height{0};
   std::atomic_uint64_t sample_counter{0};
+  std::atomic_uint64_t inference_counter{0};
+  std::atomic_bool detection_running_reported{false};
+  std::atomic_bool detection_fault_active{false};
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::shared_ptr<media::EventMediaRecorder> event_media;
@@ -71,6 +78,9 @@ struct StreamState {
   std::vector<unsigned char> jpeg;
   std::size_t sequence = 0;
   std::string camera_error;
+#if defined(WARDY_WITH_TENSORRT)
+  std::shared_ptr<inference::PersonInferenceRuntime> person_inference;
+#endif
 };
 
 void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept;
@@ -238,6 +248,25 @@ void save_camera_state(const std::shared_ptr<StreamState>& state,
     broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite state error: " << error.what() << '\n';
+  }
+}
+
+void save_detection_state(const std::shared_ptr<StreamState>& state,
+                          const std::string& detection_state,
+                          const std::string& reason) noexcept {
+  try {
+    const auto previous = state->database->load_system_state();
+    const bool preserve_event_reason = previous && previous->care_state &&
+        *previous->care_state != "normal" && detection_state != "fault";
+    state->database->save_system_state({
+        previous ? previous->care_state : std::optional<std::string>{"normal"},
+        previous ? previous->camera_state : "idle", detection_state,
+        previous ? previous->event_state : "ready",
+        preserve_event_reason ? previous->reason : reason, utc_now(),
+    });
+    broadcast_snapshot(state);
+  } catch (const std::exception& error) {
+    std::cerr << "SQLite detection state error: " << error.what() << '\n';
   }
 }
 
@@ -587,6 +616,23 @@ void apply_camera_fault(const std::shared_ptr<StreamState>& state, bool active,
     state->events->apply(observation);
   } catch (const std::exception& error) {
     std::cerr << "Camera fault event error: " << error.what() << '\n';
+  }
+}
+
+void apply_detection_fault(const std::shared_ptr<StreamState>& state, bool active,
+                           const std::string& reason) noexcept {
+  try {
+    rules::EventObservation observation;
+    observation.event_type = "detection_fault";
+    observation.active = active;
+    observation.observed_at = utc_now();
+    observation.subject_location = "unknown";
+    observation.reason = reason;
+    observation.source_results_json =
+        R"([{"source":"m01_person_detector","runtime":"TensorRT"}])";
+    state->events->apply(observation);
+  } catch (const std::exception& error) {
+    std::cerr << "Detection fault event error: " << error.what() << '\n';
   }
 }
 
@@ -1413,6 +1459,15 @@ void capture_frames(const MjpegServiceConfig& config,
           throw std::runtime_error("failed to read a frame from the Jetson camera");
         }
         if (state->event_media) state->event_media->push_frame(frame);
+#if defined(WARDY_WITH_TENSORRT)
+        if (state->person_inference) {
+          const auto timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch()).count();
+          const auto sequence = state->inference_counter.fetch_add(1) + 1;
+          state->person_inference->submit(
+              frame, "camera-" + std::to_string(sequence), timestamp_ms);
+        }
+#endif
         if (!connected_reported) {
           {
             std::lock_guard lock(state->mutex);
@@ -1510,6 +1565,15 @@ void MjpegServiceConfig::validate() const {
     throw std::invalid_argument("allowed UI origin must be an HTTP(S) origin");
   }
   if (access_token.empty()) throw std::invalid_argument("WARDY_ACCESS_TOKEN must not be empty");
+  if (!std::isfinite(person_confidence_threshold) ||
+      person_confidence_threshold < 0.0F || person_confidence_threshold > 1.0F ||
+      !std::isfinite(person_nms_iou_threshold) ||
+      person_nms_iou_threshold < 0.0F || person_nms_iou_threshold > 1.0F) {
+    throw std::invalid_argument("person detection thresholds must be inside [0,1]");
+  }
+  if (person_class_index < 0) {
+    throw std::invalid_argument("person class index must be non-negative");
+  }
   llm::DailySummaryConfig llm_config;
   llm_config.enabled = llm_enabled;
   llm_config.model = llm_model;
@@ -1543,6 +1607,47 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
           if (event.event_status == "new") schedule_event_media(locked, event);
         }
       });
+#if defined(WARDY_WITH_TENSORRT)
+  if (!config_.person_detector_engine_path.empty()) {
+    state->person_inference = std::make_shared<inference::PersonInferenceRuntime>(
+        inference::PersonDetectorConfig{
+            config_.person_detector_engine_path,
+            config_.person_confidence_threshold,
+            config_.person_nms_iou_threshold,
+            static_cast<std::size_t>(config_.person_class_index),
+        },
+        [weak_state](const cv::Mat&, const std::string&, std::int64_t,
+                     const std::vector<inference::PersonDetection>&) {
+          if (const auto locked = weak_state.lock()) {
+            if (!locked->detection_running_reported.exchange(true)) {
+              save_detection_state(locked, "running",
+                                   "M-01 person detection is running");
+            }
+          }
+        },
+        [weak_state](bool ready, const std::string& message) {
+          if (const auto locked = weak_state.lock()) {
+            if (ready) {
+              save_detection_state(locked, "ready", message);
+              if (locked->detection_fault_active.exchange(false)) {
+                apply_detection_fault(locked, false, message);
+              }
+            } else {
+              locked->detection_running_reported = false;
+              save_detection_state(locked, "fault", message);
+              if (!locked->detection_fault_active.exchange(true)) {
+                apply_detection_fault(locked, true, message);
+              }
+            }
+          }
+        });
+  }
+#else
+  if (!config_.person_detector_engine_path.empty()) {
+    throw std::runtime_error(
+        "WARDY_PERSON_ENGINE is set but this binary was built without TensorRT/CUDA");
+  }
+#endif
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
   std::thread capture_thread(capture_frames, std::cref(config_), state);
@@ -1566,6 +1671,9 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   state->frame_ready.notify_all();
   ::close(server_fd);
   if (capture_thread.joinable()) capture_thread.join();
+#if defined(WARDY_WITH_TENSORRT)
+  if (state->person_inference) state->person_inference->stop();
+#endif
   state->event_media->stop();
   save_camera_state(state, "idle", "Wardy edge service stopped");
   return 0;
