@@ -22,6 +22,7 @@ struct DetectionOutput {
   std::string posture;
   double confidence = 0.0;
   std::string color = "#62b88f";
+  std::optional<std::string> subject_id;
 };
 
 struct PersonOutput {

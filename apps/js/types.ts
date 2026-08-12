@@ -163,6 +163,7 @@ export interface Detection {
   posture: string;
   confidence: number;
   color: string;
+  subjectId?: string | null;
 }
 
 export interface InferenceSnapshot {
