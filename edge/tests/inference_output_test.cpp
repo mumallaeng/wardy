@@ -8,6 +8,14 @@
 #include <string>
 
 int main() {
+  const auto clipped = wardy::inference::normalized_response_box(
+      {-20.0F, 10.0F, 120.0F, 40.0F}, 100, 100);
+  assert(clipped.has_value());
+  assert((*clipped)[0] == 0.0);
+  assert((*clipped)[2] == 1.0);
+  assert(!wardy::inference::normalized_response_box(
+      {120.0F, 10.0F, 140.0F, 40.0F}, 100, 100).has_value());
+
   wardy::storage::SqliteStore database(":memory:");
   database.initialize();
   wardy::rules::EventRuntime events(database);
@@ -48,6 +56,18 @@ int main() {
   assert(database.list_events().front().event_type == "detection_fault");
   assert(changes == 6);
 
+  runtime.apply(normal.infer("frame-6b", "2026-08-12T00:00:05.5Z"));
+  snapshot = runtime.snapshot();
+  assert(snapshot.operational);
+  bool fault_released = false;
+  for (const auto& event : database.list_events()) {
+    if (event.event_type == "detection_fault") {
+      fault_released = event.event_status == "released";
+    }
+  }
+  assert(fault_released);
+  assert(changes == 7);
+
   const std::string json = wardy::inference::inference_json(snapshot);
   assert(json.find("\"source\":\"temporary\"") != std::string::npos);
   assert(wardy::inference::inference_message_json(snapshot).find(
@@ -70,6 +90,6 @@ int main() {
     rejected = true;
   }
   assert(rejected);
-  assert(changes == 6);
+  assert(changes == 7);
   return 0;
 }

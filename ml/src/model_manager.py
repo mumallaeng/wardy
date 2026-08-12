@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -16,6 +17,27 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY = PROJECT_ROOT / "ml" / "config" / "model-registry.json"
 DEFAULT_MODEL_ROOT = PROJECT_ROOT / "ml" / "checkpoints" / "models"
+
+
+class _SameHostAuthorizationRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: Any,
+        code: int,
+        message: str,
+        headers: Any,
+        new_url: str,
+    ) -> urllib.request.Request | None:
+        redirected = super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
+        )
+        if redirected is not None and (
+            urllib.parse.urlsplit(request.full_url).hostname
+            != urllib.parse.urlsplit(new_url).hostname
+        ):
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def sha256(path: Path) -> str:
@@ -67,8 +89,9 @@ def _download(
     if headers is not None:
         request_headers.update(headers)
     request = urllib.request.Request(url, headers=request_headers)
+    opener = urllib.request.build_opener(_SameHostAuthorizationRedirectHandler())
     with (
-        urllib.request.urlopen(request, timeout=60) as response,
+        opener.open(request, timeout=60) as response,
         destination.open("wb") as output,
     ):
         shutil.copyfileobj(response, output)

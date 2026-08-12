@@ -217,7 +217,8 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
   const cv::FileNode hazards = document["hazards"];
   if (active_tracks.type() != cv::FileNode::SEQ || persons.type() != cv::FileNode::SEQ ||
       (!hazards.empty() && hazards.type() != cv::FileNode::SEQ)) {
-    throw std::runtime_error("tracking response requires active_track_ids and persons arrays");
+    throw std::runtime_error(
+        "tracking response requires active_track_ids and persons arrays and an optional hazards array");
   }
   for (const auto& node : active_tracks) {
     parsed.active_track_ids.push_back(positive_track_id(

@@ -56,6 +56,17 @@ rules::EventObservation observation(
 
 }  // namespace
 
+std::optional<std::array<double, 4>> normalized_response_box(
+    const std::array<float, 4>& box, int frame_width, int frame_height) {
+  if (frame_width <= 0 || frame_height <= 0) return std::nullopt;
+  const double x0 = std::clamp(static_cast<double>(box[0]) / frame_width, 0.0, 1.0);
+  const double y0 = std::clamp(static_cast<double>(box[1]) / frame_height, 0.0, 1.0);
+  const double x1 = std::clamp(static_cast<double>(box[2]) / frame_width, 0.0, 1.0);
+  const double y1 = std::clamp(static_cast<double>(box[3]) / frame_height, 0.0, 1.0);
+  if (x1 <= x0 || y1 <= y0) return std::nullopt;
+  return std::array<double, 4>{x0, y0, x1 - x0, y1 - y0};
+}
+
 InferenceOutputRuntime::InferenceOutputRuntime(
     rules::EventRuntime& events, ChangeCallback on_change)
     : events_(events), on_change_(std::move(on_change)) {}
@@ -96,6 +107,7 @@ std::string InferenceOutputRuntime::source_results(
 }
 
 void InferenceOutputRuntime::apply(const InferenceFrame& frame) {
+  std::lock_guard operation_lock(operation_mutex_);
   validate(frame);
   InferenceSnapshot next;
   next.source = frame.source;

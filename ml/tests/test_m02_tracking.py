@@ -253,12 +253,16 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
             {
                 "frame_id": "frame-1",
                 "timestamp_ms": 0,
-                "person_detections": [],
+                "person_detections": [
+                    {"bbox_xyxy": [10, 10, 60, 110], "confidence": 0.95}
+                ],
                 "frame_jpeg_base64": base64.b64encode(jpeg).decode(),
             },
             self.runtime,
             _FakeHazardDetector(),  # type: ignore[arg-type]
         )
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["persons"][0]["track_id"], 1)
         self.assertEqual(response["hazards"][0]["class_name"], "scissors")
 
     def test_reset_clears_tracking_and_temporal_runtime(self) -> None:

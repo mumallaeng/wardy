@@ -48,6 +48,7 @@ function isInferenceSnapshot(value: unknown): value is InferenceSnapshot {
         typeof detection.className !== "string" || typeof detection.role !== "string" ||
         typeof detection.name !== "string" || typeof detection.posture !== "string" ||
         typeof detection.color !== "string" || typeof detection.confidence !== "number" ||
+        !Number.isFinite(detection.confidence) ||
         detection.confidence < 0 || detection.confidence > 1 ||
         !Array.isArray(detection.box) || detection.box.length !== 4) return false;
     const [x, y, width, height] = detection.box;
@@ -106,12 +107,16 @@ export class WardyRuntimeClient {
     const [state, eventBody, inferenceBody] = await Promise.all([
       this.request<SystemState>(baseUrl, accessToken, fallbackOrigin, "/api/state"),
       this.request<{ events: WardyEvent[] }>(baseUrl, accessToken, fallbackOrigin, "/api/events"),
-      this.request<unknown>(baseUrl, accessToken, fallbackOrigin, "/api/inference"),
+      this.request<unknown>(baseUrl, accessToken, fallbackOrigin, "/api/inference")
+        .catch(() => undefined),
     ]);
-    if (!isInferenceSnapshot(inferenceBody)) {
+    if (inferenceBody !== undefined && !isInferenceSnapshot(inferenceBody)) {
       throw new Error("Jetson inference output 형식이 올바르지 않습니다.");
     }
-    return { state, events: eventBody.events, inference: inferenceBody };
+    const snapshot: RuntimeSnapshot = { state, events: eventBody.events };
+    return isInferenceSnapshot(inferenceBody)
+      ? { ...snapshot, inference: inferenceBody }
+      : snapshot;
   }
 
   async loadCollections(baseUrl: string, accessToken: string,

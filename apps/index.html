@@ -71,7 +71,7 @@
 
       <div class="dashboard-grid">
         <section class="card camera-card">
-          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><span class="badge inference-badge" id="inference-source-badge" hidden>임시 출력</span><button class="text-button" id="mirror-camera" type="button" aria-pressed="false">거울 모드 켜기</button></div></div>
+          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><span class="badge inference-badge" id="inference-source-badge" role="status" hidden>임시 출력</span><button class="text-button" id="mirror-camera" type="button" aria-pressed="false">거울 모드 켜기</button></div></div>
           <div class="camera-stage" id="camera-stage">
             <video id="camera" title="Jetson WebRTC 카메라 영상" autoplay muted playsinline disablepictureinpicture></video>
             <canvas id="overlay" aria-label="탐지 결과와 주의 구역 표시"></canvas>

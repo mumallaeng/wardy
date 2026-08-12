@@ -54,6 +54,9 @@ struct InferenceSnapshot {
   std::vector<DetectionOutput> detections;
 };
 
+std::optional<std::array<double, 4>> normalized_response_box(
+    const std::array<float, 4>& box, int frame_width, int frame_height);
+
 class InferenceOutputRuntime {
  public:
   using ChangeCallback = std::function<void()>;
@@ -76,6 +79,7 @@ class InferenceOutputRuntime {
 
   rules::EventRuntime& events_;
   ChangeCallback on_change_;
+  std::mutex operation_mutex_;
   mutable std::mutex mutex_;
   InferenceSnapshot snapshot_;
   std::map<std::string, ActiveObservation> active_events_;

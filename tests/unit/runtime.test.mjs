@@ -67,6 +67,40 @@ test("등록 목록 일부 요청이 실패해도 성공한 collection을 유지
   assert.deepEqual(collections.identityReviews, []);
 });
 
+test("inference endpoint 실패는 state와 event snapshot을 막지 않는다", async () => {
+  const client = new WardyRuntimeClient(async (url) => {
+    if (String(url).endsWith("/api/state")) return Response.json(state);
+    if (String(url).endsWith("/api/events")) return Response.json({ events: [] });
+    return new Response("unavailable", { status: 503 });
+  });
+
+  const snapshot = await client.loadSnapshot(
+    "https://jetson.local:8443", "token", "https://ui.local",
+  );
+  assert.equal(snapshot.state.camera_state, "connected");
+  assert.deepEqual(snapshot.events, []);
+  assert.equal(snapshot.inference, undefined);
+});
+
+test("inference confidence는 유한한 0부터 1 사이 값이어야 한다", async () => {
+  const client = new WardyRuntimeClient(async (url) => {
+    if (String(url).endsWith("/api/state")) return Response.json(state);
+    if (String(url).endsWith("/api/events")) return Response.json({ events: [] });
+    return Response.json({
+      ...inference,
+      detections: [{
+        id: "track-1", className: "사람", role: "", name: "", posture: "추적 중",
+        color: "#62b88f", confidence: Number.NaN, box: [0.1, 0.1, 0.2, 0.2],
+      }],
+    });
+  });
+
+  await assert.rejects(
+    client.loadSnapshot("https://jetson.local:8443", "token", "https://ui.local"),
+    /inference output 형식/,
+  );
+});
+
 test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {

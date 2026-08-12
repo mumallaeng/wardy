@@ -166,8 +166,11 @@ test("UI, event runtime, 승인된 AI inference 경계를 분리한다", async (
     assert.deepEqual(entries.sort(), allowedEntries.sort(), directory);
   }
   const service = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
   assert.match(service, /PersonInferenceRuntime/);
   assert.match(service, /person_inference->submit/);
+  assert.match(app, /INFERENCE_STALE_MS/);
+  assert.match(app, /inferenceIsStale\(\)/);
   for (const file of ["apps/js/app.ts", "edge/src/rules/event_runtime.cpp"]) {
     const content = await readFile(path.join(root, file), "utf8");
     assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);

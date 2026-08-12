@@ -3,10 +3,11 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from model_manager import _install_huggingface
+from model_manager import _SameHostAuthorizationRedirectHandler, _install_huggingface
 
 
 class HuggingFaceInstallTest(unittest.TestCase):
@@ -40,6 +41,48 @@ class HuggingFaceInstallTest(unittest.TestCase):
             "https://huggingface.co/example/private-model/resolve/v1/remote.onnx?download=true",
             Path(directory) / "model.onnx",
             headers={},
+        )
+
+    def test_cross_host_redirect_removes_authorization_only(self) -> None:
+        request = urllib.request.Request(
+            "https://huggingface.co/example/model",
+            headers={
+                "Authorization": "Bearer test-token",
+                "User-Agent": "wardy-model-manager/1",
+            },
+        )
+        redirected = _SameHostAuthorizationRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://cdn.example.test/model",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertIsNone(redirected.get_header("Authorization"))
+        self.assertEqual(
+            redirected.get_header("User-agent"), "wardy-model-manager/1"
+        )
+
+    def test_same_host_redirect_preserves_authorization(self) -> None:
+        request = urllib.request.Request(
+            "https://huggingface.co/example/model",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        redirected = _SameHostAuthorizationRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://huggingface.co/example/model?download=true",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertEqual(
+            redirected.get_header("Authorization"), "Bearer test-token"
         )
 
 

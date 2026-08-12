@@ -66,6 +66,7 @@ let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 let inferenceState: InferenceSnapshot | null = null;
+let inferenceExpiryTimer: number | null = null;
 let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
@@ -94,6 +95,11 @@ function runtimeConnection(): { baseUrl: string; accessToken: string; origin: st
 function applyInferenceSnapshot(snapshot: InferenceSnapshot): void {
   inferenceState = snapshot;
   overlay.setDetections(snapshot.operational ? snapshot.detections : []);
+  if (inferenceExpiryTimer !== null) window.clearTimeout(inferenceExpiryTimer);
+  inferenceExpiryTimer = window.setTimeout(() => {
+    inferenceExpiryTimer = null;
+    renderSystemState();
+  }, INFERENCE_STALE_MS);
   renderSystemState();
 }
 
@@ -152,7 +158,19 @@ function renderNotificationPermission(): void {
   button.textContent = permission === "granted" ? "브라우저 알림 허용됨" : "브라우저 알림 허용";
 }
 
+const INFERENCE_STALE_MS = 5_000;
+
+function inferenceIsStale(): boolean {
+  if (!inferenceState) return false;
+  const observed = Date.parse(inferenceState.observed_at);
+  return !Number.isFinite(observed) || Date.now() - observed > INFERENCE_STALE_MS;
+}
+
 function renderSystemState(): void {
+  if (inferenceIsStale()) {
+    inferenceState = null;
+    overlay.setDetections([]);
+  }
   const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
   const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
   const detectionState = runtimeState?.detection_state ?? "disconnected";
@@ -459,6 +477,10 @@ function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}):
   if (status === "fault" || status === "idle") {
     inferenceState = null;
     overlay.setDetections([]);
+    if (inferenceExpiryTimer !== null) {
+      window.clearTimeout(inferenceExpiryTimer);
+      inferenceExpiryTimer = null;
+    }
   }
   const labels: Record<JetsonStatus, string> = { idle: "확인 전", connecting: "연결 확인 중", connected: "연결됨", fault: "연결 실패" };
   const connected = status === "connected";

@@ -794,14 +794,12 @@ void apply_tracking_results(
     }
     for (const auto& person : response.persons) {
       const auto& box = person.bbox_xyxy;
+      const auto normalized_box = inference::normalized_response_box(
+          box, frame_width, frame_height);
+      if (!normalized_box) continue;
       inference::PersonOutput rendered;
       rendered.detection.id = "track-" + std::to_string(person.track_id);
-      rendered.detection.box = {
-          std::clamp(static_cast<double>(box[0]) / frame_width, 0.0, 1.0),
-          std::clamp(static_cast<double>(box[1]) / frame_height, 0.0, 1.0),
-          std::clamp(static_cast<double>(box[2] - box[0]) / frame_width, 0.0, 1.0),
-          std::clamp(static_cast<double>(box[3] - box[1]) / frame_height, 0.0, 1.0),
-      };
+      rendered.detection.box = *normalized_box;
       rendered.detection.class_name = "사람";
       // M-02 currently provides anonymous short-lived tracking only. Leave the
       // role empty until a registered-subject identification result exists.
@@ -832,21 +830,19 @@ void apply_tracking_results(
   };
   for (const auto& hazard : response.hazards) {
     const auto& box = hazard.bbox_xyxy;
+    const auto normalized_box = inference::normalized_response_box(
+        box, frame_width, frame_height);
+    if (!normalized_box) continue;
     inference::HazardOutput rendered;
     rendered.detection.id = hazard.detection_id;
-    rendered.detection.box = {
-        std::clamp(static_cast<double>(box[0]) / frame_width, 0.0, 1.0),
-        std::clamp(static_cast<double>(box[1]) / frame_height, 0.0, 1.0),
-        std::clamp(static_cast<double>(box[2] - box[0]) / frame_width, 0.0, 1.0),
-        std::clamp(static_cast<double>(box[3] - box[1]) / frame_height, 0.0, 1.0),
-    };
+    rendered.detection.box = *normalized_box;
     rendered.detection.class_name = localized_hazard(hazard.class_name);
     rendered.detection.role = "관리 위험물";
     rendered.detection.confidence = hazard.confidence;
     rendered.detection.color = "#d28b2d";
     rendered.included = std::none_of(
         managed_items.begin(), managed_items.end(), [&](const auto& item) {
-          return item.policy == "exclude" &&
+          return item.policy == "excluded" &&
               (item.label == hazard.class_name ||
                item.label == rendered.detection.class_name);
         });
@@ -883,12 +879,12 @@ void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
 void apply_inference_fault(const std::shared_ptr<StreamState>& state,
                            const std::string& reason) noexcept {
   try {
-    if (!state->temporary_inference || !state->inference) return;
+    if (!state->inference) return;
     inference::InferenceFrame fault;
     fault.frame_id = "camera-fault-" +
         std::to_string(state->inference_counter.fetch_add(1) + 1);
     fault.observed_at = utc_now();
-    fault.source = "temporary";
+    fault.source = state->temporary_inference ? "temporary" : "model";
     fault.operational = false;
     fault.fault_reason = reason;
     state->inference->apply(fault);
@@ -1766,10 +1762,16 @@ void capture_frames(const MjpegServiceConfig& config,
         state->frame_height = frame.rows;
         const auto now = std::chrono::steady_clock::now();
         if (state->temporary_inference && now >= next_inference_at) {
-          state->inference->apply(state->temporary_inference->infer(
+          const auto temporary_frame = state->temporary_inference->infer(
               "temporary-" +
                   std::to_string(state->inference_counter.fetch_add(1) + 1),
-              utc_now()));
+              utc_now());
+          if (temporary_frame.operational &&
+              state->detection_fault_active.exchange(false)) {
+            apply_detection_fault(
+                state, false, "Temporary inference output recovered");
+          }
+          state->inference->apply(temporary_frame);
           next_inference_at = now + std::chrono::milliseconds(100);
         }
         const int served_requests = state->sample_capture_requests.load();
