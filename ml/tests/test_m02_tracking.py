@@ -227,33 +227,6 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
         self.assertEqual(self.pose_fall.processed_track_ids, [1, 1])
         self.assertEqual(self.pose_fall.retained_track_ids, frozenset({1}))
 
-    def test_identity_failure_does_not_stop_pose_fall_runtime(self) -> None:
-        class FailingIdentity:
-            def identify(self, *_args, **_kwargs):
-                raise OSError("identity storage unavailable")
-
-            def retain_tracks(self, _track_ids) -> None:
-                pass
-
-            def reset(self) -> None:
-                pass
-
-        runtime = TrackingPoseFallRuntime(
-            M02TrackingAdapter(),
-            self.pose_fall,  # type: ignore[arg-type]
-            FailingIdentity(),
-        )
-        result = runtime.process_frame(
-            self.frame,
-            frame_id="frame-identity-failure",
-            timestamp_ms=0,
-            person_detections=[
-                {"bbox_xyxy": [10, 10, 60, 110], "confidence": 0.95}
-            ],
-        )
-        self.assertTrue(result["persons"][0]["accepted"])
-        self.assertNotIn("identity", result["persons"][0])
-
     def test_worker_detection_request_runs_tracking_path(self) -> None:
         encoded, jpeg = cv2.imencode(".jpg", self.frame)
         self.assertTrue(encoded)

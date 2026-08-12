@@ -96,7 +96,7 @@ def verify_install(destination: Path, specification: dict[str, Any]) -> bool:
     )
 
 
-def download_file(
+def _download(
     url: str, destination: Path, *, headers: dict[str, str] | None = None
 ) -> None:
     request_headers = {"User-Agent": "wardy-model-manager/1"}
@@ -132,7 +132,7 @@ def _install_from_directory(
 
 def _install_archive(specification: dict[str, Any], staging: Path) -> None:
     archive_path = staging / "model.zip"
-    download_file(specification["url"], archive_path)
+    _download(specification["url"], archive_path)
     if sha256(archive_path) != specification["archive_sha256"]:
         raise RuntimeError("model archive SHA-256 mismatch")
     member_name = specification["archive_member"]
@@ -163,24 +163,12 @@ def _install_huggingface(specification: dict[str, Any], staging: Path) -> None:
         remote_name = remote_files.get(destination_name, destination_name)
         url = f"https://huggingface.co/{repo_id}/resolve/{revision}/{remote_name}?download=true"
         try:
-            download_file(url, staging / destination_name, headers=headers)
+            _download(url, staging / destination_name, headers=headers)
         except urllib.error.HTTPError as error:
             raise RuntimeError(
                 f"unable to download {repo_id}@{revision}/{remote_name}; "
                 "publish the version or use --source-dir"
             ) from error
-
-
-def _install_direct_files(specification: dict[str, Any], staging: Path) -> None:
-    urls = specification.get("urls", {})
-    for destination_name in specification["files"]:
-        try:
-            url = urls[destination_name]
-        except KeyError as error:
-            raise ValueError(
-                f"direct file URL is missing: {destination_name}"
-            ) from error
-        download_file(url, staging / destination_name)
 
 
 def install_model(
@@ -211,8 +199,6 @@ def install_model(
             _install_archive(specification, staging)
         elif specification["source"] == "huggingface":
             _install_huggingface(specification, staging)
-        elif specification["source"] == "direct_files":
-            _install_direct_files(specification, staging)
         else:
             raise ValueError(f"unsupported model source: {specification['source']}")
         if not verify_install(staging, specification):
@@ -222,10 +208,7 @@ def install_model(
         manifest = {
             "model_id": model_id,
             "version": selected,
-            "repo_id": specification.get("repo_id"),
-            "revision": specification.get("revision"),
             "files": specification["files"],
-            "remote_files": specification.get("remote_files", {}),
         }
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         if destination.exists():
@@ -267,7 +250,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
     install = subcommands.add_parser("install")
-    install.add_argument("model_id")
+    install.add_argument("model_id", choices=("m03_pose", "m04_fall"))
     install.add_argument("--version")
     install.add_argument("--source-dir", type=Path)
     install.add_argument("--force", action="store_true")

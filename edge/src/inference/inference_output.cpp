@@ -49,8 +49,7 @@ rules::EventObservation observation(
     result.object_id = detection.class_name;
     result.object_class = detection.class_name;
   } else {
-    result.subject_id = detection.subject_id.value_or(detection.id);
-    if (!detection.name.empty()) result.subject_name = detection.name;
+    result.subject_id = detection.id;
   }
   return result;
 }
@@ -208,7 +207,7 @@ InferenceFrame TemporaryInferenceProducer::infer(
   PersonOutput person;
   person.detection = {
       "temporary-person-1", {0.34, 0.14, 0.26, 0.72}, "사람",
-      "돌봄 대상", "", "서 있음", 0.94, "#62b88f", std::nullopt};
+      "돌봄 대상", "", "서 있음", 0.94, "#62b88f"};
   if (scenario_ == "fall") {
     person.fall_suspected = true;
     person.detection.box = {0.25, 0.62, 0.52, 0.25};
@@ -228,7 +227,7 @@ InferenceFrame TemporaryInferenceProducer::infer(
         scenario_ == "proximity" ? std::array<double, 4>{0.55, 0.58, 0.13, 0.12}
                                   : std::array<double, 4>{0.76, 0.68, 0.13, 0.12},
         "가위", "관리 위험물", "", "", 0.91,
-        scenario_ == "proximity" ? "#d85d52" : "#d28b2d", std::nullopt};
+        scenario_ == "proximity" ? "#d85d52" : "#d28b2d"};
     hazard.near_person = scenario_ == "proximity";
     frame.hazards.push_back(hazard);
   }
@@ -253,9 +252,7 @@ std::string inference_json(const InferenceSnapshot& snapshot) {
         ",\"name\":" + api::json_string(detection.name) +
         ",\"posture\":" + api::json_string(detection.posture) +
         ",\"confidence\":" + api::json_number(detection.confidence) +
-        ",\"color\":" + api::json_string(detection.color) +
-        ",\"subjectId\":" +
-        (detection.subject_id ? api::json_string(*detection.subject_id) : "null") + "}";
+        ",\"color\":" + api::json_string(detection.color) + "}";
   }
   return body + "]}";
 }
