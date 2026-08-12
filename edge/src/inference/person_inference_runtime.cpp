@@ -66,7 +66,7 @@ void PersonInferenceRuntime::worker_loop() {
       }
       reset_after_fault = false;
       if (fault_reported && on_status_) {
-        on_status_(true, "M-01 through M-04 inference pipeline recovered");
+        on_status_(true, "M-01 through M-05 inference pipeline recovered");
         fault_reported = false;
       }
     } catch (const std::exception& error) {

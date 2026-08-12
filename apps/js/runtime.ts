@@ -1,9 +1,10 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
-import type { DailySummaryResult, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
+import type { DailySummaryResult, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
 
 export interface RuntimeSnapshot {
   state: SystemState;
   events: WardyEvent[];
+  inference?: InferenceSnapshot;
 }
 
 interface RuntimeCollections {
@@ -15,6 +16,7 @@ interface RuntimeCollections {
 }
 
 type SnapshotHandler = (snapshot: RuntimeSnapshot) => void;
+type InferenceHandler = (snapshot: InferenceSnapshot) => void;
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 type ScheduleTimeout = (callback: () => void, delay: number) => TimeoutHandle;
 type CancelTimeout = (handle: TimeoutHandle) => void;
@@ -31,6 +33,28 @@ function endpoint(baseUrl: string, path: string, fallbackOrigin: string): string
 
 function encodedHeaders(values: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeURIComponent(value)]));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isInferenceSnapshot(value: unknown): value is InferenceSnapshot {
+  if (!isRecord(value) || !["none", "temporary", "model"].includes(String(value.source)) ||
+      typeof value.observed_at !== "string" || typeof value.operational !== "boolean" ||
+      typeof value.fault_reason !== "string" || !Array.isArray(value.detections)) return false;
+  return value.detections.every((detection) => {
+    if (!isRecord(detection) || typeof detection.id !== "string" ||
+        typeof detection.className !== "string" || typeof detection.role !== "string" ||
+        typeof detection.name !== "string" || typeof detection.posture !== "string" ||
+        typeof detection.color !== "string" || typeof detection.confidence !== "number" ||
+        !Number.isFinite(detection.confidence) ||
+        detection.confidence < 0 || detection.confidence > 1 ||
+        !Array.isArray(detection.box) || detection.box.length !== 4) return false;
+    const [x, y, width, height] = detection.box;
+    return [x, y, width, height].every((part) => typeof part === "number" && Number.isFinite(part)) &&
+      x >= 0 && y >= 0 && width > 0 && height > 0 && x + width <= 1 && y + height <= 1;
+  });
 }
 
 export class WardyRuntimeClient {
@@ -80,11 +104,19 @@ export class WardyRuntimeClient {
 
   async loadSnapshot(baseUrl: string, accessToken: string,
                      fallbackOrigin: string): Promise<RuntimeSnapshot> {
-    const [state, eventBody] = await Promise.all([
+    const [state, eventBody, inferenceBody] = await Promise.all([
       this.request<SystemState>(baseUrl, accessToken, fallbackOrigin, "/api/state"),
       this.request<{ events: WardyEvent[] }>(baseUrl, accessToken, fallbackOrigin, "/api/events"),
+      this.request<unknown>(baseUrl, accessToken, fallbackOrigin, "/api/inference")
+        .catch(() => undefined),
     ]);
-    return { state, events: eventBody.events };
+    if (inferenceBody !== undefined && !isInferenceSnapshot(inferenceBody)) {
+      throw new Error("Jetson inference output 형식이 올바르지 않습니다.");
+    }
+    const snapshot: RuntimeSnapshot = { state, events: eventBody.events };
+    return isInferenceSnapshot(inferenceBody)
+      ? { ...snapshot, inference: inferenceBody }
+      : snapshot;
   }
 
   async loadCollections(baseUrl: string, accessToken: string,
@@ -256,7 +288,7 @@ export class WardyRuntimeClient {
   }
 
   connect(baseUrl: string, accessToken: string, fallbackOrigin: string,
-          onSnapshot: SnapshotHandler): void {
+          onSnapshot: SnapshotHandler, onInference: InferenceHandler): void {
     this.stop();
     this.stopped = false;
     this.reconnectDelay = RECONNECT_INITIAL_MS;
@@ -277,6 +309,10 @@ export class WardyRuntimeClient {
           if (body && typeof body === "object" && "type" in body && body.type === "snapshot" &&
               "state" in body && "events" in body && Array.isArray(body.events)) {
             onSnapshot({ state: body.state as SystemState, events: body.events as WardyEvent[] });
+          } else if (body && typeof body === "object" && "type" in body &&
+                     body.type === "inference" && "inference" in body &&
+                     isInferenceSnapshot(body.inference)) {
+            onInference(body.inference);
           }
         } catch { /* A later valid snapshot can recover the view. */ }
       });

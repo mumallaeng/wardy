@@ -13,6 +13,7 @@ int main() {
   wardy::rules::EventRuntime runtime(database, [&changed_events](const auto& event) {
     changed_events.push_back(event.event_id);
   });
+  assert(!runtime.has_active_event_type("camera_fault"));
 
   wardy::rules::EventObservation hazard{
       "hazard_detected", true, "2026-08-10T10:00:00Z", "subject-1", "돌봄 대상",
@@ -76,11 +77,13 @@ int main() {
       "카메라 입력이 중단됨", "[]"};
   const auto fault = runtime.apply(camera_fault);
   assert(changed_events.back() == fault.event.event_id);
+  assert(runtime.has_active_event_type("camera_fault"));
   assert(!runtime.current_care_status().has_value());
   camera_fault.active = false;
   camera_fault.observed_at = "2026-08-10T10:00:07Z";
   const auto cleared_fault = runtime.apply(camera_fault);
   assert(changed_events.back() == cleared_fault.event.event_id);
+  assert(!runtime.has_active_event_type("camera_fault"));
   assert(runtime.current_care_status() == "normal");
 
   wardy::storage::SqliteStore restore_database(":memory:");
@@ -103,6 +106,7 @@ int main() {
     restore_database.upsert_event(terminal);
   }
   wardy::rules::EventRuntime restored_runtime(restore_database);
+  assert(restored_runtime.has_active_event_type("hazard_detected"));
   assert(restored_runtime.current_care_status() == "caution");
   return 0;
 }

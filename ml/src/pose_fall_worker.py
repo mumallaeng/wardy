@@ -16,6 +16,7 @@ import numpy as np
 from m02_tracking import M02TrackingAdapter, TrackingPoseFallRuntime
 from m03_pose import PersonInput, PoseEstimator
 from m04_fall import FallInferenceSession, PoseFallRuntime
+from m05_hazard import HazardDetector
 from model_manager import DEFAULT_MODEL_ROOT, install_model
 
 
@@ -47,7 +48,8 @@ def decode_tracked_person(payload: dict[str, Any]) -> PersonInput:
 
 
 def process_request(
-    payload: dict[str, Any], runtime: TrackingPoseFallRuntime
+    payload: dict[str, Any], runtime: TrackingPoseFallRuntime,
+    hazard_detector: HazardDetector | None = None,
 ) -> dict[str, Any]:
     frame = decode_frame(payload)
     if "person_detections" in payload:
@@ -65,7 +67,11 @@ def process_request(
             timestamp_ms=int(payload["timestamp_ms"]),
             person_detections=person_detections,
         )
-        return {"ok": True, **result}
+        hazards = [] if hazard_detector is None else [
+            detection.to_dict()
+            for detection in hazard_detector.infer(frame, str(payload["frame_id"]))
+        ]
+        return {"ok": True, **result, "hazards": hazards}
 
     # Keep the already-tracked request contract during the M-01 transition.
     person = decode_tracked_person(payload)
@@ -83,6 +89,7 @@ class PoseFallRequestHandler(socketserver.StreamRequestHandler):
                 response = process_request(
                     payload,
                     self.server.runtime,  # type: ignore[attr-defined]
+                    self.server.hazard_detector,  # type: ignore[attr-defined]
                 )
             except Exception as error:
                 response = {"ok": False, "error": str(error)}
@@ -94,8 +101,10 @@ class PoseFallRequestHandler(socketserver.StreamRequestHandler):
 class PoseFallServer(socketserver.UnixStreamServer):
     allow_reuse_address = True
 
-    def __init__(self, socket_path: Path, runtime: TrackingPoseFallRuntime):
+    def __init__(self, socket_path: Path, runtime: TrackingPoseFallRuntime,
+                 hazard_detector: HazardDetector | None = None):
         self.runtime = runtime
+        self.hazard_detector = hazard_detector
         super().__init__(str(socket_path), PoseFallRequestHandler)
         os.chmod(socket_path, 0o600)
 
@@ -118,6 +127,8 @@ def main() -> int:
         type=Path,
         default=Path(os.environ.get("WARDY_MODEL_ROOT", DEFAULT_MODEL_ROOT)),
     )
+    parser.add_argument("--hazard-model", type=Path)
+    parser.add_argument("--hazard-confidence", type=float, default=0.5)
     args = parser.parse_args()
     if args.socket.parent.exists():
         if not args.socket.parent.is_dir():
@@ -126,7 +137,10 @@ def main() -> int:
         args.socket.parent.mkdir(parents=True, mode=0o700)
     args.socket.unlink(missing_ok=True)
     runtime = build_runtime(args.model_root)
-    with PoseFallServer(args.socket, runtime) as server:
+    hazard_detector = None if args.hazard_model is None else HazardDetector(
+        args.hazard_model, args.hazard_confidence
+    )
+    with PoseFallServer(args.socket, runtime, hazard_detector) as server:
 
         def stop_server(_signal: int, _frame: object) -> None:
             threading.Thread(target=server.shutdown, daemon=True).start()

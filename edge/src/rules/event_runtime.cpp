@@ -189,6 +189,15 @@ bool EventRuntime::update_status(const std::string& event_id,
   return updated;
 }
 
+bool EventRuntime::has_active_event_type(const std::string& event_type) const {
+  const std::lock_guard lock(mutex_);
+  return std::any_of(
+      active_events_.begin(), active_events_.end(),
+      [&event_type](const auto& entry) {
+        return entry.second.event_type == event_type;
+      });
+}
+
 std::optional<std::string> EventRuntime::current_care_status() const {
   const std::lock_guard lock(mutex_);
   std::optional<std::string> current;

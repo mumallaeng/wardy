@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -173,6 +174,27 @@ void parse_fall_result(const cv::FileNode& container,
   }
 }
 
+std::array<float, 4> parse_bbox(const cv::FileNode& node,
+                                const char* error_message) {
+  if (node.type() != cv::FileNode::SEQ || node.size() != 4) {
+    throw std::runtime_error(error_message);
+  }
+  std::array<float, 4> box{};
+  std::size_t index = 0;
+  for (const auto& coordinate : node) {
+    if (!coordinate.isInt() && !coordinate.isReal()) {
+      throw std::runtime_error(error_message);
+    }
+    box[index++] = static_cast<float>(coordinate);
+  }
+  if (!std::all_of(box.begin(), box.end(), [](float value) {
+        return std::isfinite(value);
+      }) || box[2] <= box[0] || box[3] <= box[1]) {
+    throw std::runtime_error(error_message);
+  }
+  return box;
+}
+
 TrackingPoseFallResponse parse_tracking_response(std::string response) {
   cv::FileStorage document(response, cv::FileStorage::READ |
       cv::FileStorage::MEMORY | cv::FileStorage::FORMAT_JSON);
@@ -192,8 +214,11 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
 
   const cv::FileNode active_tracks = document["active_track_ids"];
   const cv::FileNode persons = document["persons"];
-  if (active_tracks.type() != cv::FileNode::SEQ || persons.type() != cv::FileNode::SEQ) {
-    throw std::runtime_error("tracking response requires active_track_ids and persons arrays");
+  const cv::FileNode hazards = document["hazards"];
+  if (active_tracks.type() != cv::FileNode::SEQ || persons.type() != cv::FileNode::SEQ ||
+      (!hazards.empty() && hazards.type() != cv::FileNode::SEQ)) {
+    throw std::runtime_error(
+        "tracking response requires active_track_ids and persons arrays and an optional hazards array");
   }
   for (const auto& node : active_tracks) {
     parsed.active_track_ids.push_back(positive_track_id(
@@ -205,15 +230,58 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
     }
     const cv::FileNode track_id = node["track_id"];
     const cv::FileNode accepted = node["accepted"];
-    if (!accepted.isInt()) {
-      throw std::runtime_error("tracking response person is missing track_id or accepted");
+    const cv::FileNode confidence = node["detection_confidence"];
+    if (!accepted.isInt() || (!confidence.isInt() && !confidence.isReal())) {
+      throw std::runtime_error(
+          "tracking response person is missing track_id, accepted, or detection_confidence");
     }
     TrackedFallResult person;
     person.track_id = positive_track_id(
-        track_id, "tracking response person is missing track_id or accepted");
+        track_id,
+        "tracking response person is missing track_id, accepted, or detection_confidence");
     person.accepted = static_cast<int>(accepted) != 0;
+    person.bbox_xyxy = parse_bbox(
+        node["bbox_xyxy"], "tracking response person contains an invalid bbox");
+    person.detection_confidence = static_cast<float>(confidence);
+    if (!std::isfinite(person.detection_confidence) ||
+        person.detection_confidence < 0.0F || person.detection_confidence > 1.0F) {
+      throw std::runtime_error("tracking response person confidence is outside [0,1]");
+    }
+    const cv::FileNode pose = node["pose"];
+    if (!pose.empty()) {
+      const cv::FileNode quality = pose["pose_quality"];
+      if ((!quality.isInt() && !quality.isReal()) ||
+          !std::isfinite(static_cast<double>(quality))) {
+        throw std::runtime_error("tracking response person contains invalid pose quality");
+      }
+      person.pose_quality = static_cast<double>(quality);
+    }
     parse_fall_result(node, person.fall_suspected, person.fall_confidence);
     parsed.persons.push_back(std::move(person));
+  }
+  for (const auto& node : hazards) {
+    if (node.type() != cv::FileNode::MAP) {
+      throw std::runtime_error("tracking response contains an invalid hazard result");
+    }
+    const cv::FileNode id = node["detection_id"];
+    const cv::FileNode class_name = node["class_name"];
+    const cv::FileNode confidence = node["confidence"];
+    if (!id.isString() || !class_name.isString() ||
+        (!confidence.isInt() && !confidence.isReal())) {
+      throw std::runtime_error("tracking response hazard is incomplete");
+    }
+    HazardDetectionResult hazard;
+    hazard.detection_id = static_cast<std::string>(id);
+    hazard.class_name = static_cast<std::string>(class_name);
+    hazard.bbox_xyxy = parse_bbox(
+        node["bbox_xyxy"], "tracking response hazard contains an invalid bbox");
+    hazard.confidence = static_cast<double>(confidence);
+    if (hazard.detection_id.empty() || hazard.class_name.empty() ||
+        !std::isfinite(hazard.confidence) || hazard.confidence < 0.0 ||
+        hazard.confidence > 1.0) {
+      throw std::runtime_error("tracking response hazard is invalid");
+    }
+    parsed.hazards.push_back(std::move(hazard));
   }
   return parsed;
 }
