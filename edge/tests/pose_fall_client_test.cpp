@@ -91,10 +91,10 @@ int main() {
     const std::string tracking_response =
         "{\"ok\":true,\"active_track_ids\":[42,2],\"persons\":["
         "{\"track_id\":42,\"accepted\":true,\"bbox_xyxy\":[2,3,20,22],"
-        "\"confidence\":0.95,\"pose\":{\"pose_quality\":0.88},\"fall\":{"
+        "\"detection_confidence\":0.95,\"pose\":{\"pose_quality\":0.88},\"fall\":{"
         "\"fall_suspected\":true,\"confidence\":0.875}},"
         "{\"track_id\":2,\"accepted\":false,\"bbox_xyxy\":[4,5,18,20],"
-        "\"confidence\":0.8}],\"hazards\":[{\"detection_id\":\"frame-2:hazard:0\","
+        "\"detection_confidence\":0.8}],\"hazards\":[{\"detection_id\":\"frame-2:hazard:0\","
         "\"class_name\":\"scissors\",\"confidence\":0.91,"
         "\"bbox_xyxy\":[12,14,18,20]}]}\n";
     assert(send(connection, tracking_response.data(), tracking_response.size(), 0) ==

@@ -229,13 +229,15 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
     }
     const cv::FileNode track_id = node["track_id"];
     const cv::FileNode accepted = node["accepted"];
-    const cv::FileNode confidence = node["confidence"];
+    const cv::FileNode confidence = node["detection_confidence"];
     if (!accepted.isInt() || (!confidence.isInt() && !confidence.isReal())) {
-      throw std::runtime_error("tracking response person is missing track_id or accepted");
+      throw std::runtime_error(
+          "tracking response person is missing track_id, accepted, or detection_confidence");
     }
     TrackedFallResult person;
     person.track_id = positive_track_id(
-        track_id, "tracking response person is missing track_id or accepted");
+        track_id,
+        "tracking response person is missing track_id, accepted, or detection_confidence");
     person.accepted = static_cast<int>(accepted) != 0;
     person.bbox_xyxy = parse_bbox(
         node["bbox_xyxy"], "tracking response person contains an invalid bbox");
