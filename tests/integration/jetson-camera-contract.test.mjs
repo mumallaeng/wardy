@@ -33,6 +33,21 @@ test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한�
   assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
 });
 
+test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를 사용한다", async () => {
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const runtime = await readFile(path.join(root, "edge/src/inference/person_inference_runtime.cpp"), "utf8");
+  const detector = await readFile(path.join(root, "edge/src/inference/person_detector.cpp"), "utf8");
+  const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
+
+  assert.match(api, /person_inference->submit/);
+  assert.match(runtime, /frame_bgr\.clone\(\)/);
+  assert.match(runtime, /pending_ = PendingFrame/);
+  assert.match(detector, /deserializeCudaEngine/);
+  assert.match(detector, /enqueueV3/);
+  assert.match(detector, /\[1,3,640,640\]/);
+  assert.match(example, /WARDY_PERSON_ENGINE/);
+});
+
 test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
@@ -252,7 +267,7 @@ test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장�
   assert.match(source, /sample_capture_requests/);
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
-  assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+  assert.doesNotMatch(source, /train\(|fit\(/i);
   assert.match(security, /x-wardy-access-token/);
   assert.match(source, /origin_allowed/);
 });
@@ -282,7 +297,7 @@ test("데이터 작업실은 camera와 로컬 파일 원본을 Jetson SQLite에 
   assert.match(source, /std::filesystem::path\("datasets"\)/);
   assert.match(storage, /CREATE TABLE IF NOT EXISTS dataset_samples/);
   assert.match(storage, /review_status IN \('pending','approved','rejected'\)/);
-  assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+  assert.doesNotMatch(source, /train\(|fit\(/i);
 });
 
 test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한다", async () => {

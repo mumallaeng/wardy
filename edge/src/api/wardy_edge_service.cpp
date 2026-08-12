@@ -27,6 +27,17 @@ int parse_integer(const char* value, const char* name) {
   }
 }
 
+float parse_float(const char* value, const char* name) {
+  try {
+    std::size_t parsed = 0;
+    const float result = std::stof(value, &parsed);
+    if (value[parsed] != '\0') throw std::invalid_argument("trailing characters");
+    return result;
+  } catch (const std::exception&) {
+    throw std::invalid_argument(std::string{name} + " must be a number");
+  }
+}
+
 bool parse_boolean(const char* value, const char* name) {
   const std::string text = value;
   if (text == "true" || text == "1") return true;
@@ -56,6 +67,20 @@ int main(int argc, char* argv[]) {
     }
     if (const char* timeout = std::getenv("WARDY_LLM_TIMEOUT_SECONDS")) {
       config.llm_timeout_seconds = parse_integer(timeout, "WARDY_LLM_TIMEOUT_SECONDS");
+    }
+    if (const char* engine = std::getenv("WARDY_PERSON_ENGINE")) {
+      config.person_detector_engine_path = engine;
+    }
+    if (const char* confidence = std::getenv("WARDY_PERSON_CONFIDENCE")) {
+      config.person_confidence_threshold = parse_float(
+          confidence, "WARDY_PERSON_CONFIDENCE");
+    }
+    if (const char* iou = std::getenv("WARDY_PERSON_NMS_IOU")) {
+      config.person_nms_iou_threshold = parse_float(iou, "WARDY_PERSON_NMS_IOU");
+    }
+    if (const char* class_index = std::getenv("WARDY_PERSON_CLASS_INDEX")) {
+      config.person_class_index = parse_integer(
+          class_index, "WARDY_PERSON_CLASS_INDEX");
     }
     if (argc > 1) config.port = parse_integer(argv[1], "port");
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
