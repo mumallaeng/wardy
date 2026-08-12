@@ -60,10 +60,13 @@ def verify_install(destination: Path, specification: dict[str, Any]) -> bool:
     )
 
 
-def _download(url: str, destination: Path) -> None:
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "wardy-model-manager/1"}
-    )
+def _download(
+    url: str, destination: Path, *, headers: dict[str, str] | None = None
+) -> None:
+    request_headers = {"User-Agent": "wardy-model-manager/1"}
+    if headers is not None:
+        request_headers.update(headers)
+    request = urllib.request.Request(url, headers=request_headers)
     with (
         urllib.request.urlopen(request, timeout=60) as response,
         destination.open("wb") as output,
@@ -115,11 +118,15 @@ def _install_huggingface(specification: dict[str, Any], staging: Path) -> None:
     repo_id = specification["repo_id"]
     revision = specification["revision"]
     remote_files = specification.get("remote_files", {})
+    token = os.environ.get("HF_TOKEN") or os.environ.get(
+        "HUGGING_FACE_HUB_TOKEN"
+    )
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
     for destination_name in specification["files"]:
         remote_name = remote_files.get(destination_name, destination_name)
         url = f"https://huggingface.co/{repo_id}/resolve/{revision}/{remote_name}?download=true"
         try:
-            _download(url, staging / destination_name)
+            _download(url, staging / destination_name, headers=headers)
         except urllib.error.HTTPError as error:
             raise RuntimeError(
                 f"unable to download {repo_id}@{revision}/{remote_name}; "
