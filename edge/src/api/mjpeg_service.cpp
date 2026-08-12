@@ -803,7 +803,9 @@ void apply_tracking_results(
           std::clamp(static_cast<double>(box[3] - box[1]) / frame_height, 0.0, 1.0),
       };
       rendered.detection.class_name = "사람";
-      rendered.detection.role = "돌봄 대상";
+      // M-02 currently provides anonymous short-lived tracking only. Leave the
+      // role empty until a registered-subject identification result exists.
+      rendered.detection.role = "";
       rendered.detection.posture = person.fall_suspected.value_or(false)
           ? "낙상 의심" : person.pose_quality ? "자세 인식" : "추적 중";
       rendered.detection.confidence = person.detection_confidence;

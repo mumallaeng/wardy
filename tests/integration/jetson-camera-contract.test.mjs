@@ -42,6 +42,8 @@ test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를
   assert.match(api, /person_inference->submit/);
   assert.match(api, /pose_fall_client->infer_frame/);
   assert.match(api, /apply_tracking_results/);
+  assert.match(api, /rendered\.detection\.role = ""/);
+  assert.doesNotMatch(api, /rendered\.detection\.role = "돌봄 대상"/);
   assert.match(runtime, /frame_bgr\.clone\(\)/);
   assert.match(runtime, /pending_ = PendingFrame/);
   assert.match(detector, /deserializeCudaEngine/);
