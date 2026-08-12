@@ -145,6 +145,40 @@ class M02TrackingAdapterTest(unittest.TestCase):
                 person_detections=[{"bbox_xyxy": [10, 10, 50, 100]}],
             )
 
+    def test_fully_off_frame_detection_is_ignored(self) -> None:
+        adapter = M02TrackingAdapter()
+
+        result = adapter.process_frame(
+            frame_id="frame-1",
+            timestamp_ms=0,
+            frame_width=320,
+            frame_height=240,
+            person_detections=[
+                {"bbox_xyxy": [-50, 10, -5, 100], "confidence": 0.8},
+                {"bbox_xyxy": [10, 10, 50, 100], "confidence": 0.9},
+            ],
+        )
+
+        self.assertEqual(len(result["persons"]), 1)
+        self.assertEqual(
+            result["persons"][0]["bbox_xyxy"],
+            [10.0, 10.0, 50.0, 100.0],
+        )
+
+    def test_malformed_off_frame_detection_is_rejected(self) -> None:
+        adapter = M02TrackingAdapter()
+
+        with self.assertRaises(ValueError):
+            adapter.process_frame(
+                frame_id="frame-1",
+                timestamp_ms=0,
+                frame_width=320,
+                frame_height=240,
+                person_detections=[
+                    {"bbox_xyxy": [-5, 10, -50, 100], "confidence": 0.8}
+                ],
+            )
+
 
 class TrackingPoseFallRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -232,6 +266,58 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
 
         self.assertEqual(response["persons"][0]["track_id"], 1)
         self.assertEqual(self.pose_fall.reset_count, 1)
+
+    def test_worker_rejects_legacy_request_after_tracking_path(self) -> None:
+        encoded, jpeg = cv2.imencode(".jpg", self.frame)
+        self.assertTrue(encoded)
+        image_base64 = base64.b64encode(jpeg).decode()
+        process_request(
+            {
+                "frame_id": "frame-1",
+                "timestamp_ms": 0,
+                "person_detections": [],
+                "frame_jpeg_base64": image_base64,
+            },
+            self.runtime,
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot share one runtime"):
+            process_request(
+                {
+                    "frame_id": "frame-2",
+                    "timestamp_ms": 33,
+                    "track_id": 1,
+                    "bbox_xyxy": [10, 10, 50, 100],
+                    "frame_jpeg_base64": image_base64,
+                },
+                self.runtime,
+            )
+
+    def test_worker_rejects_tracking_request_after_legacy_path(self) -> None:
+        encoded, jpeg = cv2.imencode(".jpg", self.frame)
+        self.assertTrue(encoded)
+        image_base64 = base64.b64encode(jpeg).decode()
+        process_request(
+            {
+                "frame_id": "frame-1",
+                "timestamp_ms": 0,
+                "track_id": 7,
+                "bbox_xyxy": [10, 10, 50, 100],
+                "frame_jpeg_base64": image_base64,
+            },
+            self.runtime,
+        )
+
+        with self.assertRaisesRegex(ValueError, "cannot share one runtime"):
+            process_request(
+                {
+                    "frame_id": "frame-2",
+                    "timestamp_ms": 33,
+                    "person_detections": [],
+                    "frame_jpeg_base64": image_base64,
+                },
+                self.runtime,
+            )
 
 
 if __name__ == "__main__":

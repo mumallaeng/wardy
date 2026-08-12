@@ -8,6 +8,6 @@ __all__ = [
     "Detection",
     "GeometricMultiObjectTracker",
     "M02TrackingAdapter",
-    "TrackingPoseFallRuntime",
     "TrackedDetection",
+    "TrackingPoseFallRuntime",
 ]
