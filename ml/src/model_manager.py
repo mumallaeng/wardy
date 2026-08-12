@@ -171,6 +171,18 @@ def _install_huggingface(specification: dict[str, Any], staging: Path) -> None:
             ) from error
 
 
+def _install_direct_files(specification: dict[str, Any], staging: Path) -> None:
+    urls = specification.get("urls", {})
+    for destination_name in specification["files"]:
+        try:
+            url = urls[destination_name]
+        except KeyError as error:
+            raise ValueError(
+                f"direct file URL is missing: {destination_name}"
+            ) from error
+        _download(url, staging / destination_name)
+
+
 def install_model(
     model_id: str,
     version: str | None = None,
@@ -199,6 +211,8 @@ def install_model(
             _install_archive(specification, staging)
         elif specification["source"] == "huggingface":
             _install_huggingface(specification, staging)
+        elif specification["source"] == "direct_files":
+            _install_direct_files(specification, staging)
         else:
             raise ValueError(f"unsupported model source: {specification['source']}")
         if not verify_install(staging, specification):
@@ -250,7 +264,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
     install = subcommands.add_parser("install")
-    install.add_argument("model_id", choices=("m03_pose", "m04_fall"))
+    install.add_argument("model_id")
     install.add_argument("--version")
     install.add_argument("--source-dir", type=Path)
     install.add_argument("--force", action="store_true")
