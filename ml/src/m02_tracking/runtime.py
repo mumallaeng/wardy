@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
+import sys
 from typing import Any
 
 import numpy as np
@@ -63,13 +64,22 @@ class TrackingPoseFallRuntime:
             person_detections=person_detections,
         )
 
-        identity_results = {} if self.identity is None else self.identity.identify(
-            frame_bgr,
-            tracking_result["persons"],
-            captured_at=datetime.fromtimestamp(
-                timestamp_ms / 1000.0, tz=timezone.utc
-            ).isoformat().replace("+00:00", "Z"),
-        )
+        identity_results: dict[int, dict[str, Any]] = {}
+        if self.identity is not None:
+            try:
+                identity_results = self.identity.identify(
+                    frame_bgr,
+                    tracking_result["persons"],
+                    captured_at=datetime.fromtimestamp(
+                        timestamp_ms / 1000.0, tz=timezone.utc
+                    ).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                )
+            except Exception as error:
+                print(
+                    f"identity recognition failed: {error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
         persons = []
         for tracked_person in tracking_result["persons"]:
             person = PersonInput(

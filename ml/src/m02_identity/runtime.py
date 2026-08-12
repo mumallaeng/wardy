@@ -85,7 +85,7 @@ class RegisteredSubjectIdentifier:
         results: dict[int, dict[str, Any]] = {}
         for person in persons:
             track_id = int(person["track_id"])
-            crop, offset = self._person_crop(frame_bgr, person["bbox_xyxy"])
+            crop, _offset = self._person_crop(frame_bgr, person["bbox_xyxy"])
             face = self._largest_face(crop)
             if face is None:
                 results[track_id] = {"status": "no_face"}
@@ -227,7 +227,6 @@ class RegisteredSubjectIdentifier:
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:
             return None
-        self._last_review_by_track[track_id] = now
         crop, _offset = self._person_crop(frame, bbox_xyxy)
         review_id = f"identity-{uuid.uuid4().hex}"
         relative_path = Path("identity") / "reviews" / f"{review_id}.jpg"
@@ -256,4 +255,5 @@ class RegisteredSubjectIdentifier:
         except Exception:
             absolute_path.unlink(missing_ok=True)
             raise
+        self._last_review_by_track[track_id] = now
         return review_id

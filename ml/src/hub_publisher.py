@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import tempfile
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any
 
 from model_manager import sha256
@@ -27,6 +30,24 @@ def load_manifest(source_dir: Path) -> dict[str, Any]:
     return manifest
 
 
+def stage_publish_tree(source_dir: Path, destination: Path) -> dict[str, Any]:
+    """Stage verified artifacts at the exact repository paths installers use."""
+    manifest = load_manifest(source_dir)
+    remote_files = manifest.get("remote_files", {})
+    for filename in manifest["files"]:
+        remote_name = remote_files.get(filename, filename)
+        remote_path = PurePosixPath(remote_name)
+        if remote_path.is_absolute() or ".." in remote_path.parts:
+            raise ValueError(f"unsafe remote artifact path: {remote_name}")
+        target = destination.joinpath(*remote_path.parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_dir / filename, target)
+    (destination / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n"
+    )
+    return manifest
+
+
 def publish_model(
     repo_id: str,
     source_dir: Path,
@@ -36,20 +57,20 @@ def publish_model(
 ) -> str:
     from huggingface_hub import HfApi
 
-    manifest = load_manifest(source_dir)
-    destination = f"{manifest['model_id']}/{manifest['version']}"
     api = HfApi()
     identity = api.whoami()
     if not identity.get("name"):
         raise RuntimeError("Hugging Face CLI authentication is required")
     api.create_repo(repo_id, repo_type="model", private=private, exist_ok=True)
-    commit = api.upload_folder(
-        repo_id=repo_id,
-        repo_type="model",
-        folder_path=source_dir,
-        path_in_repo=destination,
-        commit_message=f"Release {manifest['model_id']} {manifest['version']}",
-    )
+    with tempfile.TemporaryDirectory(prefix="wardy-hub-publish-") as directory:
+        publish_root = Path(directory)
+        manifest = stage_publish_tree(source_dir, publish_root)
+        commit = api.upload_folder(
+            repo_id=repo_id,
+            repo_type="model",
+            folder_path=publish_root,
+            commit_message=f"Release {manifest['model_id']} {manifest['version']}",
+        )
     api.create_tag(
         repo_id=repo_id,
         repo_type="model",
