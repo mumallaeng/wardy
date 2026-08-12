@@ -122,42 +122,88 @@ PoseFallResponse parse_response(std::string response) {
   return parsed;
 }
 
-}  // namespace
-
-PoseFallClient::PoseFallClient(std::string socket_path)
-    : socket_path_(std::move(socket_path)) {
-  sockaddr_un address{};
-  if (socket_path_.empty() || socket_path_.size() >= sizeof(address.sun_path)) {
-    throw std::invalid_argument("invalid pose/fall Unix socket path");
+void parse_fall_result(const cv::FileNode& container,
+                       std::optional<bool>& fall_suspected,
+                       std::optional<double>& fall_confidence) {
+  const cv::FileNode fall = container["fall"];
+  if (fall.empty()) return;
+  if (fall.type() != cv::FileNode::MAP) {
+    throw std::runtime_error("pose/fall response contains an invalid fall result");
+  }
+  const cv::FileNode suspected = fall["fall_suspected"];
+  const cv::FileNode confidence = fall["confidence"];
+  if (suspected.empty() || !suspected.isInt() || confidence.empty() ||
+      (!confidence.isInt() && !confidence.isReal())) {
+    throw std::runtime_error("pose/fall response contains an invalid fall result");
+  }
+  fall_suspected = static_cast<int>(suspected) != 0;
+  fall_confidence = static_cast<double>(confidence);
+  if (!std::isfinite(*fall_confidence) || *fall_confidence < 0.0 ||
+      *fall_confidence > 1.0) {
+    throw std::runtime_error("pose/fall confidence is outside [0,1]");
   }
 }
 
-PoseFallResponse PoseFallClient::infer(
-    const cv::Mat& frame_bgr, const TrackedPersonFrame& person) const {
+TrackingPoseFallResponse parse_tracking_response(std::string response) {
+  cv::FileStorage document(response, cv::FileStorage::READ |
+      cv::FileStorage::MEMORY | cv::FileStorage::FORMAT_JSON);
+  if (!document.isOpened() || document.root().type() != cv::FileNode::MAP) {
+    throw std::runtime_error("pose/fall worker returned invalid JSON");
+  }
+  TrackingPoseFallResponse parsed;
+  parsed.raw_json = std::move(response);
+  const cv::FileNode ok = document["ok"];
+  if (ok.empty() || !ok.isInt()) {
+    throw std::runtime_error("pose/fall response is missing boolean ok");
+  }
+  parsed.ok = static_cast<int>(ok) != 0;
+  const cv::FileNode error = document["error"];
+  if (!error.empty() && error.isString()) parsed.error = static_cast<std::string>(error);
+  if (!parsed.ok) return parsed;
+
+  const cv::FileNode active_tracks = document["active_track_ids"];
+  const cv::FileNode persons = document["persons"];
+  if (active_tracks.type() != cv::FileNode::SEQ || persons.type() != cv::FileNode::SEQ) {
+    throw std::runtime_error("tracking response requires active_track_ids and persons arrays");
+  }
+  for (const auto& node : active_tracks) {
+    if (!node.isInt() || static_cast<int>(node) < 1) {
+      throw std::runtime_error("tracking response contains an invalid active track ID");
+    }
+    parsed.active_track_ids.push_back(static_cast<int>(node));
+  }
+  for (const auto& node : persons) {
+    if (node.type() != cv::FileNode::MAP) {
+      throw std::runtime_error("tracking response contains an invalid person result");
+    }
+    const cv::FileNode track_id = node["track_id"];
+    const cv::FileNode accepted = node["accepted"];
+    if (!track_id.isInt() || static_cast<int>(track_id) < 1 ||
+        !accepted.isInt()) {
+      throw std::runtime_error("tracking response person is missing track_id or accepted");
+    }
+    TrackedFallResult person;
+    person.track_id = static_cast<int>(track_id);
+    person.accepted = static_cast<int>(accepted) != 0;
+    parse_fall_result(node, person.fall_suspected, person.fall_confidence);
+    parsed.persons.push_back(std::move(person));
+  }
+  return parsed;
+}
+
+std::string encoded_frame(const cv::Mat& frame_bgr) {
   if (frame_bgr.empty() || frame_bgr.type() != CV_8UC3) {
     throw std::invalid_argument("pose/fall input must be a non-empty BGR8 frame");
   }
-  const auto& box = person.bbox_xyxy;
-  for (float coordinate : box) {
-    if (!std::isfinite(coordinate)) throw std::invalid_argument("person bbox must be finite");
-  }
-  if (box[2] <= box[0] || box[3] <= box[1]) {
-    throw std::invalid_argument("person bbox must have positive width and height");
-  }
-
   std::vector<unsigned char> jpeg;
   if (!cv::imencode(".jpg", frame_bgr, jpeg, {cv::IMWRITE_JPEG_QUALITY, 85})) {
     throw std::runtime_error("unable to encode pose/fall frame as JPEG");
   }
-  const std::string request =
-      "{\"frame_id\":" + api::json_string(person.frame_id) +
-      ",\"timestamp_ms\":" + std::to_string(person.timestamp_ms) +
-      ",\"track_id\":" + std::to_string(person.track_id) +
-      ",\"bbox_xyxy\":[" + api::json_number(box[0]) + "," +
-      api::json_number(box[1]) + "," + api::json_number(box[2]) + "," +
-      api::json_number(box[3]) + "],\"frame_jpeg_base64\":" +
-      api::json_string(base64(jpeg)) + "}\n";
+  return base64(jpeg);
+}
 
+std::string exchange_request(const std::string& socket_path,
+                             const std::string& request) {
   const int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
   if (descriptor < 0) {
     throw std::runtime_error(std::string{"unable to create pose/fall socket: "} + std::strerror(errno));
@@ -171,7 +217,7 @@ PoseFallResponse PoseFallClient::infer(
     }
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
-    std::memcpy(address.sun_path, socket_path_.c_str(), socket_path_.size() + 1U);
+    std::memcpy(address.sun_path, socket_path.c_str(), socket_path.size() + 1U);
     if (connect(descriptor, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
       throw std::runtime_error(
           std::string{"unable to connect to pose/fall worker: "} + std::strerror(errno));
@@ -179,11 +225,79 @@ PoseFallResponse PoseFallClient::infer(
     write_all(descriptor, request);
     std::string response = read_line(descriptor);
     close_socket(descriptor);
-    return parse_response(std::move(response));
+    return response;
   } catch (...) {
     close_socket(descriptor);
     throw;
   }
+}
+
+}  // namespace
+
+PoseFallClient::PoseFallClient(std::string socket_path)
+    : socket_path_(std::move(socket_path)) {
+  sockaddr_un address{};
+  if (socket_path_.empty() || socket_path_.size() >= sizeof(address.sun_path)) {
+    throw std::invalid_argument("invalid pose/fall Unix socket path");
+  }
+}
+
+PoseFallResponse PoseFallClient::infer(
+    const cv::Mat& frame_bgr, const TrackedPersonFrame& person) const {
+  const auto& box = person.bbox_xyxy;
+  for (float coordinate : box) {
+    if (!std::isfinite(coordinate)) throw std::invalid_argument("person bbox must be finite");
+  }
+  if (box[2] <= box[0] || box[3] <= box[1]) {
+    throw std::invalid_argument("person bbox must have positive width and height");
+  }
+
+  const std::string request =
+      "{\"frame_id\":" + api::json_string(person.frame_id) +
+      ",\"timestamp_ms\":" + std::to_string(person.timestamp_ms) +
+      ",\"track_id\":" + std::to_string(person.track_id) +
+      ",\"bbox_xyxy\":[" + api::json_number(box[0]) + "," +
+      api::json_number(box[1]) + "," + api::json_number(box[2]) + "," +
+      api::json_number(box[3]) + "],\"frame_jpeg_base64\":" +
+      api::json_string(encoded_frame(frame_bgr)) + "}\n";
+  return parse_response(exchange_request(socket_path_, request));
+}
+
+TrackingPoseFallResponse PoseFallClient::infer_frame(
+    const cv::Mat& frame_bgr, const std::string& frame_id,
+    std::int64_t timestamp_ms, const std::vector<PersonDetection>& detections,
+    bool reset_tracking) const {
+  if (frame_id.empty()) throw std::invalid_argument("frame ID must not be empty");
+  if (timestamp_ms < 0) throw std::invalid_argument("timestamp must be non-negative");
+  std::string detection_json = "[";
+  for (std::size_t index = 0; index < detections.size(); ++index) {
+    const auto& detection = detections[index];
+    const auto& box = detection.bbox_xyxy;
+    for (float coordinate : box) {
+      if (!std::isfinite(coordinate)) {
+        throw std::invalid_argument("person detection bbox must be finite");
+      }
+    }
+    if (box[2] <= box[0] || box[3] <= box[1] ||
+        !std::isfinite(detection.confidence) || detection.confidence < 0.0F ||
+        detection.confidence > 1.0F) {
+      throw std::invalid_argument("invalid person detection");
+    }
+    if (index != 0) detection_json += ',';
+    detection_json += "{\"bbox_xyxy\":[" + api::json_number(box[0]) + "," +
+        api::json_number(box[1]) + "," + api::json_number(box[2]) + "," +
+        api::json_number(box[3]) + "],\"confidence\":" +
+        api::json_number(detection.confidence) + "}";
+  }
+  detection_json += ']';
+  const std::string request =
+      "{\"frame_id\":" + api::json_string(frame_id) +
+      ",\"timestamp_ms\":" + std::to_string(timestamp_ms) +
+      ",\"person_detections\":" + detection_json +
+      ",\"reset_tracking\":" + (reset_tracking ? "true" : "false") +
+      ",\"frame_jpeg_base64\":" + api::json_string(encoded_frame(frame_bgr)) +
+      "}\n";
+  return parse_tracking_response(exchange_request(socket_path_, request));
 }
 
 }  // namespace wardy::inference
