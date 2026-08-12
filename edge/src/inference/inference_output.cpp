@@ -44,7 +44,9 @@ rules::EventObservation observation(
   result.subject_location = "camera";
   result.reason = reason;
   if (object_detection) {
-    result.object_id = detection.id;
+    // M-05 does not track objects across frames yet. Use the class as the
+    // stable event identity while preserving the frame-local overlay ID.
+    result.object_id = detection.class_name;
     result.object_class = detection.class_name;
   } else {
     result.subject_id = detection.id;

@@ -89,10 +89,14 @@ int main() {
       tracking_request.append(buffer, static_cast<std::size_t>(count));
     }
     const std::string tracking_response =
-        "{\"ok\":true,\"active_track_ids\":[2147483648,2],\"persons\":["
-        "{\"track_id\":2147483648,\"accepted\":true,\"fall\":{"
+        "{\"ok\":true,\"active_track_ids\":[42,2],\"persons\":["
+        "{\"track_id\":42,\"accepted\":true,\"bbox_xyxy\":[2,3,20,22],"
+        "\"confidence\":0.95,\"pose\":{\"pose_quality\":0.88},\"fall\":{"
         "\"fall_suspected\":true,\"confidence\":0.875}},"
-        "{\"track_id\":2,\"accepted\":false}]}\n";
+        "{\"track_id\":2,\"accepted\":false,\"bbox_xyxy\":[4,5,18,20],"
+        "\"confidence\":0.8}],\"hazards\":[{\"detection_id\":\"frame-2:hazard:0\","
+        "\"class_name\":\"scissors\",\"confidence\":0.91,"
+        "\"bbox_xyxy\":[12,14,18,20]}]}\n";
     assert(send(connection, tracking_response.data(), tracking_response.size(), 0) ==
            static_cast<ssize_t>(tracking_response.size()));
     close(connection);
@@ -115,12 +119,18 @@ int main() {
   assert(tracking.ok);
   assert(tracking.active_track_ids.size() == 2);
   assert(tracking.persons.size() == 2);
-  assert(tracking.active_track_ids[0] == 2147483648LL);
-  assert(tracking.persons[0].track_id == 2147483648LL);
+  assert(tracking.active_track_ids[0] == 42);
+  assert(tracking.persons[0].track_id == 42);
   assert(tracking.persons[0].fall_suspected &&
          *tracking.persons[0].fall_suspected);
   assert(tracking.persons[0].fall_confidence &&
          *tracking.persons[0].fall_confidence == 0.875);
+  assert(tracking.persons[0].pose_quality &&
+         *tracking.persons[0].pose_quality == 0.88);
+  assert(tracking.persons[0].detection_confidence == 0.95F);
+  assert(tracking.hazards.size() == 1);
+  assert(tracking.hazards[0].class_name == "scissors");
+  assert(tracking.hazards[0].confidence == 0.91);
   assert(tracking_request.find("\"person_detections\":[{") != std::string::npos);
   assert(tracking_request.find("\"confidence\":0.950000") != std::string::npos);
   assert(tracking_request.find("\"reset_tracking\":true") != std::string::npos);

@@ -23,6 +23,7 @@ absolute_from_repo() {
 
 venv_dir="$(absolute_from_repo "${WARDY_ML_VENV:-edge/.venv-ml}")"
 model_root="$(absolute_from_repo "${WARDY_MODEL_ROOT:-edge/models}")"
+hazard_model="$(absolute_from_repo "${WARDY_HAZARD_MODEL:-ml/src/export/hazard_objects_v1_full_v1/weights/best.onnx}")"
 python_bin="${venv_dir}/bin/python"
 
 if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
@@ -75,11 +76,14 @@ if [[ -n "${WARDY_M04_MODEL_SOURCE_DIR:-}" ]]; then
 fi
 "${python_bin}" "${install_args[@]}"
 
-WARDY_MODEL_ROOT="${model_root}" PYTHONPATH="${repo_dir}/ml/src" "${python_bin}" - <<'PY'
+WARDY_MODEL_ROOT="${model_root}" WARDY_HAZARD_MODEL="${hazard_model}" \
+PYTHONPATH="${repo_dir}/ml/src" "${python_bin}" - <<'PY'
 from pathlib import Path
 import os
+from m05_hazard import HazardDetector
 from pose_fall_worker import build_runtime
 
 build_runtime(Path(os.environ["WARDY_MODEL_ROOT"]))
-print("Wardy M-02/M-03/M-04 runtime is ready")
+HazardDetector(Path(os.environ["WARDY_HAZARD_MODEL"]))
+print("Wardy M-02/M-03/M-04/M-05 runtime is ready")
 PY

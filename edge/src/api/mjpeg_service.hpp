@@ -24,7 +24,7 @@ struct MjpegServiceConfig {
   float person_nms_iou_threshold = 0.45F;
   int person_class_index = 0;
   std::string pose_fall_socket_path = "edge/run/pose-fall.sock";
-  std::string inference_source = "temporary";
+  std::string inference_source = "auto";
   std::string temporary_inference_scenario = "normal";
 
   void validate() const;

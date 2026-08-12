@@ -42,6 +42,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -69,6 +70,8 @@ struct StreamState {
   std::mutex system_state_mutex;
   std::mutex active_fall_tracks_mutex;
   std::set<std::int64_t> active_fall_tracks;
+  std::mutex model_people_mutex;
+  std::map<std::int64_t, inference::PersonOutput> model_people;
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::shared_ptr<inference::InferenceOutputRuntime> inference;
@@ -727,10 +730,11 @@ void apply_fall_observation(const std::shared_ptr<StreamState>& state,
 
 void apply_tracking_results(
     const std::shared_ptr<StreamState>& state,
-    const inference::TrackingPoseFallResponse& response) {
+    const inference::TrackingPoseFallResponse& response,
+    int frame_width, int frame_height, const std::string& frame_id) {
   if (!response.ok) {
     throw std::runtime_error(response.error.empty()
-        ? "M-02/M-03/M-04 worker rejected the frame" : response.error);
+        ? "M-02/M-03/M-04/M-05 worker rejected the frame" : response.error);
   }
   const std::set<std::int64_t> retained(
       response.active_track_ids.begin(), response.active_track_ids.end());
@@ -772,6 +776,91 @@ void apply_tracking_results(
               : "M-04 temporal pose sequence returned below the fall threshold");
     }
   }
+
+  if (!state->inference || frame_width <= 0 || frame_height <= 0) return;
+  inference::InferenceFrame output;
+  output.frame_id = frame_id;
+  output.observed_at = utc_now();
+  output.source = "model";
+  {
+    std::lock_guard lock(state->model_people_mutex);
+    for (auto iterator = state->model_people.begin();
+         iterator != state->model_people.end();) {
+      if (retained.count(iterator->first) == 0) {
+        iterator = state->model_people.erase(iterator);
+      } else {
+        ++iterator;
+      }
+    }
+    for (const auto& person : response.persons) {
+      const auto& box = person.bbox_xyxy;
+      inference::PersonOutput rendered;
+      rendered.detection.id = "track-" + std::to_string(person.track_id);
+      rendered.detection.box = {
+          std::clamp(static_cast<double>(box[0]) / frame_width, 0.0, 1.0),
+          std::clamp(static_cast<double>(box[1]) / frame_height, 0.0, 1.0),
+          std::clamp(static_cast<double>(box[2] - box[0]) / frame_width, 0.0, 1.0),
+          std::clamp(static_cast<double>(box[3] - box[1]) / frame_height, 0.0, 1.0),
+      };
+      rendered.detection.class_name = "사람";
+      rendered.detection.role = "돌봄 대상";
+      rendered.detection.posture = person.fall_suspected.value_or(false)
+          ? "낙상 의심" : person.pose_quality ? "자세 인식" : "추적 중";
+      rendered.detection.confidence = person.detection_confidence;
+      rendered.detection.color = person.fall_suspected.value_or(false)
+          ? "#d85d52" : "#62b88f";
+      // Fall events remain owned by the M-02 track lifecycle above so a
+      // one-frame detector miss does not release an active alert.
+      rendered.fall_suspected = false;
+      state->model_people[person.track_id] = std::move(rendered);
+    }
+    for (const auto& [track_id, person] : state->model_people) {
+      (void)track_id;
+      output.people.push_back(person);
+    }
+  }
+
+  const auto managed_items = state->database->list_managed_items();
+  const auto localized_hazard = [](const std::string& name) {
+    if (name == "scissors") return std::string{"가위"};
+    if (name == "knife") return std::string{"칼"};
+    if (name == "cutter") return std::string{"커터칼"};
+    if (name == "syringe") return std::string{"주사기"};
+    return name;
+  };
+  for (const auto& hazard : response.hazards) {
+    const auto& box = hazard.bbox_xyxy;
+    inference::HazardOutput rendered;
+    rendered.detection.id = hazard.detection_id;
+    rendered.detection.box = {
+        std::clamp(static_cast<double>(box[0]) / frame_width, 0.0, 1.0),
+        std::clamp(static_cast<double>(box[1]) / frame_height, 0.0, 1.0),
+        std::clamp(static_cast<double>(box[2] - box[0]) / frame_width, 0.0, 1.0),
+        std::clamp(static_cast<double>(box[3] - box[1]) / frame_height, 0.0, 1.0),
+    };
+    rendered.detection.class_name = localized_hazard(hazard.class_name);
+    rendered.detection.role = "관리 위험물";
+    rendered.detection.confidence = hazard.confidence;
+    rendered.detection.color = "#d28b2d";
+    rendered.included = std::none_of(
+        managed_items.begin(), managed_items.end(), [&](const auto& item) {
+          return item.policy == "exclude" &&
+              (item.label == hazard.class_name ||
+               item.label == rendered.detection.class_name);
+        });
+    const double hazard_x = rendered.detection.box[0] + rendered.detection.box[2] / 2.0;
+    const double hazard_y = rendered.detection.box[1] + rendered.detection.box[3] / 2.0;
+    rendered.near_person = std::any_of(
+        output.people.begin(), output.people.end(), [&](const auto& person) {
+          const auto& person_box = person.detection.box;
+          const double person_x = person_box[0] + person_box[2] / 2.0;
+          const double person_y = person_box[1] + person_box[3] / 2.0;
+          return std::hypot(hazard_x - person_x, hazard_y - person_y) <= 0.25;
+        });
+    if (rendered.near_person) rendered.detection.color = "#d85d52";
+    output.hazards.push_back(std::move(rendered));
+  }
+  state->inference->apply(output);
 }
 
 void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
@@ -1774,8 +1863,9 @@ void MjpegServiceConfig::validate() const {
   if (!person_detector_engine_path.empty() && pose_fall_socket_path.empty()) {
     throw std::invalid_argument("pose/fall socket path must not be empty when M-01 is enabled");
   }
-  if (inference_source != "disabled" && inference_source != "temporary") {
-    throw std::invalid_argument("WARDY_INFERENCE_SOURCE must be disabled or temporary");
+  if (inference_source != "auto" && inference_source != "disabled" &&
+      inference_source != "temporary") {
+    throw std::invalid_argument("WARDY_INFERENCE_SOURCE must be auto, disabled, or temporary");
   }
   if (inference_source == "temporary") {
     (void)inference::TemporaryInferenceProducer(temporary_inference_scenario);
@@ -1836,10 +1926,11 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
             }
             const auto response = pose_fall_client->infer_frame(
                 frame, frame_id, timestamp_ms, detections, reset_tracking);
-            apply_tracking_results(locked, response);
+            apply_tracking_results(
+                locked, response, frame.cols, frame.rows, frame_id);
             if (!locked->detection_running_reported.exchange(true)) {
               save_detection_state(locked, "running",
-                                   "M-01 person detection is running");
+                                   "M-01 through M-05 inference is running");
             }
           }
         },
@@ -1866,13 +1957,17 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
         "WARDY_PERSON_ENGINE is set but this binary was built without TensorRT/CUDA");
   }
 #endif
-  if (config_.inference_source == "temporary") {
+  if (config_.inference_source == "temporary" ||
+      (config_.inference_source == "auto" &&
+       !config_.person_detector_engine_path.empty())) {
     state->inference = std::make_shared<inference::InferenceOutputRuntime>(
         *state->events, [weak_state] {
           if (const auto locked = weak_state.lock()) save_inference_state(locked);
         });
-    state->temporary_inference = std::make_shared<inference::TemporaryInferenceProducer>(
-        config_.temporary_inference_scenario);
+    if (config_.inference_source == "temporary") {
+      state->temporary_inference = std::make_shared<inference::TemporaryInferenceProducer>(
+          config_.temporary_inference_scenario);
+    }
   }
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
