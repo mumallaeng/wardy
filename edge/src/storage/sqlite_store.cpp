@@ -790,7 +790,7 @@ std::vector<DatasetSampleRecord> SqliteStore::list_dataset_samples() const {
     SELECT sample_id, model_id, requirement_id, label, review_status,
            capture_session, source, image_path, original_filename, captured_at,
            width, height
-    FROM dataset_samples ORDER BY captured_at DESC;
+    FROM dataset_samples ORDER BY julianday(captured_at) DESC, captured_at DESC;
   )SQL");
   std::vector<DatasetSampleRecord> samples;
   int result = SQLITE_ROW;
@@ -1010,7 +1010,7 @@ std::vector<IdentityReviewRecord> SqliteStore::list_identity_reviews() const {
   Statement statement(impl_->database, R"SQL(
     SELECT review_id,image_path,captured_at,predicted_name,confidence,
            decision,subject_id,updated_at
-    FROM identity_reviews ORDER BY captured_at DESC;
+    FROM identity_reviews ORDER BY julianday(captured_at) DESC, captured_at DESC;
   )SQL");
   std::vector<IdentityReviewRecord> reviews;
   int result = SQLITE_ROW;
