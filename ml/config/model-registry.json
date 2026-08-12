@@ -1,6 +1,24 @@
 {
   "schema_version": 1,
   "models": {
+    "m01_person": {
+      "default_version": "v1.0.1",
+      "versions": {
+        "v1.0.1": {
+          "source": "huggingface",
+          "repo_id": "jjm15955/wardy-m1-person-detector",
+          "revision": "v1.0.1",
+          "files": {
+            "model.pt": "80c392a6891463b9c5a6688a589bbd0296e082cc98012f681e03ef0f68658aa0",
+            "training_args.yaml": "ff2a9caa60acb6d70b570620614d0bf74b2156341666896f52633a7e8f71d9e5"
+          },
+          "remote_files": {
+            "model.pt": "best.pt",
+            "training_args.yaml": "training_args.yaml"
+          }
+        }
+      }
+    },
     "m02_face_detector": {
       "default_version": "opencv-yunet-2023mar",
       "versions": {
@@ -63,6 +81,24 @@
           "remote_files": {
             "model.onnx": "model.onnx",
             "metadata.json": "metadata.json"
+          }
+        }
+      }
+    },
+    "m05_hazard": {
+      "default_version": "hazard-objects-v2-finetune-v3",
+      "versions": {
+        "hazard-objects-v2-finetune-v3": {
+          "source": "huggingface",
+          "repo_id": "chocochip119/wardy-m05-hazard-detector",
+          "revision": "hazard-objects-v2-finetune-v3",
+          "files": {
+            "model.pt": "79f712f5e431decd3316ef4a96263a3a2103486289d591c7b03e2a6466f341a8",
+            "training_args.yaml": "e8667f52315ea68efa0576d26560b9dbb95e0f6f553f29627b8fce53c98f20ee"
+          },
+          "remote_files": {
+            "model.pt": "weights/best.pt",
+            "training_args.yaml": "args.yaml"
           }
         }
       }
