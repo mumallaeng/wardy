@@ -7,7 +7,11 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from model_manager import _SameHostAuthorizationRedirectHandler, _install_huggingface
+from model_manager import (
+    _SameHostAuthorizationRedirectHandler,
+    _install_direct_files,
+    _install_huggingface,
+)
 
 
 class HuggingFaceInstallTest(unittest.TestCase):
@@ -41,6 +45,19 @@ class HuggingFaceInstallTest(unittest.TestCase):
             "https://huggingface.co/example/private-model/resolve/v1/remote.onnx?download=true",
             Path(directory) / "model.onnx",
             headers={},
+        )
+
+    def test_direct_files_download_each_pinned_destination(self) -> None:
+        specification = {
+            "files": {"model.onnx": "unused-in-this-test"},
+            "urls": {"model.onnx": "https://example.test/model.onnx"},
+        }
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "model_manager._download"
+        ) as download:
+            _install_direct_files(specification, Path(directory))
+        download.assert_called_once_with(
+            "https://example.test/model.onnx", Path(directory) / "model.onnx"
         )
 
     def test_cross_host_redirect_removes_authorization_only(self) -> None:
