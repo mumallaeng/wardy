@@ -23,7 +23,7 @@ absolute_from_repo() {
 
 venv_dir="$(absolute_from_repo "${WARDY_ML_VENV:-edge/.venv-ml}")"
 model_root="$(absolute_from_repo "${WARDY_MODEL_ROOT:-edge/models}")"
-hazard_model="$(absolute_from_repo "${WARDY_HAZARD_MODEL:-ml/src/export/hazard_objects_v1_full_v1/weights/best.onnx}")"
+hazard_model="$(absolute_from_repo "${WARDY_HAZARD_MODEL:-edge/models/m05_hazard/hazard-objects-v2-finetune-v3/model.onnx}")"
 python_bin="${venv_dir}/bin/python"
 
 if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
@@ -63,6 +63,14 @@ if [[ -n "${WARDY_M03_MODEL_VERSION:-}" ]]; then
 fi
 "${python_bin}" "${install_args[@]}"
 
+WARDY_ML_VENV="${venv_dir}" WARDY_MODEL_ROOT="${model_root}" \
+  "${script_dir}/prepare_yolo_models.sh"
+
+for identity_model in m02_face_detector m02_face_recognizer; do
+  "${python_bin}" "${repo_dir}/ml/src/model_manager.py" \
+    --model-root "${model_root}" install "${identity_model}"
+done
+
 install_args=(
   "${repo_dir}/ml/src/model_manager.py"
   --model-root "${model_root}"
@@ -81,9 +89,18 @@ PYTHONPATH="${repo_dir}/ml/src" "${python_bin}" - <<'PY'
 from pathlib import Path
 import os
 from m05_hazard import HazardDetector
-from pose_fall_worker import build_runtime
+from model_manager import install_model
 
-build_runtime(Path(os.environ["WARDY_MODEL_ROOT"]))
+model_root = Path(os.environ["WARDY_MODEL_ROOT"])
+for model_id in (
+    "m01_person",
+    "m02_face_detector",
+    "m02_face_recognizer",
+    "m03_pose",
+    "m04_fall",
+    "m05_hazard",
+):
+    install_model(model_id, model_root=model_root)
 HazardDetector(Path(os.environ["WARDY_HAZARD_MODEL"]))
-print("Wardy M-02/M-03/M-04/M-05 runtime is ready")
+print("Wardy M-02 identity/M-03/M-04/M-05 runtime is ready")
 PY
