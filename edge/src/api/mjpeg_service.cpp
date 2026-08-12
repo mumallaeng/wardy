@@ -50,7 +50,6 @@
 #include <string>
 #include <sstream>
 #include <thread>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -71,9 +70,6 @@ struct StreamState {
   std::mutex system_state_mutex;
   std::mutex active_fall_tracks_mutex;
   std::set<std::int64_t> active_fall_tracks;
-  std::map<std::int64_t,
-           std::pair<std::optional<std::string>, std::optional<std::string>>>
-      active_fall_identities;
   std::mutex model_people_mutex;
   std::map<std::int64_t, inference::PersonOutput> model_people;
   std::shared_ptr<storage::SqliteStore> database;
@@ -711,15 +707,12 @@ void apply_detection_fault(const std::shared_ptr<StreamState>& state, bool activ
 void apply_fall_observation(const std::shared_ptr<StreamState>& state,
                             std::int64_t track_id, bool active,
                             const std::optional<double>& confidence,
-                            const std::string& reason,
-                            const std::optional<std::string>& subject_id = std::nullopt,
-                            const std::optional<std::string>& subject_name = std::nullopt) {
+                            const std::string& reason) {
   rules::EventObservation observation;
   observation.event_type = "fall_suspected";
   observation.active = active;
   observation.observed_at = utc_now();
-  observation.subject_id = subject_id.value_or("track-" + std::to_string(track_id));
-  observation.subject_name = subject_name;
+  observation.subject_id = "track-" + std::to_string(track_id);
   observation.subject_location = "unknown";
   observation.reason = reason;
   observation.source_results_json =
@@ -745,53 +738,33 @@ void apply_tracking_results(
   }
   const std::set<std::int64_t> retained(
       response.active_track_ids.begin(), response.active_track_ids.end());
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> expired_falls;
+  std::vector<std::int64_t> expired_falls;
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
     for (auto iterator = state->active_fall_tracks.begin();
          iterator != state->active_fall_tracks.end();) {
       if (retained.count(*iterator) == 0) {
-        const auto identity = state->active_fall_identities.find(*iterator);
-        expired_falls.emplace_back(
-            *iterator,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.first,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.second);
-        state->active_fall_identities.erase(*iterator);
+        expired_falls.push_back(*iterator);
         iterator = state->active_fall_tracks.erase(iterator);
       } else {
         ++iterator;
       }
     }
   }
-  for (const auto& [track_id, subject_id, subject_name] : expired_falls) {
+  for (const auto track_id : expired_falls) {
     apply_fall_observation(state, track_id, false, std::nullopt,
-                           "Tracked person expired; fall alert released",
-                           subject_id, subject_name);
+                           "Anonymous track expired; fall alert released");
   }
 
   for (const auto& person : response.persons) {
     if (!person.fall_suspected) continue;
     bool apply = false;
-    std::optional<std::string> event_subject_id = person.subject_id;
-    std::optional<std::string> event_subject_name = person.subject_name;
     {
       std::lock_guard lock(state->active_fall_tracks_mutex);
       if (*person.fall_suspected) {
         apply = state->active_fall_tracks.insert(person.track_id).second;
-        if (apply) {
-          state->active_fall_identities[person.track_id] = {
-              person.subject_id, person.subject_name};
-        }
       } else {
         apply = state->active_fall_tracks.erase(person.track_id) != 0;
-        const auto identity = state->active_fall_identities.find(person.track_id);
-        if (identity != state->active_fall_identities.end()) {
-          event_subject_id = identity->second.first;
-          event_subject_name = identity->second.second;
-        }
       }
     }
     if (apply) {
@@ -800,12 +773,7 @@ void apply_tracking_results(
           person.fall_confidence,
           *person.fall_suspected
               ? "M-04 temporal pose sequence exceeded the fall threshold"
-              : "M-04 temporal pose sequence returned below the fall threshold",
-          event_subject_id, event_subject_name);
-      if (!*person.fall_suspected) {
-        std::lock_guard lock(state->active_fall_tracks_mutex);
-        state->active_fall_identities.erase(person.track_id);
-      }
+              : "M-04 temporal pose sequence returned below the fall threshold");
     }
   }
 
@@ -833,9 +801,9 @@ void apply_tracking_results(
       rendered.detection.id = "track-" + std::to_string(person.track_id);
       rendered.detection.box = *normalized_box;
       rendered.detection.class_name = "사람";
-      rendered.detection.role = person.subject_role.value_or("");
-      rendered.detection.name = person.subject_name.value_or("");
-      rendered.detection.subject_id = person.subject_id;
+      // M-02 currently provides anonymous short-lived tracking only. Leave the
+      // role empty until a registered-subject identification result exists.
+      rendered.detection.role = "";
       rendered.detection.posture = person.fall_suspected.value_or(false)
           ? "낙상 의심" : person.pose_quality ? "자세 인식" : "추적 중";
       rendered.detection.confidence = person.detection_confidence;
@@ -895,25 +863,15 @@ void apply_tracking_results(
 
 void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
                              const std::string& reason) {
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> active_tracks;
+  std::vector<std::int64_t> active_tracks;
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
-    for (const auto track_id : state->active_fall_tracks) {
-      const auto identity = state->active_fall_identities.find(track_id);
-      active_tracks.emplace_back(
-          track_id,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.first,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.second);
-    }
+    active_tracks.assign(state->active_fall_tracks.begin(),
+                         state->active_fall_tracks.end());
     state->active_fall_tracks.clear();
-    state->active_fall_identities.clear();
   }
-  for (const auto& [track_id, subject_id, subject_name] : active_tracks) {
-    apply_fall_observation(state, track_id, false, std::nullopt, reason,
-                           subject_id, subject_name);
+  for (const auto track_id : active_tracks) {
+    apply_fall_observation(state, track_id, false, std::nullopt, reason);
   }
 }
 #endif
