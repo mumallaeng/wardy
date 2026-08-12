@@ -53,8 +53,8 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 .topbar-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
 .theme-toggle { display: inline-grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border: 1px solid transparent; border-radius: 9px; color: var(--forest); background: transparent; }
 .theme-toggle:hover, .theme-toggle:focus-visible { border-color: var(--forest-2); background: color-mix(in srgb, var(--forest-2) 12%, transparent); outline: none; }
-.theme-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-.theme-icon.moon-icon { display: block; fill: currentColor; stroke: none; }
+.theme-icon { width: 18px; height: 18px; fill: none; stroke: currentcolor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.theme-icon.moon-icon { display: block; fill: currentcolor; stroke: none; }
 .theme-icon.sun-icon { display: none; }
 [data-theme="dark"] .theme-icon.moon-icon { display: none; }
 [data-theme="dark"] .theme-icon.sun-icon { display: block; }
