@@ -65,6 +65,7 @@ struct StreamState {
   std::atomic_uint64_t inference_counter{0};
   std::atomic_bool detection_running_reported{false};
   std::atomic_bool detection_fault_active{false};
+  std::mutex system_state_mutex;
   std::mutex active_fall_tracks_mutex;
   std::set<std::int64_t> active_fall_tracks;
   std::shared_ptr<storage::SqliteStore> database;
@@ -238,17 +239,20 @@ void save_camera_state(const std::shared_ptr<StreamState>& state,
                        const std::string& camera_state,
                        const std::string& reason) noexcept {
   try {
-    const auto previous = state->database->load_system_state();
-    const bool preserve_event_reason = previous && previous->care_state &&
-        *previous->care_state != "normal" && camera_state == "connected";
-    state->database->save_system_state({
-        previous ? previous->care_state : std::optional<std::string>{"normal"},
-        camera_state,
-        previous ? previous->detection_state : "disconnected",
-        previous ? previous->event_state : "ready",
-        preserve_event_reason ? previous->reason : reason,
-        utc_now(),
-    });
+    {
+      std::lock_guard lock(state->system_state_mutex);
+      const auto previous = state->database->load_system_state();
+      const bool preserve_event_reason = previous && previous->care_state &&
+          *previous->care_state != "normal" && camera_state == "connected";
+      state->database->save_system_state({
+          previous ? previous->care_state : std::optional<std::string>{"normal"},
+          camera_state,
+          previous ? previous->detection_state : "disconnected",
+          previous ? previous->event_state : "ready",
+          preserve_event_reason ? previous->reason : reason,
+          utc_now(),
+      });
+    }
     broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite state error: " << error.what() << '\n';
@@ -259,15 +263,18 @@ void save_detection_state(const std::shared_ptr<StreamState>& state,
                           const std::string& detection_state,
                           const std::string& reason) noexcept {
   try {
-    const auto previous = state->database->load_system_state();
-    const bool preserve_event_reason = previous && previous->care_state &&
-        *previous->care_state != "normal" && detection_state != "fault";
-    state->database->save_system_state({
-        previous ? previous->care_state : std::optional<std::string>{"normal"},
-        previous ? previous->camera_state : "idle", detection_state,
-        previous ? previous->event_state : "ready",
-        preserve_event_reason ? previous->reason : reason, utc_now(),
-    });
+    {
+      std::lock_guard lock(state->system_state_mutex);
+      const auto previous = state->database->load_system_state();
+      const bool preserve_event_reason = previous && previous->care_state &&
+          *previous->care_state != "normal" && detection_state != "fault";
+      state->database->save_system_state({
+          previous ? previous->care_state : std::optional<std::string>{"normal"},
+          previous ? previous->camera_state : "idle", detection_state,
+          previous ? previous->event_state : "ready",
+          preserve_event_reason ? previous->reason : reason, utc_now(),
+      });
+    }
     broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite detection state error: " << error.what() << '\n';
@@ -564,21 +571,24 @@ std::optional<std::string> decoded_optional_header(const std::string& request,
 void save_runtime_state(const std::shared_ptr<StreamState>& state,
                         const std::string& camera_state = "") noexcept {
   try {
-    const auto previous = state->database->load_system_state();
-    const std::string resolved_camera = !camera_state.empty()
-        ? camera_state
-        : previous ? previous->camera_state
-                   : (state->camera_connected ? "connected" : "idle");
-    const auto care = state->events ? state->events->current_care_status()
-                                    : std::optional<std::string>{};
-    const std::string reason = state->events ? state->events->current_reason()
-                                             : "Event runtime is starting";
-    state->database->save_system_state({
-        care, resolved_camera,
-        previous ? previous->detection_state : "disconnected",
-        previous ? previous->event_state : "ready",
-        reason, utc_now(),
-    });
+    {
+      std::lock_guard lock(state->system_state_mutex);
+      const auto previous = state->database->load_system_state();
+      const std::string resolved_camera = !camera_state.empty()
+          ? camera_state
+          : previous ? previous->camera_state
+                     : (state->camera_connected ? "connected" : "idle");
+      const auto care = state->events ? state->events->current_care_status()
+                                      : std::optional<std::string>{};
+      const std::string reason = state->events ? state->events->current_reason()
+                                               : "Event runtime is starting";
+      state->database->save_system_state({
+          care, resolved_camera,
+          previous ? previous->detection_state : "disconnected",
+          previous ? previous->event_state : "ready",
+          reason, utc_now(),
+      });
+    }
     broadcast_snapshot(state);
   } catch (const std::exception& error) {
     std::cerr << "SQLite runtime state error: " << error.what() << '\n';
@@ -694,16 +704,16 @@ void apply_tracking_results(
 
   for (const auto& person : response.persons) {
     if (!person.fall_suspected) continue;
-    bool apply = *person.fall_suspected;
+    bool apply = false;
     {
       std::lock_guard lock(state->active_fall_tracks_mutex);
       if (*person.fall_suspected) {
-        state->active_fall_tracks.insert(person.track_id);
+        apply = state->active_fall_tracks.insert(person.track_id).second;
       } else {
         apply = state->active_fall_tracks.erase(person.track_id) != 0;
       }
     }
-    if (apply || *person.fall_suspected) {
+    if (apply) {
       apply_fall_observation(
           state, person.track_id, *person.fall_suspected,
           person.fall_confidence,

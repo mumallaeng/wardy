@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -17,12 +18,40 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/core/persistence.hpp>
+#include <opencv2/core/version.hpp>
 
 namespace wardy::inference {
 namespace {
 
 constexpr std::size_t kMaximumResponseBytes = 1024U * 1024U;
 constexpr long kSocketTimeoutSeconds = 5;
+
+std::int64_t positive_track_id(const cv::FileNode& node,
+                               const char* error_message) {
+#if CV_VERSION_MAJOR > 4 || \
+    (CV_VERSION_MAJOR == 4 && CV_VERSION_MINOR >= 11)
+  if (!node.isInt()) throw std::runtime_error(error_message);
+  const long double numeric_value = static_cast<long double>(
+      static_cast<std::int64_t>(node));
+#else
+  // JetPack images with older OpenCV expose JSON numbers through int/double.
+  // Accept only integers that round-trip exactly before converting to int64.
+  if (!node.isInt() && !node.isReal()) throw std::runtime_error(error_message);
+  const double raw_value = static_cast<double>(node);
+  constexpr double kMaximumExactDoubleInteger = 9007199254740991.0;
+  if (!std::isfinite(raw_value) || std::trunc(raw_value) != raw_value ||
+      raw_value > kMaximumExactDoubleInteger) {
+    throw std::runtime_error(error_message);
+  }
+  const long double numeric_value = static_cast<long double>(raw_value);
+#endif
+  if (numeric_value < 1.0L ||
+      numeric_value > static_cast<long double>(
+          std::numeric_limits<std::int64_t>::max())) {
+    throw std::runtime_error(error_message);
+  }
+  return static_cast<std::int64_t>(numeric_value);
+}
 
 std::string base64(const std::vector<unsigned char>& data) {
   constexpr char alphabet[] =
@@ -167,10 +196,8 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
     throw std::runtime_error("tracking response requires active_track_ids and persons arrays");
   }
   for (const auto& node : active_tracks) {
-    if (!node.isInt() || static_cast<int>(node) < 1) {
-      throw std::runtime_error("tracking response contains an invalid active track ID");
-    }
-    parsed.active_track_ids.push_back(static_cast<int>(node));
+    parsed.active_track_ids.push_back(positive_track_id(
+        node, "tracking response contains an invalid active track ID"));
   }
   for (const auto& node : persons) {
     if (node.type() != cv::FileNode::MAP) {
@@ -178,12 +205,12 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
     }
     const cv::FileNode track_id = node["track_id"];
     const cv::FileNode accepted = node["accepted"];
-    if (!track_id.isInt() || static_cast<int>(track_id) < 1 ||
-        !accepted.isInt()) {
+    if (!accepted.isInt()) {
       throw std::runtime_error("tracking response person is missing track_id or accepted");
     }
     TrackedFallResult person;
-    person.track_id = static_cast<int>(track_id);
+    person.track_id = positive_track_id(
+        track_id, "tracking response person is missing track_id or accepted");
     person.accepted = static_cast<int>(accepted) != 0;
     parse_fall_result(node, person.fall_suspected, person.fall_confidence);
     parsed.persons.push_back(std::move(person));
