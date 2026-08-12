@@ -41,14 +41,15 @@ class M02TrackingAdapter:
         if frame_width <= 0 or frame_height <= 0:
             raise ValueError("frame dimensions must be positive")
 
-        detections = [
-            self._person_detection_from_mapping(
+        detections = []
+        for raw_detection in person_detections:
+            detection = self._person_detection_from_mapping(
                 raw_detection,
                 frame_width=frame_width,
                 frame_height=frame_height,
             )
-            for raw_detection in person_detections
-        ]
+            if detection is not None:
+                detections.append(detection)
         tracks = self.tracker.update(detections)
 
         # Each item is the direct bbox input contract expected by M-03 RTMPose.
@@ -76,15 +77,23 @@ class M02TrackingAdapter:
     @staticmethod
     def _person_detection_from_mapping(
         raw_detection: Mapping[str, Any], *, frame_width: int, frame_height: int
-    ) -> Detection:
+    ) -> Detection | None:
         if not isinstance(raw_detection, Mapping):
             raise TypeError("each person detection must be a mapping")
         if "bbox_xyxy" not in raw_detection or "confidence" not in raw_detection:
             raise ValueError("person detection requires bbox_xyxy and confidence")
 
-        bbox = np.asarray(raw_detection["bbox_xyxy"], dtype=np.float32).copy()
-        if bbox.shape != (4,) or not np.all(np.isfinite(bbox)):
-            raise ValueError("bbox_xyxy must contain four finite values")
+        # Validate the detector contract before clipping so malformed values
+        # cannot be hidden by an otherwise ignorable off-frame box.
+        source_detection = Detection(
+            bbox_xyxy=raw_detection["bbox_xyxy"],
+            confidence=raw_detection["confidence"],
+        )
+        bbox = np.asarray(source_detection.bbox_xyxy, dtype=np.float32).copy()
         bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0.0, float(frame_width))
         bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0.0, float(frame_height))
-        return Detection(bbox_xyxy=bbox, confidence=raw_detection["confidence"])
+        # A valid detector box can become empty after clipping when it lies
+        # fully outside the frame. Ignore only that detection, not the frame.
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            return None
+        return Detection(bbox_xyxy=bbox, confidence=source_detection.confidence)

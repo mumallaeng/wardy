@@ -69,7 +69,7 @@ def process_request(
 
     # Keep the already-tracked request contract during the M-01 transition.
     person = decode_tracked_person(payload)
-    return {"ok": True, **runtime.pose_fall.process(frame, person).to_dict()}
+    return {"ok": True, **runtime.process_tracked_person(frame, person).to_dict()}
 
 
 class PoseFallRequestHandler(socketserver.StreamRequestHandler):

@@ -223,7 +223,7 @@ class GeometricMultiObjectTracker:
             gated_costs = np.where(valid_gate, costs, 1e6)
             track_indices, detection_indices = linear_sum_assignment(gated_costs)
             for track_index, detection_index in zip(
-                track_indices.tolist(), detection_indices.tolist()
+                track_indices.tolist(), detection_indices.tolist(), strict=True
             ):
                 if not valid_gate[track_index, detection_index]:
                     continue
