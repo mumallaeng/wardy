@@ -56,6 +56,19 @@ add_executable(event_runtime_test
 target_link_libraries(event_runtime_test PRIVATE wardy_event_runtime)
 add_test(NAME event_runtime_test COMMAND event_runtime_test)
 
+add_library(wardy_inference_output STATIC
+  src/inference/inference_output.cpp
+)
+target_include_directories(wardy_inference_output PUBLIC src)
+target_link_libraries(wardy_inference_output PUBLIC wardy_event_runtime)
+target_compile_options(wardy_inference_output PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(inference_output_test
+  tests/inference_output_test.cpp
+)
+target_link_libraries(inference_output_test PRIVATE wardy_inference_output)
+add_test(NAME inference_output_test COMMAND inference_output_test)
+
 add_executable(camera_config_test
   tests/camera_config_test.cpp
 )
@@ -176,7 +189,7 @@ if(OpenCV_FOUND)
     src/api/wardy_edge_service.cpp
   )
   target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
-  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime wardy_event_media wardy_llm Threads::Threads ${OpenCV_LIBS})
+  target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime wardy_inference_output wardy_event_media wardy_llm Threads::Threads ${OpenCV_LIBS})
   if(TARGET wardy_person_inference)
     target_link_libraries(wardy_edge_service PRIVATE
       wardy_person_inference wardy_pose_fall_client)

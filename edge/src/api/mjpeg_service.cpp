@@ -5,6 +5,7 @@
 #include "api/request_security.hpp"
 #include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
+#include "inference/inference_output.hpp"
 #include "llm/daily_summary.hpp"
 #include "media/event_media.hpp"
 #include "rules/event_runtime.hpp"
@@ -70,6 +71,8 @@ struct StreamState {
   std::set<std::int64_t> active_fall_tracks;
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
+  std::shared_ptr<inference::InferenceOutputRuntime> inference;
+  std::shared_ptr<inference::TemporaryInferenceProducer> temporary_inference;
   std::shared_ptr<media::EventMediaRecorder> event_media;
   std::shared_ptr<llm::DailySummaryService> daily_summary;
   std::mutex daily_summary_mutex;
@@ -89,6 +92,7 @@ struct StreamState {
 };
 
 void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept;
+void broadcast_inference(const std::shared_ptr<StreamState>& state) noexcept;
 
 void schedule_event_media(const std::shared_ptr<StreamState>& state,
                           const storage::EventRecord& event) noexcept {
@@ -331,34 +335,48 @@ std::optional<std::string> runtime_snapshot(
   return runtime_snapshot_json(*system, state->database->list_events());
 }
 
+void broadcast_payload(const std::shared_ptr<StreamState>& state,
+                       const std::string& payload) {
+  const std::string frame = websocket_text_frame(payload);
+  std::vector<int> clients;
+  {
+    std::lock_guard lock(state->websocket_mutex);
+    clients = state->websocket_clients;
+  }
+  std::vector<int> failed;
+  {
+    std::lock_guard send_lock(state->websocket_send_mutex);
+    for (const int client : clients) {
+      if (!send_all(client, frame.data(), frame.size())) failed.push_back(client);
+    }
+  }
+  if (!failed.empty()) {
+    std::lock_guard lock(state->websocket_mutex);
+    state->websocket_clients.erase(
+        std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
+            [&](int client) {
+              return std::find(failed.begin(), failed.end(), client) != failed.end();
+            }),
+        state->websocket_clients.end());
+  }
+}
+
 void broadcast_snapshot(const std::shared_ptr<StreamState>& state) noexcept {
   try {
     const auto snapshot = runtime_snapshot(state);
     if (!snapshot) return;
-    const std::string frame = websocket_text_frame(*snapshot);
-    std::vector<int> clients;
-    {
-      std::lock_guard lock(state->websocket_mutex);
-      clients = state->websocket_clients;
-    }
-    std::vector<int> failed;
-    {
-      std::lock_guard send_lock(state->websocket_send_mutex);
-      for (const int client : clients) {
-        if (!send_all(client, frame.data(), frame.size())) failed.push_back(client);
-      }
-    }
-    if (!failed.empty()) {
-      std::lock_guard lock(state->websocket_mutex);
-      state->websocket_clients.erase(
-          std::remove_if(state->websocket_clients.begin(), state->websocket_clients.end(),
-              [&](int client) {
-                return std::find(failed.begin(), failed.end(), client) != failed.end();
-              }),
-          state->websocket_clients.end());
-    }
+    broadcast_payload(state, *snapshot);
   } catch (const std::exception& error) {
     std::cerr << "WebSocket broadcast error: " << error.what() << '\n';
+  }
+}
+
+void broadcast_inference(const std::shared_ptr<StreamState>& state) noexcept {
+  try {
+    if (!state->inference) return;
+    broadcast_payload(state, inference::inference_message_json(state->inference->snapshot()));
+  } catch (const std::exception& error) {
+    std::cerr << "Inference broadcast error: " << error.what() << '\n';
   }
 }
 
@@ -595,6 +613,38 @@ void save_runtime_state(const std::shared_ptr<StreamState>& state,
   }
 }
 
+void save_inference_state(const std::shared_ptr<StreamState>& state) noexcept {
+  try {
+    if (!state->inference) return;
+    const auto inference_snapshot = state->inference->snapshot();
+    const auto previous = state->database->load_system_state();
+    const auto care = state->events ? state->events->current_care_status()
+                                    : std::optional<std::string>{};
+    const std::string event_reason = state->events
+        ? state->events->current_reason()
+        : "Event runtime is starting";
+    const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
+    const std::string reason = inference_snapshot.operational
+        ? event_reason : inference_snapshot.fault_reason;
+    if (!previous || previous->detection_state != detection_state ||
+        (!inference_snapshot.operational && previous->reason != reason)) {
+      state->database->save_system_state({
+          care,
+          previous ? previous->camera_state
+                   : (state->camera_connected ? "connected" : "idle"),
+          detection_state,
+          previous ? previous->event_state : "ready",
+          reason,
+          utc_now(),
+      });
+      broadcast_snapshot(state);
+    }
+    broadcast_inference(state);
+  } catch (const std::exception& error) {
+    std::cerr << "Inference state error: " << error.what() << '\n';
+  }
+}
+
 std::string mock_event(const std::string& request,
                        const std::shared_ptr<StreamState>& state) {
   rules::EventObservation observation;
@@ -739,6 +789,22 @@ void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
 }
 #endif
 
+void apply_inference_fault(const std::shared_ptr<StreamState>& state,
+                           const std::string& reason) noexcept {
+  try {
+    if (!state->temporary_inference || !state->inference) return;
+    inference::InferenceFrame fault;
+    fault.frame_id = "camera-fault-" +
+        std::to_string(state->inference_counter.fetch_add(1) + 1);
+    fault.observed_at = utc_now();
+    fault.source = "temporary";
+    fault.operational = false;
+    fault.fault_reason = reason;
+    state->inference->apply(fault);
+  } catch (const std::exception& error) {
+    std::cerr << "Inference fault error: " << error.what() << '\n';
+  }
+}
 std::string create_subject(const std::string& request,
                            const std::shared_ptr<StreamState>& state) {
   const std::string subject_id = request_header(request, "x-wardy-subject-id").value_or("");
@@ -1207,6 +1273,15 @@ void serve_websocket(int socket_fd, const std::string& request,
       return;
     }
   }
+  if (state->inference) {
+    const std::string frame = websocket_text_frame(
+        inference::inference_message_json(state->inference->snapshot()));
+    std::lock_guard send_lock(state->websocket_send_mutex);
+    if (!send_all(socket_fd, frame.data(), frame.size())) {
+      remove_websocket_client(state, socket_fd);
+      return;
+    }
+  }
 
   unsigned char input[256];
   while (state->running) {
@@ -1261,6 +1336,14 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "GET" && path == "/api/events") {
     send_text(socket_fd, json_response(200, "OK",
         events_json(state->database->list_events()), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/inference") {
+    if (!state->inference) {
+      send_text(socket_fd, json_response(200, "OK",
+          inference::inference_json({}), config.allowed_origin));
+    } else {
+      send_text(socket_fd, json_response(200, "OK",
+          inference::inference_json(state->inference->snapshot()), config.allowed_origin));
+    }
   } else if (method == "POST" && path == "/api/llm/daily-summary") {
     const std::string date = request_header(request, "X-Wardy-Summary-Date")
         .value_or(kst_date_now());
@@ -1556,6 +1639,7 @@ void capture_frames(const MjpegServiceConfig& config,
       const std::vector<int> encode_parameters{cv::IMWRITE_JPEG_QUALITY,
                                                 config.jpeg_quality};
       auto next_preview_at = std::chrono::steady_clock::now();
+      auto next_inference_at = std::chrono::steady_clock::now();
       bool connected_reported = false;
       while (state->running) {
         if (!camera.read(frame)) {
@@ -1589,10 +1673,17 @@ void capture_frames(const MjpegServiceConfig& config,
         }
         state->frame_width = frame.cols;
         state->frame_height = frame.rows;
+        const auto now = std::chrono::steady_clock::now();
+        if (state->temporary_inference && now >= next_inference_at) {
+          state->inference->apply(state->temporary_inference->infer(
+              "temporary-" +
+                  std::to_string(state->inference_counter.fetch_add(1) + 1),
+              utc_now()));
+          next_inference_at = now + std::chrono::milliseconds(100);
+        }
         const int served_requests = state->sample_capture_requests.load();
         if (state->stream_clients == 0 && served_requests == 0) continue;
 
-        const auto now = std::chrono::steady_clock::now();
         if (now < next_preview_at) continue;
         next_preview_at = now + std::chrono::milliseconds(100);
 
@@ -1619,6 +1710,8 @@ void capture_frames(const MjpegServiceConfig& config,
       if (last_reported_error != error.what()) {
         last_reported_error = error.what();
         save_camera_state(state, "fault", error.what());
+        apply_inference_fault(
+            state, "카메라 입력이 없어 안전 감지를 실행할 수 없습니다.");
         std::cerr << "Jetson camera error: " << error.what() << '\n';
       }
       if (!camera_fault_active) {
@@ -1680,6 +1773,12 @@ void MjpegServiceConfig::validate() const {
   }
   if (!person_detector_engine_path.empty() && pose_fall_socket_path.empty()) {
     throw std::invalid_argument("pose/fall socket path must not be empty when M-01 is enabled");
+  }
+  if (inference_source != "disabled" && inference_source != "temporary") {
+    throw std::invalid_argument("WARDY_INFERENCE_SOURCE must be disabled or temporary");
+  }
+  if (inference_source == "temporary") {
+    (void)inference::TemporaryInferenceProducer(temporary_inference_scenario);
   }
   llm::DailySummaryConfig llm_config;
   llm_config.enabled = llm_enabled;
@@ -1767,6 +1866,14 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
         "WARDY_PERSON_ENGINE is set but this binary was built without TensorRT/CUDA");
   }
 #endif
+  if (config_.inference_source == "temporary") {
+    state->inference = std::make_shared<inference::InferenceOutputRuntime>(
+        *state->events, [weak_state] {
+          if (const auto locked = weak_state.lock()) save_inference_state(locked);
+        });
+    state->temporary_inference = std::make_shared<inference::TemporaryInferenceProducer>(
+        config_.temporary_inference_scenario);
+  }
   const int server_fd = open_server_socket(config_.port);
   save_camera_state(state, "connecting", "Jetson camera connection is starting");
   std::thread capture_thread(capture_frames, std::cref(config_), state);
