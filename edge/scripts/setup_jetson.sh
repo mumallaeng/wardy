@@ -107,6 +107,8 @@ ensure_token WARDY_VIEWER_TOKEN
 ensure_token WARDY_PUBLISH_TOKEN
 chmod 0600 "${env_file}"
 
+"${script_dir}/install_pose_fall_runtime.sh"
+
 tls_artifacts=(
   "${tls_dir}/wardy-ca.key"
   "${tls_dir}/wardy-ca.crt"
