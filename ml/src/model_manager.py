@@ -26,7 +26,12 @@ class _SameHostAuthorizationRedirectHandler(urllib.request.HTTPRedirectHandler):
         default_port = 443 if parsed.scheme.lower() == "https" else (
             80 if parsed.scheme.lower() == "http" else None
         )
-        return parsed.scheme.lower(), parsed.hostname, parsed.port or default_port
+        port = parsed.port
+        return (
+            parsed.scheme.lower(),
+            parsed.hostname,
+            port if port is not None else default_port,
+        )
 
     def redirect_request(
         self,

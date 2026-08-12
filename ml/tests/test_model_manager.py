@@ -119,6 +119,23 @@ class HuggingFaceInstallTest(unittest.TestCase):
         assert redirected is not None
         self.assertIsNone(redirected.get_header("Authorization"))
 
+    def test_explicit_port_zero_removes_authorization(self) -> None:
+        request = urllib.request.Request(
+            "https://huggingface.co/example/model",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        redirected = _SameHostAuthorizationRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://huggingface.co:0/example/model",
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertIsNone(redirected.get_header("Authorization"))
+
 
 if __name__ == "__main__":
     unittest.main()
