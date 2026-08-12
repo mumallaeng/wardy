@@ -64,5 +64,6 @@ class TrackingPoseFallRuntime:
             "frame_id": frame_id,
             "timestamp_ms": timestamp_ms,
             "tracking_scope": tracking_result["tracking_scope"],
+            "active_track_ids": sorted(self.tracking.tracker.active_track_ids),
             "persons": persons,
         }

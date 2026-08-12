@@ -174,6 +174,7 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
 
         self.assertEqual(first["persons"][0]["track_id"], 1)
         self.assertEqual(second["persons"][0]["track_id"], 1)
+        self.assertEqual(first["active_track_ids"], [1])
         self.assertEqual(self.pose_fall.processed_track_ids, [1, 1])
         self.assertEqual(self.pose_fall.retained_track_ids, frozenset({1}))
 

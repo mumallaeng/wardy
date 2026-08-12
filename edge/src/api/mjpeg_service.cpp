@@ -12,6 +12,7 @@
 
 #if defined(WARDY_WITH_TENSORRT)
 #include "inference/person_inference_runtime.hpp"
+#include "inference/pose_fall_client.hpp"
 #endif
 
 #include <arpa/inet.h>
@@ -42,6 +43,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <sstream>
@@ -63,6 +65,8 @@ struct StreamState {
   std::atomic_uint64_t inference_counter{0};
   std::atomic_bool detection_running_reported{false};
   std::atomic_bool detection_fault_active{false};
+  std::mutex active_fall_tracks_mutex;
+  std::set<std::int64_t> active_fall_tracks;
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::shared_ptr<media::EventMediaRecorder> event_media;
@@ -629,12 +633,101 @@ void apply_detection_fault(const std::shared_ptr<StreamState>& state, bool activ
     observation.subject_location = "unknown";
     observation.reason = reason;
     observation.source_results_json =
-        R"([{"source":"m01_person_detector","runtime":"TensorRT"}])";
+        R"([{"source":"edge_ai_pipeline","runtime":"TensorRT+UnixSocket"}])";
     state->events->apply(observation);
   } catch (const std::exception& error) {
     std::cerr << "Detection fault event error: " << error.what() << '\n';
   }
 }
+
+#if defined(WARDY_WITH_TENSORRT)
+void apply_fall_observation(const std::shared_ptr<StreamState>& state,
+                            std::int64_t track_id, bool active,
+                            const std::optional<double>& confidence,
+                            const std::string& reason) {
+  rules::EventObservation observation;
+  observation.event_type = "fall_suspected";
+  observation.active = active;
+  observation.observed_at = utc_now();
+  observation.subject_id = "track-" + std::to_string(track_id);
+  observation.subject_location = "unknown";
+  observation.reason = reason;
+  observation.source_results_json =
+      "[{\"source\":\"m02_m04_pose_sequence\",\"track_id\":" +
+      std::to_string(track_id) +
+      (confidence ? ",\"confidence\":" + json_number(*confidence) : "") + "}]";
+  try {
+    state->events->apply(observation);
+  } catch (const std::invalid_argument&) {
+    // A user may confirm or dismiss the event before the model clears it.
+    // Releasing an already-terminal event is therefore an expected no-op.
+    if (active) throw;
+  }
+}
+
+void apply_tracking_results(
+    const std::shared_ptr<StreamState>& state,
+    const inference::TrackingPoseFallResponse& response) {
+  if (!response.ok) {
+    throw std::runtime_error(response.error.empty()
+        ? "M-02/M-03/M-04 worker rejected the frame" : response.error);
+  }
+  const std::set<std::int64_t> retained(
+      response.active_track_ids.begin(), response.active_track_ids.end());
+  std::vector<std::int64_t> expired_falls;
+  {
+    std::lock_guard lock(state->active_fall_tracks_mutex);
+    for (auto iterator = state->active_fall_tracks.begin();
+         iterator != state->active_fall_tracks.end();) {
+      if (retained.count(*iterator) == 0) {
+        expired_falls.push_back(*iterator);
+        iterator = state->active_fall_tracks.erase(iterator);
+      } else {
+        ++iterator;
+      }
+    }
+  }
+  for (const auto track_id : expired_falls) {
+    apply_fall_observation(state, track_id, false, std::nullopt,
+                           "Anonymous track expired; fall alert released");
+  }
+
+  for (const auto& person : response.persons) {
+    if (!person.fall_suspected) continue;
+    bool apply = *person.fall_suspected;
+    {
+      std::lock_guard lock(state->active_fall_tracks_mutex);
+      if (*person.fall_suspected) {
+        state->active_fall_tracks.insert(person.track_id);
+      } else {
+        apply = state->active_fall_tracks.erase(person.track_id) != 0;
+      }
+    }
+    if (apply || *person.fall_suspected) {
+      apply_fall_observation(
+          state, person.track_id, *person.fall_suspected,
+          person.fall_confidence,
+          *person.fall_suspected
+              ? "M-04 temporal pose sequence exceeded the fall threshold"
+              : "M-04 temporal pose sequence returned below the fall threshold");
+    }
+  }
+}
+
+void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
+                             const std::string& reason) {
+  std::vector<std::int64_t> active_tracks;
+  {
+    std::lock_guard lock(state->active_fall_tracks_mutex);
+    active_tracks.assign(state->active_fall_tracks.begin(),
+                         state->active_fall_tracks.end());
+    state->active_fall_tracks.clear();
+  }
+  for (const auto track_id : active_tracks) {
+    apply_fall_observation(state, track_id, false, std::nullopt, reason);
+  }
+}
+#endif
 
 std::string create_subject(const std::string& request,
                            const std::shared_ptr<StreamState>& state) {
@@ -1465,7 +1558,8 @@ void capture_frames(const MjpegServiceConfig& config,
               std::chrono::system_clock::now().time_since_epoch()).count();
           const auto sequence = state->inference_counter.fetch_add(1) + 1;
           state->person_inference->submit(
-              frame, "camera-" + std::to_string(sequence), timestamp_ms);
+              frame, "camera-" + std::to_string(sequence), timestamp_ms,
+              !connected_reported);
         }
 #endif
         if (!connected_reported) {
@@ -1574,6 +1668,9 @@ void MjpegServiceConfig::validate() const {
   if (person_class_index < 0) {
     throw std::invalid_argument("person class index must be non-negative");
   }
+  if (!person_detector_engine_path.empty() && pose_fall_socket_path.empty()) {
+    throw std::invalid_argument("pose/fall socket path must not be empty when M-01 is enabled");
+  }
   llm::DailySummaryConfig llm_config;
   llm_config.enabled = llm_enabled;
   llm_config.model = llm_model;
@@ -1609,6 +1706,8 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
       });
 #if defined(WARDY_WITH_TENSORRT)
   if (!config_.person_detector_engine_path.empty()) {
+    const auto pose_fall_client = std::make_shared<inference::PoseFallClient>(
+        config_.pose_fall_socket_path);
     state->person_inference = std::make_shared<inference::PersonInferenceRuntime>(
         inference::PersonDetectorConfig{
             config_.person_detector_engine_path,
@@ -1616,9 +1715,19 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
             config_.person_nms_iou_threshold,
             static_cast<std::size_t>(config_.person_class_index),
         },
-        [weak_state](const cv::Mat&, const std::string&, std::int64_t,
-                     const std::vector<inference::PersonDetection>&) {
+        [weak_state, pose_fall_client](
+            const cv::Mat& frame, const std::string& frame_id,
+            std::int64_t timestamp_ms,
+            const std::vector<inference::PersonDetection>& detections,
+            bool reset_tracking) {
           if (const auto locked = weak_state.lock()) {
+            if (reset_tracking) {
+              release_all_fall_tracks(
+                  locked, "Camera stream reset; anonymous fall track released");
+            }
+            const auto response = pose_fall_client->infer_frame(
+                frame, frame_id, timestamp_ms, detections, reset_tracking);
+            apply_tracking_results(locked, response);
             if (!locked->detection_running_reported.exchange(true)) {
               save_detection_state(locked, "running",
                                    "M-01 person detection is running");

@@ -33,7 +33,7 @@ trap cleanup EXIT
 
 cat > "${ml_unit_file}" <<EOF
 [Unit]
-Description=Wardy M-03 pose and M-04 temporal fall worker
+Description=Wardy M-02 tracking, M-03 pose, and M-04 temporal fall worker
 Wants=network-online.target
 After=network-online.target
 
