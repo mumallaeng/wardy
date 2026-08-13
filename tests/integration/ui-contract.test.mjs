@@ -132,6 +132,9 @@ test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 �
   assert.doesNotMatch(app, /window\.open/);
   assert.match(overlay, /setMirrored/);
   assert.match(overlay, /1 - zone\.x - zone\.width/);
+  assert.match(overlay, /if \(this\.settings\.showClass\) this\.context\.strokeRect/);
+  assert.match(overlay, /if \(this\.settings\.showPosture\) this\.#drawSkeleton/);
+  assert.match(overlay, /\[M-03\].*detection\.posture/);
 });
 
 test("카메라 화면은 브라우저 장치 대신 Jetson WebRTC stream만 사용한다", async () => {
