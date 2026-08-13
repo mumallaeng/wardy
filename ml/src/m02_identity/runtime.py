@@ -229,8 +229,8 @@ class RegisteredSubjectIdentifier:
         detector_width = 320
         detector_height = 320
         scale = min(detector_width / width, detector_height / height)
-        resized_width = max(1, min(detector_width, int(round(width * scale))))
-        resized_height = max(1, min(detector_height, int(round(height * scale))))
+        resized_width = max(1, min(detector_width, round(width * scale)))
+        resized_height = max(1, min(detector_height, round(height * scale)))
         resized = cv2.resize(
             image, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR
         )
@@ -253,7 +253,10 @@ class RegisteredSubjectIdentifier:
         if not visible_faces:
             return None
         face = max(visible_faces, key=lambda item: float(item[2] * item[3])).copy()
-        face[:14] /= scale
+        x_scale = resized_width / width
+        y_scale = resized_height / height
+        face[[0, 2, 4, 6, 8, 10, 12]] /= x_scale
+        face[[1, 3, 5, 7, 9, 11, 13]] /= y_scale
         return face
 
     def _feature(self, image: np.ndarray, face: np.ndarray) -> np.ndarray:
