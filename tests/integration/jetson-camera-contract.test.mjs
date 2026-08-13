@@ -321,6 +321,10 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
   assert.match(caddy, /127\.0\.0\.1:8889/);
+  assert.match(caddy, /not remote_ip private_ranges/);
+  assert.match(caddy, /not header Origin \{\$WARDY_UI_ORIGIN\}/);
+  assert.match(caddy, /respond @outside_private_network "Forbidden" 403/);
+  assert.match(caddy, /respond @unexpected_browser_origin "Forbidden" 403/);
   assert.match(caddy, /header_up X-Wardy-Access-Token \{\$WARDY_ACCESS_TOKEN\}/);
   assert.match(caddy, /header_up Sec-WebSocket-Protocol "wardy-events, \{\$WARDY_ACCESS_TOKEN\}"/);
   assert.match(launcher, /chmod 0600/);
