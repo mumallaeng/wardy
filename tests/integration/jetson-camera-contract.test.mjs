@@ -235,6 +235,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(serviceInstaller, /systemctl enable/);
   assert.match(serviceInstaller, /systemctl restart/);
   assert.match(serviceInstaller, /Restart=on-failure/);
+  assert.match(serviceInstaller, /SuccessExitStatus=143 SIGTERM/);
   assert.match(serviceInstaller, /MTX_WEBRTCLOCALTCPADDRESS=:8189/);
   assert.match(launcher, /MTX_WEBRTCLOCALTCPADDRESS.*:8189/);
 });

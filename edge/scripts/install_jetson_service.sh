@@ -65,6 +65,7 @@ WorkingDirectory=${repo_dir}
 Environment=HOME=${service_home}
 Environment=MTX_WEBRTCLOCALTCPADDRESS=:8189
 ExecStart=${edge_dir}/scripts/start_jetson_webrtc.sh
+SuccessExitStatus=143 SIGTERM
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=15
