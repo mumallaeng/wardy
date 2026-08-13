@@ -98,9 +98,20 @@ step="Jetson health 확인"
 curl --silent --show-error --fail --max-time 5 --cacert "${ca_file}" \
   "https://${jetson_host}:8443/api/health" >/dev/null
 
-url="http://localhost:8000/?jetson=https%3A%2F%2F${jetson_host}%3A8443"
+ui_host="${WARDY_UI_HOST:-}"
+if [[ -z "${ui_host}" ]]; then
+  default_interface="$(route -n get default 2>/dev/null | awk '$1 == "interface:" {print $2; exit}')"
+  if [[ -n "${default_interface}" ]]; then
+    ui_host="$(ipconfig getifaddr "${default_interface}" 2>/dev/null || true)"
+  fi
+fi
+ui_host="${ui_host:-localhost}"
+ui_origin="http://${ui_host}:8000"
+export VITE_WARDY_JETSON_URL="https://${jetson_host}:8443"
+url="${ui_origin}/?jetson=https%3A%2F%2F${jetson_host}%3A8443"
 step="브라우저 열기"
 (sleep 2; open "${url}") &
 trap - ERR
 echo "Wardy UI 시작: ${url}"
+echo "휴대전화 Wardy 주소: ${ui_origin}/"
 npm run serve
