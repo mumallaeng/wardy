@@ -69,11 +69,26 @@ let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
 const identityReviewUrls = new Map<string, string>();
-const identityReviewLoads = new Map<string, Promise<string>>();
+const identityReviewLoads = new Map<string, {
+  promise: Promise<string>;
+  controller: AbortController;
+}>();
 let activeIdentityReviewIds = new Set<string>();
+const IDENTITY_PREVIEW_LIMIT = 8;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
+
+function applyLaunchConfiguration(): void {
+  const url = new URL(window.location.href);
+  const requestedJetson = url.searchParams.get("jetson");
+  if (!requestedJetson) return;
+  store.setJetsonBaseUrl(normalizeJetsonBaseUrl(requestedJetson));
+  url.searchParams.delete("jetson");
+  window.history.replaceState({}, "", url);
+}
+
+applyLaunchConfiguration();
 
 interface SystemGuidance {
   tone: SystemGuidanceTone;
@@ -353,7 +368,9 @@ async function resolveIdentityReview(reviewId: string,
 async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
                                              hasSubjects: boolean): Promise<void> {
   const currentIds = new Set(reviews.map((review) => review.id));
-  activeIdentityReviewIds = currentIds;
+  const previewReviews = reviews.slice(0, IDENTITY_PREVIEW_LIMIT);
+  const previewIds = new Set(previewReviews.map((review) => review.id));
+  activeIdentityReviewIds = previewIds;
   identityReviewUrls.forEach((url, reviewId) => {
     if (!currentIds.has(reviewId)) {
       URL.revokeObjectURL(url);
@@ -361,8 +378,9 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
     }
   });
   identityReviewLoads.forEach((loading, reviewId) => {
-    if (currentIds.has(reviewId)) return;
-    void loading.then((url) => {
+    if (previewIds.has(reviewId)) return;
+    loading.controller.abort();
+    void loading.promise.then((url) => {
       if (!activeIdentityReviewIds.has(reviewId)
           && identityReviewUrls.get(reviewId) === url) {
         URL.revokeObjectURL(url);
@@ -370,11 +388,17 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
       }
     }).catch(() => undefined);
   });
-  await Promise.all(reviews.map(async (review) => {
+  reviews.slice(IDENTITY_PREVIEW_LIMIT).forEach((review) => {
+    const notice = document.querySelector<HTMLElement>(
+      `[data-review-notice="${CSS.escape(review.id)}"]`,
+    );
+    if (notice) notice.textContent = `요청 과부하 방지를 위해 최근 ${IDENTITY_PREVIEW_LIMIT}건만 미리 불러옵니다.`;
+  });
+  for (const review of previewReviews) {
     const image = document.querySelector<HTMLImageElement>(
       `[data-review-image="${CSS.escape(review.id)}"]`,
     );
-    if (!image) return;
+    if (!image) continue;
     document.querySelectorAll<HTMLButtonElement>(
       `[data-review-action="${CSS.escape(review.id)}"]`,
     ).forEach((button) => {
@@ -387,12 +411,14 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
     try {
       let url = identityReviewUrls.get(review.id);
       if (!url) {
-        let loading = identityReviewLoads.get(review.id);
-        if (!loading) {
-          loading = (async () => {
+        let load = identityReviewLoads.get(review.id);
+        if (!load) {
+          const controller = new AbortController();
+          const loading = (async () => {
             const connection = runtimeConnection();
             const blob = await runtime.loadIdentityReviewMedia(
-              connection.baseUrl, connection.accessToken, connection.origin, review.id);
+              connection.baseUrl, connection.accessToken, connection.origin, review.id,
+              controller.signal);
             const createdUrl = URL.createObjectURL(blob);
             if (!activeIdentityReviewIds.has(review.id)) {
               URL.revokeObjectURL(createdUrl);
@@ -401,14 +427,15 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
             identityReviewUrls.set(review.id, createdUrl);
             return createdUrl;
           })();
-          identityReviewLoads.set(review.id, loading);
+          load = { promise: loading, controller };
+          identityReviewLoads.set(review.id, load);
           void loading.finally(() => {
-            if (identityReviewLoads.get(review.id) === loading) {
+            if (identityReviewLoads.get(review.id)?.promise === loading) {
               identityReviewLoads.delete(review.id);
             }
           }).catch(() => undefined);
         }
-        url = await loading;
+        url = await load.promise;
       }
       image.src = url;
       const notice = document.querySelector<HTMLElement>(
@@ -418,12 +445,28 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
         ? "장면을 확인하고 답변을 선택해 주세요."
         : "등록 인물이 없어 미등록 또는 학습 제외로 답할 수 있습니다.";
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") continue;
       const notice = document.querySelector<HTMLElement>(
         `[data-review-notice="${CSS.escape(review.id)}"]`,
       );
       if (notice) notice.textContent = errorMessage(error);
     }
-  }));
+  }
+}
+
+function renderFallIncident(events: readonly WardyEvent[]): void {
+  const active = events.find((event) => event.event_type === "fall_suspected"
+    && !["released", "false_detection"].includes(event.event_status));
+  $("#fall-incident").classList.toggle("is-active", Boolean(active));
+  $("#fall-incident-empty").toggleAttribute("hidden", Boolean(active));
+  $("#fall-incident-active").toggleAttribute("hidden", !active);
+  if (!active) return;
+  $("#fall-incident-time").textContent = formatDateTime(active.occurred_at);
+  $("#fall-incident-target").textContent = active.subject_name || active.subject_id || "대상 확인 필요";
+  $("#fall-incident-reason").textContent = "모델 값이 다시 낮아져도 자동 해제되지 않습니다. 직접 확인 후 처리해 주세요.";
+  $$<HTMLButtonElement>("[data-fall-action]").forEach((button) => {
+    button.dataset.eventId = active.event_id;
+  });
 }
 
 /**
@@ -890,6 +933,7 @@ function downloadJson(filename: string, value: unknown): void {
  */
 function render(state: WardyState = store.getState()): void {
   renderCareState(state);
+  renderFallIncident(state.events);
   renderSummary(state.events);
   renderEvents(state.events);
   renderDashboardOverlayControls(state.settings.overlay);
@@ -979,6 +1023,13 @@ $$<HTMLInputElement>('[data-overlay-setting]').forEach((input) => input.addEvent
   store.setOverlaySetting(input.dataset.overlaySetting as OverlaySettingKey, input.checked);
 }));
 $("#generate-ai-summary").addEventListener("click", () => { void generateDailySummary(); });
+$$<HTMLButtonElement>("[data-fall-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const eventId = button.dataset.eventId;
+    const action = button.dataset.fallAction as "confirm" | "release" | "false-detection";
+    if (eventId) void runEventAction(eventId, action);
+  });
+});
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
   .forEach((control) => control.addEventListener("input", () => renderEvents(store.getState().events)));
@@ -1101,6 +1152,7 @@ $("#system-guidance-action").addEventListener("click", () => openView("jetson"))
 window.addEventListener("beforeunload", () => {
   closeDatasetPreview();
   activeIdentityReviewIds.clear();
+  identityReviewLoads.forEach((load) => load.controller.abort());
   identityReviewUrls.forEach((url) => URL.revokeObjectURL(url));
   camera.stop();
   runtime.stop();

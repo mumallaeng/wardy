@@ -125,6 +125,18 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   );
   assert.match(api, /active_fall_tracks\.insert\(person\.track_id\)\.second/);
   assert.doesNotMatch(api, /if \(apply \|\| \*person\.fall_suspected\)/);
+  assert.match(api, /apply && \*person\.fall_suspected/);
+  assert.doesNotMatch(api, /Tracked person expired; fall alert released/);
+  assert.match(api, /clear_all_fall_tracks\(locked\)/);
+  assert.doesNotMatch(api, /Camera stream reset; anonymous fall track released/);
+});
+
+test("내부 추론 예외는 웹 상태에 그대로 노출하지 않는다", async () => {
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(api, /Inference pipeline error:/);
+  assert.match(api, /AI 안전 감지를 일시적으로 사용할 수 없습니다\./);
+  assert.doesNotMatch(api, /save_detection_state\(locked, "fault", message\)/);
+  assert.doesNotMatch(api, /apply_detection_fault\(locked, true, message\)/);
 });
 
 test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {

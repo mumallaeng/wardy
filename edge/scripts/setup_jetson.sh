@@ -91,11 +91,19 @@ set_env_value() {
 set_env_default() {
   local key="$1"
   local value="$2"
-  local legacy_value="${3:-}"
   local current
+  local legacy_value
+  local replace=false
   current="$(sed -n "s/^${key}=//p" "${env_file}" | head -n 1)"
-  if [[ -z "${current}" || "${current}" == replace-with-* ||
-        ( -n "${legacy_value}" && "${current}" == "${legacy_value}" ) ]]; then
+  if [[ -z "${current}" || "${current}" == replace-with-* ]]; then
+    replace=true
+  fi
+  for legacy_value in "${@:3}"; do
+    if [[ -n "${legacy_value}" && "${current}" == "${legacy_value}" ]]; then
+      replace=true
+    fi
+  done
+  if [[ "${replace}" == true ]]; then
     set_env_value "${key}" "${value}"
   fi
 }
@@ -119,6 +127,7 @@ set_env_default \
   "edge/models/m01_person/v1.0.1/model.engine"
 set_env_default \
   WARDY_HAZARD_MODEL \
+  "edge/models/m05_hazard/hazard-objects-c270-finetune-v1/model.onnx" \
   "edge/models/m05_hazard/hazard-objects-v2-finetune-v3/model.onnx" \
   "ml/src/export/hazard_objects_v1_full_v1/weights/best.onnx"
 ensure_token WARDY_ACCESS_TOKEN

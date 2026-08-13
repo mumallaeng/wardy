@@ -116,13 +116,15 @@ test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", a
     }] });
   };
   const client = new WardyRuntimeClient(fetchImpl);
+  const controller = new AbortController();
   const blob = await client.loadIdentityReviewMedia(
-    "https://jetson.local:8443", "token", "", "review-1",
+    "https://jetson.local:8443", "token", "", "review-1", controller.signal,
   );
   const reviews = await client.resolveIdentityReview(
     "https://jetson.local:8443", "token", "", "review-1", "unknown",
   );
   assert.equal(blob.type, "image/jpeg");
+  assert.equal(calls[0].init.signal.aborted, false);
   assert.equal(reviews[0].decision, "unknown");
   assert.equal(calls[1].init.method, "POST");
   assert.equal(calls[1].init.headers["X-Wardy-Review-Decision"], "unknown");
