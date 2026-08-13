@@ -284,6 +284,19 @@ inline std::string notification_settings_json(
   return body + "}}";
 }
 
+inline std::string data_collection_settings_json(
+    const storage::DataCollectionSettingsRecord& settings) {
+  return "{\"dataCollection\":{"
+      "\"identityReviewEnabled\":" + std::string(settings.identity_review_enabled ? "true" : "false") +
+      ",\"eventMediaEnabled\":" + std::string(settings.event_media_enabled ? "true" : "false") +
+      ",\"modelImprovementEnabled\":" + std::string(settings.model_improvement_enabled ? "true" : "false") +
+      ",\"eventMediaRetentionDays\":" + std::to_string(settings.event_media_retention_days) +
+      ",\"trainingDataRetentionDays\":" + std::to_string(settings.training_data_retention_days) +
+      ",\"consentVersion\":" + json_string(settings.consent_version) +
+      ",\"consentedAt\":" + json_string(settings.consented_at) +
+      ",\"updatedAt\":" + json_string(settings.updated_at) + "}}";
+}
+
 inline std::string identity_reviews_json(
     const std::vector<storage::IdentityReviewRecord>& reviews) {
   std::string body = "{\"reviews\":[";

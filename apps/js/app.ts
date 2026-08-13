@@ -16,7 +16,7 @@ import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { ColorThemeController } from "./theme.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CameraStatus, DataCollectionSettings, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -64,6 +64,7 @@ let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 let inferenceState: InferenceSnapshot | null = null;
+let dataCollectionSettings: DataCollectionSettings | null = null;
 let inferenceExpiryTimer: number | null = null;
 let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
@@ -538,13 +539,17 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
   if (!configured.baseUrl) return;
   try {
     await jetson.check(configured.baseUrl, window.location.origin);
-    const [snapshot, collections, datasetSamples] = await Promise.all([
+    const [snapshot, collections, datasetSamples, collectionSettings] = await Promise.all([
       runtime.loadSnapshot(configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin),
       runtime.loadCollections(configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin),
       trainingSamples.listDatasetSamples(
         configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin,
       ),
+      runtime.loadDataCollectionSettings(
+        configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin,
+      ),
     ]);
+    dataCollectionSettings = collectionSettings;
     applyRuntimeSnapshot(snapshot);
     if (collections.subjects) store.replaceSubjects(collections.subjects);
     if (collections.managedItems) store.replaceManagedItems(collections.managedItems);
@@ -952,6 +957,14 @@ function render(state: WardyState = store.getState()): void {
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
   renderNotifications($("#notification-settings"), state.settings.notifications,
     (eventType, value) => { void saveNotificationSetting(eventType, value); });
+  if (dataCollectionSettings) {
+    $<HTMLInputElement>("#collect-identity-review").checked = dataCollectionSettings.identityReviewEnabled;
+    $<HTMLInputElement>("#collect-event-media").checked = dataCollectionSettings.eventMediaEnabled;
+    $<HTMLInputElement>("#collect-model-improvement").checked = dataCollectionSettings.modelImprovementEnabled;
+    $<HTMLInputElement>("#event-media-retention").value = String(dataCollectionSettings.eventMediaRetentionDays);
+    $<HTMLInputElement>("#training-data-retention").value = String(dataCollectionSettings.trainingDataRetentionDays);
+    $("#privacy-consent-status").textContent = dataCollectionSettings.consentedAt ? "설정됨" : "미동의";
+  }
   renderSubjects($("#subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderSubjects($("#data-subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderIdentityReviews(
@@ -1088,6 +1101,29 @@ $("#enable-browser-notifications").addEventListener("click", async () => {
   const permission = await Notification.requestPermission();
   renderNotificationPermission();
   toast(permission === "granted" ? "브라우저 알림을 허용했습니다." : "브라우저 알림이 허용되지 않았습니다.");
+});
+$<HTMLFormElement>("#data-collection-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const connection = runtimeConnection();
+    const requested: DataCollectionSettings = {
+      identityReviewEnabled: $<HTMLInputElement>("#collect-identity-review").checked,
+      eventMediaEnabled: $<HTMLInputElement>("#collect-event-media").checked,
+      modelImprovementEnabled: $<HTMLInputElement>("#collect-model-improvement").checked,
+      eventMediaRetentionDays: Number($<HTMLInputElement>("#event-media-retention").value),
+      trainingDataRetentionDays: Number($<HTMLInputElement>("#training-data-retention").value),
+      consentVersion: "wardy-privacy-v1",
+      consentedAt: null,
+      updatedAt: "",
+    };
+    dataCollectionSettings = await runtime.saveDataCollectionSettings(
+      connection.baseUrl, connection.accessToken, connection.origin, requested,
+    );
+    render();
+    toast("Jetson에 데이터 수집 동의 설정을 저장했습니다.");
+  } catch (error) {
+    toast(errorMessage(error));
+  }
 });
 
 $("#export-events").addEventListener("click", () => {

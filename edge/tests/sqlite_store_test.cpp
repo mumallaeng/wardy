@@ -72,7 +72,22 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "6");
+  assert(store.schema_version() == "7");
+  auto privacy = store.data_collection_settings();
+  assert(!privacy.identity_review_enabled);
+  assert(!privacy.event_media_enabled);
+  assert(!privacy.model_improvement_enabled);
+  assert(privacy.event_media_retention_days == 7);
+  privacy.identity_review_enabled = true;
+  privacy.model_improvement_enabled = true;
+  privacy.training_data_retention_days = 180;
+  privacy.consented_at = "2026-08-13T06:00:00Z";
+  privacy.updated_at = *privacy.consented_at;
+  store.save_data_collection_settings(privacy);
+  const auto saved_privacy = store.data_collection_settings();
+  assert(saved_privacy.identity_review_enabled);
+  assert(saved_privacy.model_improvement_enabled);
+  assert(saved_privacy.training_data_retention_days == 180);
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -339,7 +354,7 @@ int main() {
     {
       wardy::storage::SqliteStore migrated(path.string());
       migrated.initialize();
-      assert(migrated.schema_version() == "6");
+      assert(migrated.schema_version() == "7");
       const auto legacy_events = migrated.list_events();
       assert(legacy_events.size() == 1);
       assert(legacy_events[0].event_id == "EVT-LEGACY");
@@ -386,7 +401,7 @@ int main() {
   const auto retry_path =
       std::filesystem::temp_directory_path() / "wardy-schema-retry.sqlite";
   std::filesystem::remove(retry_path);
-  create_version_database(retry_path, 7);
+  create_version_database(retry_path, 8);
   {
     wardy::storage::SqliteStore retry_store(retry_path.string());
     bool rejected = false;
@@ -405,7 +420,7 @@ int main() {
             nullptr, nullptr, nullptr) == SQLITE_OK);
     assert(sqlite3_close(database) == SQLITE_OK);
     retry_store.initialize();
-    assert(retry_store.schema_version() == "6");
+    assert(retry_store.schema_version() == "7");
   }
   std::filesystem::remove(retry_path);
   return 0;

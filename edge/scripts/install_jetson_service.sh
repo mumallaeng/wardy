@@ -6,6 +6,8 @@ edge_dir="$(cd "${script_dir}/.." && pwd)"
 repo_dir="$(cd "${edge_dir}/.." && pwd)"
 service_name="wardy-edge.service"
 ml_service_name="wardy-pose-fall.service"
+maintenance_service_name="wardy-data-maintenance.service"
+maintenance_timer_name="wardy-data-maintenance.timer"
 service_user="${WARDY_SERVICE_USER:-$(id -un)}"
 service_home="$(getent passwd "${service_user}" | cut -d: -f6)"
 start_service=true
@@ -28,7 +30,12 @@ fi
 
 unit_file="$(mktemp)"
 ml_unit_file="$(mktemp)"
-cleanup() { rm -f "${unit_file}" "${ml_unit_file}"; }
+maintenance_unit_file="$(mktemp)"
+maintenance_timer_file="$(mktemp)"
+cleanup() {
+  rm -f "${unit_file}" "${ml_unit_file}" "${maintenance_unit_file}" \
+    "${maintenance_timer_file}"
+}
 trap cleanup EXIT
 
 cat > "${ml_unit_file}" <<EOF
@@ -74,11 +81,40 @@ TimeoutStopSec=15
 WantedBy=multi-user.target
 EOF
 
+cat > "${maintenance_unit_file}" <<EOF
+[Unit]
+Description=Wardy local data retention cleanup
+
+[Service]
+Type=oneshot
+User=${service_user}
+WorkingDirectory=${repo_dir}
+Environment=HOME=${service_home}
+UMask=0077
+ExecStart=${edge_dir}/scripts/prune_wardy_data.sh
+EOF
+
+cat > "${maintenance_timer_file}" <<EOF
+[Unit]
+Description=Run Wardy local data retention cleanup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
+EOF
+
 sudo install -m 0644 "${ml_unit_file}" "/etc/systemd/system/${ml_service_name}"
 sudo install -m 0644 "${unit_file}" "/etc/systemd/system/${service_name}"
+sudo install -m 0644 "${maintenance_unit_file}" "/etc/systemd/system/${maintenance_service_name}"
+sudo install -m 0644 "${maintenance_timer_file}" "/etc/systemd/system/${maintenance_timer_name}"
 sudo systemctl daemon-reload
 sudo systemctl enable "${ml_service_name}"
 sudo systemctl enable "${service_name}"
+sudo systemctl enable --now "${maintenance_timer_name}"
 if [[ "${start_service}" == true ]]; then
   sudo systemctl restart "${ml_service_name}"
   sudo systemctl restart "${service_name}"

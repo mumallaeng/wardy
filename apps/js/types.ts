@@ -136,6 +136,17 @@ export interface Subject {
   referenceSampleCount?: number;
 }
 
+export interface DataCollectionSettings {
+  identityReviewEnabled: boolean;
+  eventMediaEnabled: boolean;
+  modelImprovementEnabled: boolean;
+  eventMediaRetentionDays: number;
+  trainingDataRetentionDays: number;
+  consentVersion: string;
+  consentedAt: string | null;
+  updatedAt: string;
+}
+
 export interface WardyState {
   version: 1;
   careState: CareState;

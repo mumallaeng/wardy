@@ -435,6 +435,30 @@ test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한�
   assert.match(api, /const auto media_event_id = event_media_path\(path\)/);
   assert.match(api, /method == "GET" && media_event_id/);
   assert.match(api, /method == "DELETE" && media_event_id/);
-  assert.match(launcher, /data\/events/);
+  assert.match(launcher, /\/var\/lib\/wardy\/events/);
+  assert.match(api, /data_collection_settings\(\)\.event_media_enabled/);
   assert.doesNotMatch(media, /TensorRT|onnx|inference|tracking/i);
+});
+
+test("운영 데이터는 저장소 밖의 영속 경로와 명시적 수집 동의를 사용한다", async () => {
+  const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
+  const storage = await readFile(path.join(root, "edge/src/storage/sqlite_store.cpp"), "utf8");
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const identity = await readFile(path.join(root, "ml/src/m02_identity/runtime.py"), "utf8");
+  const backup = await readFile(path.join(root, "edge/scripts/backup_wardy_data.sh"), "utf8");
+  const verify = await readFile(path.join(root, "edge/scripts/verify_wardy_backup.sh"), "utf8");
+  const prune = await readFile(path.join(root, "edge/scripts/prune_wardy_data.sh"), "utf8");
+  const response = await readFile(path.join(root, "edge/src/api/http_response.hpp"), "utf8");
+  assert.match(setup, /WARDY_DATABASE_PATH \/var\/lib\/wardy\/db\/wardy\.sqlite/);
+  assert.match(setup, /prepare_wardy_storage\.sh/);
+  assert.match(storage, /CREATE TABLE IF NOT EXISTS data_collection_settings/);
+  assert.match(storage, /VALUES\(1,0,0,0,7,90,'wardy-privacy-v1'/);
+  assert.match(api, /path == "\/api\/data-collection-settings"/);
+  assert.match(api, /data collection consent is required/);
+  assert.match(identity, /SELECT identity_review_enabled FROM data_collection_settings/);
+  assert.match(backup, /sqlite3 .*\.backup/);
+  assert.match(verify, /PRAGMA integrity_check/);
+  assert.match(prune, /review_status!='approved'/);
+  assert.match(response, /X-Wardy-Identity-Review-Enabled/);
+  assert.match(response, /X-Wardy-Training-Data-Retention-Days/);
 });

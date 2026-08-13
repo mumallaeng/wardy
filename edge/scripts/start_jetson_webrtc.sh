@@ -42,9 +42,9 @@ else
 fi
 caddy_bin="${WARDY_CADDY_BIN:-${default_caddy}}"
 edge_service="${WARDY_EDGE_SERVICE_BIN:-${edge_dir}/build/wardy_edge_service}"
-database_path="${WARDY_DATABASE_PATH:-${edge_dir}/db/wardy.sqlite}"
-training_data_path="${WARDY_TRAINING_DATA_PATH:-${edge_dir}/data/training}"
-event_media_path="${WARDY_EVENT_MEDIA_PATH:-${edge_dir}/data/events}"
+database_path="${WARDY_DATABASE_PATH:-/var/lib/wardy/db/wardy.sqlite}"
+training_data_path="${WARDY_TRAINING_DATA_PATH:-/var/lib/wardy/training}"
+event_media_path="${WARDY_EVENT_MEDIA_PATH:-/var/lib/wardy/events}"
 
 if [[ -z "${ui_origin}" || -z "${access_token}" ||
       -z "${publish_token}" || -z "${jetson_host}" || -z "${tls_certificate}" ||

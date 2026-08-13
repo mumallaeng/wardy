@@ -122,6 +122,10 @@ set_env_value WARDY_JETSON_HOST "${jetson_host}"
 set_env_value WARDY_UI_ORIGIN "${ui_origin}"
 set_env_value WARDY_TLS_CERTIFICATE "${tls_dir}/jetson.crt"
 set_env_value WARDY_TLS_PRIVATE_KEY "${tls_dir}/jetson.key"
+set_env_default WARDY_DATABASE_PATH /var/lib/wardy/db/wardy.sqlite edge/db/wardy.sqlite
+set_env_default WARDY_TRAINING_DATA_PATH /var/lib/wardy/training edge/data/training
+set_env_default WARDY_EVENT_MEDIA_PATH /var/lib/wardy/events edge/data/events
+set_env_default WARDY_BACKUP_PATH /var/lib/wardy/backups
 set_env_default \
   WARDY_PERSON_ENGINE \
   "edge/models/m01_person/v1.0.1/model.engine"
@@ -134,6 +138,10 @@ ensure_token WARDY_ACCESS_TOKEN
 ensure_token WARDY_PUBLISH_TOKEN
 chmod 0600 "${env_file}"
 
+echo "Preparing persistent Wardy storage. Existing repository data will be copied, never deleted."
+WARDY_ENV_FILE="${env_file}" "${script_dir}/prepare_wardy_storage.sh"
+
+echo "Installing AI models and Python runtime. Initial setup can take several minutes; progress is still active while model downloads or TensorRT conversion are running."
 "${script_dir}/install_pose_fall_runtime.sh"
 
 tls_artifacts=(
@@ -194,6 +202,7 @@ else
   exit 1
 fi
 
+echo "Building the Jetson service. The first TensorRT engine build can take 5-15 minutes on Jetson."
 cmake -S "${edge_dir}" -B "${edge_dir}/build"
 cmake --build "${edge_dir}/build" -j"$(nproc)"
 "${script_dir}/check_jetson_dependencies.sh"

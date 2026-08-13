@@ -205,7 +205,7 @@ void SqliteStore::initialize() {
         throw std::runtime_error(sqlite3_errmsg(impl_->database));
       }
     }
-    if (stored_version < 0 || stored_version > 6) {
+    if (stored_version < 0 || stored_version > 7) {
       throw std::runtime_error("unsupported SQLite schema version: " +
                                std::to_string(stored_version));
     }
@@ -354,10 +354,26 @@ void SqliteStore::initialize() {
     );
     CREATE INDEX IF NOT EXISTS identity_reviews_status_idx
       ON identity_reviews(decision, captured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS data_collection_settings (
+      singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+      identity_review_enabled INTEGER NOT NULL CHECK(identity_review_enabled IN (0,1)),
+      event_media_enabled INTEGER NOT NULL CHECK(event_media_enabled IN (0,1)),
+      model_improvement_enabled INTEGER NOT NULL CHECK(model_improvement_enabled IN (0,1)),
+      event_media_retention_days INTEGER NOT NULL CHECK(event_media_retention_days BETWEEN 1 AND 365),
+      training_data_retention_days INTEGER NOT NULL CHECK(training_data_retention_days BETWEEN 1 AND 3650),
+      consent_version TEXT NOT NULL,
+      consented_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO data_collection_settings(
+      singleton_id,identity_review_enabled,event_media_enabled,model_improvement_enabled,
+      event_media_retention_days,training_data_retention_days,consent_version,updated_at
+    ) VALUES(1,0,0,0,7,90,'wardy-privacy-v1','1970-01-01T00:00:00Z');
     )SQL");
-      if (stored_version < 6) {
+      if (stored_version < 7) {
         execute(impl_->database, R"SQL(
-        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '6')
+        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '7')
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
       )SQL");
       }
@@ -1044,6 +1060,56 @@ bool SqliteStore::update_identity_review_decision(
   bind_text(statement.get(), 4, review_id);
   require_done(impl_->database, statement.get());
   return sqlite3_changes(impl_->database) > 0;
+}
+
+DataCollectionSettingsRecord SqliteStore::data_collection_settings() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT identity_review_enabled,event_media_enabled,model_improvement_enabled,
+           event_media_retention_days,training_data_retention_days,consent_version,
+           consented_at,updated_at
+    FROM data_collection_settings WHERE singleton_id=1;
+  )SQL");
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    throw std::runtime_error("data collection settings are missing");
+  }
+  return {
+      sqlite3_column_int(statement.get(), 0) != 0,
+      sqlite3_column_int(statement.get(), 1) != 0,
+      sqlite3_column_int(statement.get(), 2) != 0,
+      sqlite3_column_int(statement.get(), 3),
+      sqlite3_column_int(statement.get(), 4),
+      column_text(statement.get(), 5),
+      optional_column_text(statement.get(), 6),
+      column_text(statement.get(), 7),
+  };
+}
+
+void SqliteStore::save_data_collection_settings(
+    const DataCollectionSettingsRecord& settings) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  if (settings.event_media_retention_days < 1 || settings.event_media_retention_days > 365 ||
+      settings.training_data_retention_days < 1 ||
+      settings.training_data_retention_days > 3650) {
+    throw std::invalid_argument("invalid data retention period");
+  }
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    UPDATE data_collection_settings SET
+      identity_review_enabled=?,event_media_enabled=?,model_improvement_enabled=?,
+      event_media_retention_days=?,training_data_retention_days=?,consent_version=?,
+      consented_at=?,updated_at=? WHERE singleton_id=1;
+  )SQL");
+  sqlite3_bind_int(statement.get(), 1, settings.identity_review_enabled ? 1 : 0);
+  sqlite3_bind_int(statement.get(), 2, settings.event_media_enabled ? 1 : 0);
+  sqlite3_bind_int(statement.get(), 3, settings.model_improvement_enabled ? 1 : 0);
+  sqlite3_bind_int(statement.get(), 4, settings.event_media_retention_days);
+  sqlite3_bind_int(statement.get(), 5, settings.training_data_retention_days);
+  bind_text(statement.get(), 6, settings.consent_version);
+  bind_optional_text(statement.get(), 7, settings.consented_at);
+  bind_text(statement.get(), 8, settings.updated_at);
+  require_done(impl_->database, statement.get());
 }
 
 std::string SqliteStore::schema_version() const {

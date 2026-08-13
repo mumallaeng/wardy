@@ -105,6 +105,7 @@ void schedule_event_media(const std::shared_ptr<StreamState>& state,
                           const storage::EventRecord& event) noexcept {
   try {
     if (!state->event_media) return;
+    if (!state->database->data_collection_settings().event_media_enabled) return;
     state->event_media->schedule(event);
   } catch (const std::exception& error) {
     std::cerr << "Event media scheduling error: " << error.what() << '\n';
@@ -1000,6 +1001,48 @@ std::string update_notification_setting(
   return notification_settings_json(state->database->list_notification_settings());
 }
 
+bool enabled_header(const std::string& request, const std::string& name) {
+  const std::string value = lowercase(request_header(request, name).value_or(""));
+  if (value == "true" || value == "1" || value == "on") return true;
+  if (value == "false" || value == "0" || value == "off") return false;
+  throw std::invalid_argument("invalid data collection setting");
+}
+
+int retention_header(const std::string& request, const std::string& name,
+                     int minimum, int maximum) {
+  const std::string value = request_header(request, name).value_or("");
+  std::size_t parsed = 0;
+  int days = 0;
+  try {
+    days = std::stoi(value, &parsed);
+  } catch (const std::exception&) {
+    throw std::invalid_argument("invalid data retention period");
+  }
+  if (parsed != value.size() || days < minimum || days > maximum) {
+    throw std::invalid_argument("invalid data retention period");
+  }
+  return days;
+}
+
+std::string update_data_collection_settings(
+    const std::string& request, const std::shared_ptr<StreamState>& state) {
+  const std::string now = utc_now();
+  storage::DataCollectionSettingsRecord settings;
+  settings.identity_review_enabled =
+      enabled_header(request, "x-wardy-identity-review-enabled");
+  settings.event_media_enabled = enabled_header(request, "x-wardy-event-media-enabled");
+  settings.model_improvement_enabled =
+      enabled_header(request, "x-wardy-model-improvement-enabled");
+  settings.event_media_retention_days =
+      retention_header(request, "x-wardy-event-media-retention-days", 1, 365);
+  settings.training_data_retention_days =
+      retention_header(request, "x-wardy-training-data-retention-days", 1, 3650);
+  settings.consented_at = now;
+  settings.updated_at = now;
+  state->database->save_data_collection_settings(settings);
+  return data_collection_settings_json(settings);
+}
+
 std::string update_identity_review(
     const std::string& request, const std::string& review_id,
     const std::shared_ptr<StreamState>& state) {
@@ -1032,6 +1075,9 @@ std::string update_identity_review(
 
 std::string capture_training_sample(const std::string& request,
                                     const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const std::string item_id = request_header(request, "x-wardy-item-id").value_or("");
   const std::string encoded_label =
       request_header(request, "x-wardy-item-label").value_or("");
@@ -1108,6 +1154,9 @@ std::string capture_training_sample(const std::string& request,
 
 std::string capture_subject_reference(const std::string& request,
                                       const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().identity_review_enabled) {
+    throw std::invalid_argument("identity data collection consent is required");
+  }
   const std::string subject_id =
       request_header(request, "x-wardy-subject-id").value_or("");
   const std::string name = percent_decode(
@@ -1242,6 +1291,9 @@ std::string store_dataset_sample(
 
 std::string capture_dataset_sample(const std::string& request,
                                    const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const auto metadata = dataset_sample_metadata(request);
   if (!state->camera_connected) throw std::runtime_error("Jetson camera is unavailable");
   std::vector<unsigned char> jpeg;
@@ -1271,6 +1323,9 @@ std::string capture_dataset_sample(const std::string& request,
 
 std::string upload_dataset_sample(const std::string& request,
                                   const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const auto metadata = dataset_sample_metadata(request);
   const std::string content_type = lowercase(
       request_header(request, "content-type").value_or(""));
@@ -1614,6 +1669,18 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "POST" && path == "/api/notification-settings") {
     send_text(socket_fd, json_response(200, "OK",
         update_notification_setting(request, state), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/data-collection-settings") {
+    send_text(socket_fd, json_response(200, "OK",
+        data_collection_settings_json(state->database->data_collection_settings()),
+        config.allowed_origin));
+  } else if (method == "POST" && path == "/api/data-collection-settings") {
+    try {
+      send_text(socket_fd, json_response(200, "OK",
+          update_data_collection_settings(request, state), config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
   } else if (method == "GET" && path == "/api/identity-reviews") {
     send_text(socket_fd, json_response(200, "OK",
         identity_reviews_json(state->database->list_identity_reviews()),

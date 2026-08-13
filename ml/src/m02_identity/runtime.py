@@ -286,6 +286,15 @@ class RegisteredSubjectIdentifier:
         predicted_name: str | None,
         confidence: float | None,
     ) -> str | None:
+        try:
+            enabled = self._connection.execute(
+                "SELECT identity_review_enabled FROM data_collection_settings "
+                "WHERE singleton_id=1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            enabled = None
+        if enabled is None or not bool(enabled[0]):
+            return None
         now = time.monotonic()
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:

@@ -53,6 +53,10 @@ def _create_database(path: Path) -> None:
           predicted_name TEXT,confidence REAL,decision TEXT,subject_id TEXT,
           updated_at TEXT
         );
+        CREATE TABLE data_collection_settings(
+          singleton_id INTEGER PRIMARY KEY,identity_review_enabled INTEGER
+        );
+        INSERT INTO data_collection_settings VALUES(1,1);
         """
     )
     connection.commit()
