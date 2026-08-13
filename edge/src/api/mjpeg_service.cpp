@@ -777,21 +777,33 @@ void apply_tracking_results(
   }
   const std::set<std::int64_t> retained(
       response.active_track_ids.begin(), response.active_track_ids.end());
+  std::vector<std::pair<std::int64_t, std::pair<std::optional<std::string>,
+                                                std::optional<std::string>>>>
+      disappeared_falls;
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
     for (auto iterator = state->active_fall_tracks.begin();
          iterator != state->active_fall_tracks.end();) {
       if (retained.count(*iterator) == 0) {
-        state->active_fall_identities.erase(*iterator);
+        const auto identity = state->active_fall_identities.find(*iterator);
+        if (identity != state->active_fall_identities.end()) {
+          disappeared_falls.emplace_back(*iterator, identity->second);
+          state->active_fall_identities.erase(identity);
+        } else {
+          disappeared_falls.emplace_back(*iterator,
+                                         std::make_pair(std::nullopt, std::nullopt));
+        }
         iterator = state->active_fall_tracks.erase(iterator);
       } else {
         ++iterator;
       }
     }
   }
-  // A fall is an incident, not a frame-level status. Losing the track must not
-  // clear an alert before a caregiver has reviewed it. The runtime event stays
-  // active until the user explicitly releases or dismisses it.
+  for (const auto& [track_id, identity] : disappeared_falls) {
+    apply_fall_observation(state, track_id, false, std::nullopt,
+                           "낙상 의심 자세가 더 이상 감지되지 않습니다.",
+                           identity.first, identity.second);
+  }
 
   for (const auto& person : response.persons) {
     if (!person.fall_suspected) continue;
@@ -816,7 +828,7 @@ void apply_tracking_results(
         }
       }
     }
-    if (apply && *person.fall_suspected) {
+    if (apply) {
       apply_fall_observation(
           state, person.track_id, true,
           person.fall_confidence,
