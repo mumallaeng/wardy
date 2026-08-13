@@ -806,13 +806,13 @@ void apply_tracking_results(
   }
 
   for (const auto& person : response.persons) {
-    if (!person.fall_suspected) continue;
     bool apply = false;
+    const bool fall_active = person.fall_suspected.value_or(false);
     std::optional<std::string> event_subject_id = person.subject_id;
     std::optional<std::string> event_subject_name = person.subject_name;
     {
       std::lock_guard lock(state->active_fall_tracks_mutex);
-      if (*person.fall_suspected) {
+      if (fall_active) {
         apply = state->active_fall_tracks.insert(person.track_id).second;
         if (apply) {
           state->active_fall_identities[person.track_id] = {
@@ -830,9 +830,13 @@ void apply_tracking_results(
     }
     if (apply) {
       apply_fall_observation(
-          state, person.track_id, true,
-          person.fall_confidence,
-          "M-04 temporal pose sequence exceeded the fall threshold",
+          state, person.track_id, fall_active,
+          fall_active ? person.fall_confidence : std::nullopt,
+          fall_active
+              ? "M-04 temporal pose sequence exceeded the fall threshold"
+              : (person.fall_suspected
+                     ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
+                     : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
           event_subject_id, event_subject_name);
     }
   }
