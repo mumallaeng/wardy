@@ -41,6 +41,7 @@ test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를
 
   assert.match(api, /person_inference->submit/);
   assert.match(api, /pose_fall_client->infer_frame/);
+  assert.match(api, /previous->care_state != care/);
   assert.match(api, /apply_tracking_results/);
   assert.match(api, /inference::normalized_response_box/);
   assert.match(api, /item\.policy == "excluded"/);
@@ -124,8 +125,12 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   assert.match(api, /std::mutex system_state_mutex/);
   assert.equal(
     [...api.matchAll(/lock\(state->system_state_mutex\)/g)].length,
-    3,
+    4,
   );
+  assert.match(api, /person\.posture == "standing"/);
+  assert.match(api, /std::string\{"서 있음"\}/);
+  assert.match(api, /std::string\{"앉아 있음"\}/);
+  assert.match(api, /std::string\{"누워 있음"\}/);
   assert.match(api, /active_fall_tracks\.insert\(person\.track_id\)\.second/);
   assert.doesNotMatch(api, /if \(apply \|\| \*person\.fall_suspected\)/);
   assert.match(api, /apply && \*person\.fall_suspected/);

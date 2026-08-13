@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from m03_pose.contract import PersonInput, PoseResult
+from m03_pose.contract import PersonInput, PoseResult, classify_posture
 from m03_pose.preprocess import decode_simcc, preprocess_pose
 from m04_fall.features import FEATURE_NAMES, pose_results_to_features
 from m04_fall.inference import FallResult
@@ -24,6 +24,7 @@ class FakePose:
             bbox_xyxy=person.bbox_xyxy,
             keypoints_xyc=keypoints,
             pose_quality=0.9,
+            posture=classify_posture(keypoints),
         )
 
 
@@ -40,6 +41,25 @@ class FakeFall:
 
 
 class RuntimeContractTest(unittest.TestCase):
+    def test_posture_classification_uses_pose_geometry(self) -> None:
+        def pose(points: dict[int, tuple[float, float]]) -> np.ndarray:
+            keypoints = np.zeros((17, 3), dtype=np.float32)
+            for index, (x, y) in points.items():
+                keypoints[index] = [x, y, 0.9]
+            return keypoints
+
+        standing = pose({5: (40, 20), 6: (60, 20), 11: (42, 60), 12: (58, 60),
+                         13: (43, 100), 14: (57, 100)})
+        sitting = pose({5: (40, 20), 6: (60, 20), 11: (42, 60), 12: (58, 60),
+                        13: (70, 75), 14: (72, 75)})
+        lying = pose({5: (20, 40), 6: (20, 60), 11: (70, 42), 12: (70, 58),
+                      13: (100, 43), 14: (100, 57)})
+        self.assertEqual(classify_posture(standing), "standing")
+        self.assertEqual(classify_posture(sitting), "sitting")
+        self.assertEqual(classify_posture(lying), "lying")
+        standing[5, 2] = 0.1
+        self.assertEqual(classify_posture(standing), "unknown")
+
     def test_pose_preprocess_and_simcc_decode(self) -> None:
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         tensor, center, scale = preprocess_pose(frame, np.array([100, 50, 400, 450]))

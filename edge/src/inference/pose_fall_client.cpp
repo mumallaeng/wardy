@@ -345,11 +345,18 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
     const cv::FileNode pose = node["pose"];
     if (!pose.empty()) {
       const cv::FileNode quality = pose["pose_quality"];
+      const cv::FileNode posture = pose["posture"];
       if ((!quality.isInt() && !quality.isReal()) ||
-          !std::isfinite(static_cast<double>(quality))) {
-        throw std::runtime_error("tracking response person contains invalid pose quality");
+          !std::isfinite(static_cast<double>(quality)) || !posture.isString()) {
+        throw std::runtime_error("tracking response person contains invalid pose result");
       }
       person.pose_quality = static_cast<double>(quality);
+      const std::string posture_value = static_cast<std::string>(posture);
+      if (posture_value != "standing" && posture_value != "sitting" &&
+          posture_value != "lying" && posture_value != "unknown") {
+        throw std::runtime_error("tracking response person contains invalid posture label");
+      }
+      person.posture = posture_value;
       person.keypoints_xyc = parse_keypoints(pose["keypoints_xyc"]);
     }
     person.history_frames = nonnegative_integer(

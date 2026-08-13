@@ -26,6 +26,38 @@ COCO_KEYPOINT_NAMES = (
     "right_ankle",
 )
 
+POSTURE_LABELS = frozenset(("standing", "sitting", "lying", "unknown"))
+
+
+def classify_posture(keypoints_xyc: np.ndarray, minimum_confidence: float = 0.3) -> str:
+    """Derive a coarse posture label from visible COCO-17 body geometry."""
+    keypoints = np.asarray(keypoints_xyc, dtype=np.float32)
+    if keypoints.shape != (17, 3):
+        raise ValueError("keypoints_xyc must be a COCO-17 [17,3] array")
+
+    required = keypoints[[5, 6, 11, 12]]
+    if np.any(required[:, 2] < minimum_confidence):
+        return "unknown"
+
+    shoulder = required[:2, :2].mean(axis=0)
+    hip = required[2:, :2].mean(axis=0)
+    torso = hip - shoulder
+    torso_length = float(np.linalg.norm(torso))
+    if torso_length < 1.0:
+        return "unknown"
+    if abs(float(torso[0])) >= abs(float(torso[1])) * 0.85:
+        return "lying"
+
+    knees = keypoints[[13, 14]]
+    visible_knees = knees[knees[:, 2] >= minimum_confidence]
+    if visible_knees.size == 0:
+        return "unknown"
+    knee = visible_knees[:, :2].mean(axis=0)
+    hip_to_knee = knee - hip
+    if float(hip_to_knee[1]) < torso_length * 0.65:
+        return "sitting"
+    return "standing"
+
 
 @dataclass(frozen=True)
 class PersonInput:
@@ -54,6 +86,7 @@ class PoseResult:
     bbox_xyxy: np.ndarray
     keypoints_xyc: np.ndarray
     pose_quality: float
+    posture: str
 
     def __post_init__(self) -> None:
         keypoints = np.asarray(self.keypoints_xyc, dtype=np.float32)
@@ -61,6 +94,8 @@ class PoseResult:
             raise ValueError("keypoints_xyc must be a finite COCO-17 [17,3] array")
         if np.any((keypoints[:, 2] < 0.0) | (keypoints[:, 2] > 1.0)):
             raise ValueError("keypoint confidence must be between 0 and 1")
+        if self.posture not in POSTURE_LABELS:
+            raise ValueError("posture must be standing, sitting, lying, or unknown")
         object.__setattr__(self, "keypoints_xyc", keypoints)
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,5 +106,6 @@ class PoseResult:
             "bbox_xyxy": self.bbox_xyxy.tolist(),
             "keypoints_xyc": self.keypoints_xyc.tolist(),
             "pose_quality": self.pose_quality,
+            "posture": self.posture,
             "keypoint_format": "COCO-17",
         }
