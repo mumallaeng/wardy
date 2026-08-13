@@ -1,4 +1,4 @@
-import { CARE_STATUS, EVENT_TYPES } from "./constants.ts";
+import { CARE_STATUS, EVENT_TYPES, userFacingCareReason } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
@@ -592,7 +592,7 @@ function renderCareState(state: WardyState): void {
   $("#care-status-label").textContent = care.label;
   $("#care-status-code").textContent = status;
   $("#care-status-badge").textContent = care.label;
-  $("#care-status-reason").textContent = state.careState.reason;
+  $("#care-status-reason").textContent = userFacingCareReason(status, state.careState.reason);
   $("#care-orb").className = `care-orb is-${status}`;
   $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === status));
 }

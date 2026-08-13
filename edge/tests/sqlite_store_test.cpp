@@ -117,6 +117,35 @@ int main() {
   assert(stored_event->reason == event.reason);
   assert(!store.get_event("missing").has_value());
 
+  // Live incidents must remain discoverable even when the history window is
+  // filled with newer terminal events. The UI needs the active row in order
+  // to render the acknowledgement/false-detection actions.
+  wardy::storage::SqliteStore live_event_store(":memory:");
+  live_event_store.initialize();
+  auto old_live_event = event;
+  old_live_event.event_id = "EVT-OLD-LIVE";
+  old_live_event.event_status = "new";
+  old_live_event.occurred_at = "2020-01-01T00:00:00Z";
+  old_live_event.first_seen_at = old_live_event.occurred_at;
+  old_live_event.last_seen_at = old_live_event.occurred_at;
+  live_event_store.upsert_event(old_live_event);
+  for (int index = 0; index < 101; ++index) {
+    auto terminal = event;
+    terminal.event_id = "EVT-HISTORY-" + std::to_string(index);
+    terminal.event_status = "released";
+    terminal.occurred_at = "2026-08-13T12:" + std::to_string(index / 60) + ":" +
+                           std::to_string(index % 60) + "Z";
+    terminal.first_seen_at = terminal.occurred_at;
+    terminal.last_seen_at = terminal.occurred_at;
+    live_event_store.upsert_event(terminal);
+  }
+  const auto live_window = live_event_store.list_events();
+  assert(live_window.size() == 100);
+  assert(std::any_of(live_window.begin(), live_window.end(),
+                     [](const auto& candidate) {
+                       return candidate.event_id == "EVT-OLD-LIVE";
+                     }));
+
   wardy::storage::SqliteStore boundary_store(":memory:");
   boundary_store.initialize();
   auto boundary_event = event;

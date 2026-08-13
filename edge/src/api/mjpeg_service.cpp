@@ -2016,6 +2016,10 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
       });
   state->detection_fault_active =
       state->events->has_active_event_type("detection_fault");
+  // EventRuntime restores unresolved incidents before the camera loop starts.
+  // Persist that restored aggregate immediately so a stale system_state row
+  // cannot disagree with the event card shown to the operator.
+  save_runtime_state(state);
 #if defined(WARDY_WITH_TENSORRT)
   if (!config_.person_detector_engine_path.empty()) {
     const auto pose_fall_client = std::make_shared<inference::PoseFallClient>(

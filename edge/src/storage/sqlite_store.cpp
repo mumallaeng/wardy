@@ -467,7 +467,14 @@ std::vector<EventRecord> SqliteStore::list_events(std::size_t limit,
       subject_id, subject_name, subject_location, object_id, object_class, zone_id,
       care_status, event_status, confirmed_at, released_at, false_detection_at,
       reason, source_results_json, media_type, media_path, media_started_at, media_ended_at
-    FROM events ORDER BY occurred_at DESC LIMIT ? OFFSET ?;
+    FROM events
+    -- An unresolved safety incident is part of the live state even when it
+    -- was created before the most recent history window. Keep it visible to
+    -- the state snapshot so the operator can acknowledge or dismiss it.
+    ORDER BY CASE WHEN event_status NOT IN ('released', 'false_detection')
+                  THEN 0 ELSE 1 END,
+             datetime(occurred_at) DESC
+    LIMIT ? OFFSET ?;
   )SQL");
   sqlite3_bind_int(statement.get(), 1, static_cast<int>(limit));
   sqlite3_bind_int(statement.get(), 2, static_cast<int>(offset));

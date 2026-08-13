@@ -7,6 +7,21 @@ export const CARE_STATUS: Readonly<Record<CareStatus, { label: string; reason: s
   emergency: { label: "긴급", reason: "즉시 확인이 필요한 의심 상황입니다.", rank: 3 },
 });
 
+/** Convert runtime diagnostics into caregiver-facing status text. */
+export function userFacingCareReason(status: CareStatus, reason: string): string {
+  const normalized = reason.trim().toLocaleLowerCase("en-US");
+  if (normalized.includes("fall threshold") || normalized.includes("m-04")) {
+    return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+  }
+  if (normalized.includes("event runtime") || normalized.includes("worker")) {
+    return CARE_STATUS[status].reason;
+  }
+  if (!reason.trim() || /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason)) {
+    return CARE_STATUS[status].reason;
+  }
+  return reason;
+}
+
 export const EVENT_STATUS: Readonly<Record<EventStatus, string>> = Object.freeze({
   new: "신규",
   confirmed: "확인",
