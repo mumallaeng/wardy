@@ -63,7 +63,15 @@ export function renderDatasetSamples(
 ): void {
   container.replaceChildren();
   [...samples]
-    .sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.capturedAt);
+      const bTime = Date.parse(b.capturedAt);
+      const aValid = Number.isFinite(aTime);
+      const bValid = Number.isFinite(bTime);
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      if (aValid && aTime !== bTime) return bTime - aTime;
+      return b.capturedAt.localeCompare(a.capturedAt);
+    })
     .forEach((sample) => {
       const row = document.createElement("tr");
 

@@ -74,7 +74,9 @@ class InferenceOutputRuntime {
   };
 
   static void validate(const InferenceFrame& frame);
-  static std::string event_key(const rules::EventObservation& observation);
+  static std::string event_key(
+      const rules::EventObservation& observation,
+      const std::string& stable_subject_id = "");
   static std::string source_results(const InferenceFrame& frame,
                                     double confidence);
 

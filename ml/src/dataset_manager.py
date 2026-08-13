@@ -51,6 +51,35 @@ def verify_install(destination: Path, specification: dict[str, Any]) -> bool:
     )
 
 
+def _replace_path(source: Path, destination: Path) -> None:
+    source.replace(destination)
+
+
+def _recover_interrupted_promotion(destination: Path) -> None:
+    backup = destination.with_name(f".{destination.name}-backup")
+    if backup.exists() and not destination.exists():
+        _replace_path(backup, destination)
+    elif backup.exists():
+        shutil.rmtree(backup)
+
+
+def _promote_staging(staging: Path, destination: Path) -> None:
+    if not destination.exists():
+        _replace_path(staging, destination)
+        return
+    backup = destination.with_name(f".{destination.name}-backup")
+    if backup.exists():
+        shutil.rmtree(backup)
+    _replace_path(destination, backup)
+    try:
+        _replace_path(staging, destination)
+    except Exception:
+        _replace_path(backup, destination)
+        raise
+    else:
+        shutil.rmtree(backup)
+
+
 def install_dataset(
     dataset_id: str,
     version: str | None = None,
@@ -62,6 +91,7 @@ def install_dataset(
     registry = load_registry(registry_path)
     selected, specification = resolve_version(registry, dataset_id, version)
     destination = dataset_directory(dataset_root, dataset_id, selected)
+    _recover_interrupted_promotion(destination)
     if (
         destination.exists()
         and not force
@@ -96,9 +126,7 @@ def install_dataset(
             "files": specification["files"],
         }
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-        if destination.exists():
-            shutil.rmtree(destination)
-        staging.replace(destination)
+        _promote_staging(staging, destination)
     finally:
         if staging.exists():
             shutil.rmtree(staging)

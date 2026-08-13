@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import sqlite3
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,7 +20,7 @@ from m02_tracking import (  # noqa: E402
     M02TrackingAdapter,
     TrackingPoseFallRuntime,
 )
-from pose_fall_worker import process_request  # noqa: E402
+from pose_fall_worker import process_request, validate_identity_database  # noqa: E402
 
 
 class _FakeRuntimeResult:
@@ -202,6 +204,18 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
             M02TrackingAdapter(), self.pose_fall  # type: ignore[arg-type]
         )
         self.frame = np.zeros((120, 160, 3), dtype=np.uint8)
+
+    def test_identity_database_requires_existing_complete_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "wardy.sqlite"
+            with self.assertRaises(FileNotFoundError):
+                validate_identity_database(database)
+            connection = sqlite3.connect(database)
+            connection.execute("CREATE TABLE subjects(subject_id TEXT)")
+            connection.commit()
+            connection.close()
+            with self.assertRaisesRegex(RuntimeError, "missing required tables"):
+                validate_identity_database(database)
 
     def test_m02_track_is_forwarded_to_m03_m04_runtime(self) -> None:
         first = self.runtime.process_frame(

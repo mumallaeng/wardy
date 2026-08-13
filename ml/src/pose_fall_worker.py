@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import socketserver
+import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,27 @@ from model_manager import DEFAULT_MODEL_ROOT, install_model
 
 
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
+IDENTITY_TABLES = {"subjects", "subject_reference_samples", "identity_reviews"}
+
+
+def validate_identity_database(database_path: Path) -> None:
+    if not database_path.is_file():
+        raise FileNotFoundError(f"identity database not found: {database_path}")
+    connection = sqlite3.connect(
+        f"{database_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
+    )
+    try:
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    finally:
+        connection.close()
+    missing = IDENTITY_TABLES.difference(str(row[0]) for row in rows)
+    if missing:
+        raise RuntimeError(
+            "identity database is missing required tables: "
+            + ", ".join(sorted(missing))
+        )
 
 
 def decode_frame(payload: dict[str, Any]) -> np.ndarray:
@@ -117,6 +139,8 @@ def build_runtime(
     identity_match_threshold: float = 0.45,
     identity_review_threshold: float = 0.30,
 ) -> TrackingPoseFallRuntime:
+    if database_path is not None and training_data_path is not None:
+        validate_identity_database(database_path)
     m03 = install_model("m03_pose", model_root=model_root)
     m04 = install_model("m04_fall", model_root=model_root)
     pose_fall = PoseFallRuntime(
