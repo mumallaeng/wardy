@@ -93,7 +93,7 @@ test("빈 data workspace 설정은 저장하지 않고 기존 빈 값은 기본�
   assert.deepEqual(store.getState().settings.dataWorkspace, restored.settings.dataWorkspace);
 });
 
-test("Jetson system fault에서는 돌봄 상태를 확인 불가로 보존한다", () => {
+test("Jetson system fault는 별도 상태로 표시하고 돌봄 기본 상태는 정상으로 둔다", () => {
   const store = new WardyStore(new MemoryStorage(), "runtime-fault");
   store.applyRuntimeSnapshot({
     care_state: null,
@@ -104,7 +104,7 @@ test("Jetson system fault에서는 돌봄 상태를 확인 불가로 보존한�
     updated_at: "2026-08-10T00:00:00Z",
   }, []);
   const restored = store.getState();
-  assert.equal(restored.careState.status, null);
+  assert.equal(restored.careState.status, "normal");
   assert.equal(restored.careState.source, "jetson_runtime");
   assert.equal(restored.careState.reason, "camera disconnected");
 });
@@ -190,7 +190,7 @@ test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
   }));
 
   const restored = new WardyStore(storage, "broken-state").getState();
-  assert.equal(restored.careState.status, null);
+  assert.equal(restored.careState.status, "normal");
   assert.deepEqual(restored.managedItems, []);
   assert.ok(Array.isArray(restored.zones));
   assert.ok(Array.isArray(restored.subjects));
@@ -205,7 +205,7 @@ test("상속된 enum key가 포함된 저장 상태를 거부한다", () => {
   storage.setItem("inherited-key-state", JSON.stringify(modified));
 
   const restored = new WardyStore(storage, "inherited-key-state").getState();
-  assert.equal(restored.careState.status, null);
+  assert.equal(restored.careState.status, "normal");
   assert.deepEqual(restored.events, []);
 });
 
@@ -217,7 +217,7 @@ test("잘못된 식별 검토 배열이 포함된 저장 상태를 거부한다"
   storage.setItem("invalid-review-state", JSON.stringify(modified));
 
   const restored = new WardyStore(storage, "invalid-review-state").getState();
-  assert.equal(restored.careState.status, null);
+  assert.equal(restored.careState.status, "normal");
   assert.deepEqual(restored.identityReviews, []);
 });
 
@@ -249,7 +249,7 @@ test("초기화하면 독립된 초기 상태로 돌아간다", () => {
   store.addManagedItem("테스트 물품", "excluded");
 
   const state = store.reset();
-  assert.equal(state.careState.status, null);
+  assert.equal(state.careState.status, "normal");
   assert.equal(state.managedItems.length, initialItemCount);
   assert.equal(state.managedItems.some((item) => item.label === "테스트 물품"), false);
 });

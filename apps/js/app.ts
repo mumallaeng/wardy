@@ -582,14 +582,14 @@ async function checkJetsonConnection(): Promise<void> {
  * @param state - The current Wardy application state
  */
 function renderCareState(state: WardyState): void {
-  const care = state.careState.status ? CARE_STATUS[state.careState.status] :
-    { label: "확인 불가", reason: "안전 상태를 판단할 수 없습니다.", rank: -1 };
+  const status = state.careState.status ?? "normal";
+  const care = CARE_STATUS[status];
   $("#care-status-label").textContent = care.label;
-  $("#care-status-code").textContent = state.careState.status ?? "unavailable";
+  $("#care-status-code").textContent = status;
   $("#care-status-badge").textContent = care.label;
   $("#care-status-reason").textContent = state.careState.reason;
-  $("#care-orb").className = `care-orb is-${state.careState.status ?? "unavailable"}`;
-  $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === state.careState.status));
+  $("#care-orb").className = `care-orb is-${status}`;
+  $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === status));
 }
 
 /**

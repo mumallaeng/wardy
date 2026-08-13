@@ -296,12 +296,12 @@ export class WardyStore {
 
   applyRuntimeSnapshot(system: SystemState, events: WardyEvent[]): WardyState {
     if (!isSystemState(system)) throw new Error("Jetson system 상태 응답 형식이 올바르지 않습니다.");
-    const status = system.care_state;
+    const status = system.care_state ?? "normal";
     const validEvents = events.filter(isWardyEvent);
     return this.#commit((state) => {
       state.careState = {
         status,
-        reason: system.reason || (status ? CARE_STATUS[status].reason : "안전 상태를 판단할 수 없습니다."),
+        reason: system.reason || CARE_STATUS[status].reason,
         updatedAt: system.updated_at,
         source: "jetson_runtime",
       };

@@ -1,7 +1,7 @@
 import type { CareStatus, EventStatus, EventType, OverlaySettingKey, WardyState } from "./types.ts";
 
 export const CARE_STATUS: Readonly<Record<CareStatus, { label: string; reason: string; rank: number }>> = Object.freeze({
-  normal: { label: "기본", reason: "활성화된 안전 이벤트가 없습니다.", rank: 0 },
+  normal: { label: "정상", reason: "활성화된 안전 이벤트가 없습니다.", rank: 0 },
   caution: { label: "주의", reason: "사용자가 상황을 확인할 필요가 있습니다.", rank: 1 },
   warning: { label: "경고", reason: "빠른 확인이 필요한 상태입니다.", rank: 2 },
   emergency: { label: "긴급", reason: "즉시 확인이 필요한 의심 상황입니다.", rank: 3 },
@@ -41,7 +41,7 @@ export function createInitialState(): WardyState {
   const day = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return {
     version: 1,
-    careState: { status: null, reason: "Jetson 연결 뒤 안전 상태를 확인합니다.", updatedAt: new Date().toISOString(), source: "manual_ui" },
+    careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
     events: [],
     settings: {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },

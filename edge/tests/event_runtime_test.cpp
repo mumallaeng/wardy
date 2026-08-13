@@ -83,7 +83,8 @@ int main() {
   const auto fault = runtime.apply(camera_fault);
   assert(changed_events.back() == fault.event.event_id);
   assert(runtime.has_active_event_type("camera_fault"));
-  assert(!runtime.current_care_status().has_value());
+  assert(runtime.current_care_status() == "normal");
+  assert(runtime.current_reason() == "활성화된 안전 event가 없습니다.");
   camera_fault.active = false;
   camera_fault.observed_at = "2026-08-10T10:00:07Z";
   const auto cleared_fault = runtime.apply(camera_fault);
