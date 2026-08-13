@@ -49,6 +49,11 @@ if ! curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null
   step="Jetson SSH 터널 시작"
   echo "Direct Jetson access is unavailable. Starting the Wardy SSH tunnel."
   echo "Keep this terminal open while using the camera."
+  if ! ifconfig lo0 | grep -Fq "inet ${jetson_host} "; then
+    step="Jetson 터널용 로컬 주소 준비"
+    echo "Preparing the local Jetson tunnel address. macOS may request your password."
+    sudo ifconfig lo0 alias "${jetson_host}" 255.255.255.255
+  fi
   # The Wardy SSH alias owns its LocalForward declarations. Repeating the
   # same -L options here makes OpenSSH bind each address twice and leaves the
   # browser without a working API tunnel.
