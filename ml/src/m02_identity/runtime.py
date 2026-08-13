@@ -223,11 +223,38 @@ class RegisteredSubjectIdentifier:
         if image.size == 0:
             return None
         height, width = image.shape[:2]
-        self.detector.setInputSize((width, height))
-        _result, faces = self.detector.detect(image)
+        # OpenCV 4.5.x cannot reliably evaluate this YuNet graph with arbitrary
+        # crop dimensions. Use its validated 320x320 input and preserve aspect
+        # ratio so face and landmark coordinates can be mapped back exactly.
+        detector_width = 320
+        detector_height = 320
+        scale = min(detector_width / width, detector_height / height)
+        resized_width = max(1, min(detector_width, int(round(width * scale))))
+        resized_height = max(1, min(detector_height, int(round(height * scale))))
+        resized = cv2.resize(
+            image, (resized_width, resized_height), interpolation=cv2.INTER_LINEAR
+        )
+        detector_image = np.zeros(
+            (detector_height, detector_width, image.shape[2]), dtype=image.dtype
+        )
+        detector_image[:resized_height, :resized_width] = resized
+        self.detector.setInputSize((detector_width, detector_height))
+        _result, faces = self.detector.detect(detector_image)
         if faces is None or len(faces) == 0:
             return None
-        return max(faces, key=lambda item: float(item[2] * item[3]))
+        visible_faces = [
+            face
+            for face in faces
+            if float(face[0]) < resized_width
+            and float(face[1]) < resized_height
+            and float(face[0] + face[2]) > 0
+            and float(face[1] + face[3]) > 0
+        ]
+        if not visible_faces:
+            return None
+        face = max(visible_faces, key=lambda item: float(item[2] * item[3])).copy()
+        face[:14] /= scale
+        return face
 
     def _feature(self, image: np.ndarray, face: np.ndarray) -> np.ndarray:
         aligned = self.recognizer.alignCrop(image, face)
