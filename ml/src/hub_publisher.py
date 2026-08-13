@@ -34,7 +34,8 @@ def load_manifest(source_dir: Path) -> dict[str, Any]:
     manifest_path = source_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     if (
-        not isinstance(manifest.get("model_id"), str)
+        not isinstance(manifest, dict)
+        or not isinstance(manifest.get("model_id"), str)
         or not isinstance(manifest.get("version"), str)
         or not isinstance(manifest.get("files"), dict)
         or not manifest["files"]
@@ -51,14 +52,29 @@ def stage_publish_tree(source_dir: Path, destination: Path) -> dict[str, Any]:
     """Stage verified artifacts at the exact repository paths installers use."""
     manifest = load_manifest(source_dir)
     remote_files = manifest.get("remote_files", {})
+    if not isinstance(remote_files, dict):
+        raise ValueError("invalid remote_files metadata")
+    seen_remote_names: set[str] = set()
     for filename in manifest["files"]:
         remote_name = remote_files.get(filename, filename)
+        if not isinstance(remote_name, str):
+            raise ValueError(f"invalid remote artifact path: {remote_name}")
         remote_path = PurePosixPath(remote_name)
-        if remote_path.is_absolute() or ".." in remote_path.parts:
+        normalized_remote_name = remote_path.as_posix()
+        if (
+            not remote_path.parts
+            or remote_path.is_absolute()
+            or ".." in remote_path.parts
+            or normalized_remote_name == "manifest.json"
+            or normalized_remote_name in seen_remote_names
+        ):
             raise ValueError(f"unsafe remote artifact path: {remote_name}")
+        seen_remote_names.add(normalized_remote_name)
         target = destination.joinpath(*remote_path.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(_artifact_path(source_dir, filename), target)
+        if sha256(target) != manifest["files"][filename]:
+            raise RuntimeError(f"staged model artifact verification failed: {filename}")
     (destination / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n"
     )
