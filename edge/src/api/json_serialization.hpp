@@ -172,6 +172,17 @@ inline bool valid_json_array(const std::string& value) {
   return JsonValidator(value).array();
 }
 
+inline std::optional<std::string> event_care_status(const storage::EventRecord& event) {
+  if (event.care_status) return event.care_status;
+  if (event.event_type == "fall_suspected") return std::string("emergency");
+  if (event.event_type == "hazard_proximity" || event.event_type == "inactivity" ||
+      event.event_type == "zone_dwell") return std::string("warning");
+  if (event.event_type == "hazard_detected" || event.event_type == "zone_entry") {
+    return std::string("caution");
+  }
+  return std::string("normal");
+}
+
 inline std::string event_json(const storage::EventRecord& event) {
   const bool source_is_array = valid_json_array(event.source_results_json);
   return "{" 
@@ -186,7 +197,7 @@ inline std::string event_json(const storage::EventRecord& event) {
       ",\"object_id\":" + json_string(event.object_id) +
       ",\"object_class\":" + json_string(event.object_class) +
       ",\"zone_id\":" + json_string(event.zone_id) +
-      ",\"care_status\":" + json_string(event.care_status) +
+      ",\"care_status\":" + json_string(event_care_status(event)) +
       ",\"event_status\":" + json_string(event.event_status) +
       ",\"confirmed_at\":" + json_string(event.confirmed_at) +
       ",\"released_at\":" + json_string(event.released_at) +

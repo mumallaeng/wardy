@@ -620,10 +620,14 @@ async function checkJetsonConnection(): Promise<void> {
 function renderCareState(state: WardyState): void {
   const status = state.careState.status ?? "normal";
   const care = CARE_STATUS[status];
+  const activeFall = state.events.find((event) => event.event_type === "fall_suspected" &&
+    !["released", "false_detection"].includes(event.event_status));
   $("#care-status-label").textContent = care.label;
   $("#care-status-code").textContent = status;
   $("#care-status-badge").textContent = care.label;
-  $("#care-status-reason").textContent = userFacingCareReason(status, state.careState.reason);
+  $("#care-status-reason").textContent = activeFall
+    ? userFacingEventReason("fall_suspected", activeFall.reason)
+    : userFacingCareReason(status, state.careState.reason);
   $("#care-orb").className = `care-orb is-${status}`;
   $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === status));
 }

@@ -340,7 +340,28 @@ std::optional<std::string> runtime_snapshot(
     const std::shared_ptr<StreamState>& state) {
   const auto system = state->database->load_system_state();
   if (!system) return std::nullopt;
-  return runtime_snapshot_json(*system, state->database->list_events());
+  auto events = state->database->list_events();
+  const auto active_events = state->database->list_active_events();
+  for (const auto& active : active_events) {
+    const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+      return event.event_id == active.event_id;
+    });
+    if (found == events.end()) events.push_back(active);
+  }
+  return runtime_snapshot_json(*system, events);
+}
+
+std::vector<storage::EventRecord> api_events(
+    const std::shared_ptr<StreamState>& state) {
+  auto events = state->database->list_events();
+  const auto active_events = state->database->list_active_events();
+  for (const auto& active : active_events) {
+    const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+      return event.event_id == active.event_id;
+    });
+    if (found == events.end()) events.push_back(active);
+  }
+  return events;
 }
 
 void broadcast_payload(const std::shared_ptr<StreamState>& state,
@@ -1533,7 +1554,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     serve_stream(socket_fd, state, config.allowed_origin);
   } else if (method == "GET" && path == "/api/events") {
     send_text(socket_fd, json_response(200, "OK",
-        events_json(state->database->list_events()), config.allowed_origin));
+        events_json(api_events(state)), config.allowed_origin));
   } else if (method == "GET" && path == "/api/inference") {
     if (!state->inference) {
       send_text(socket_fd, json_response(200, "OK",
