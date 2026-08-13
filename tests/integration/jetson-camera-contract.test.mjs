@@ -251,6 +251,8 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(tlsRenewer, /wardy-ca\.key/);
   assert.match(tlsRenewer, /subjectAltName=/);
   assert.match(tlsRenewer, /systemctl restart wardy-edge\.service/);
+  assert.match(tlsRenewer,
+    /if ! sudo systemctl restart wardy-edge\.service \|\|[\s\S]*! sudo systemctl is-active --quiet wardy-edge\.service; then/);
   assert.match(tlsRenewer, /restoring the previous server certificate/);
   assert.doesNotMatch(tlsRenewer, /install[^\n]*wardy-ca\.(?:key|crt)/);
   assert.match(setup, /install_jetson_dependencies\.sh/);

@@ -120,7 +120,8 @@ sudo install -o "$(id -un)" -g "$(id -gn)" -m 0600 \
 sudo install -o "$(id -un)" -g "$(id -gn)" -m 0644 \
   "${temporary_dir}/jetson.crt" "${tls_dir}/jetson.crt"
 
-if ! sudo systemctl restart wardy-edge.service; then
+if ! sudo systemctl restart wardy-edge.service ||
+   ! sudo systemctl is-active --quiet wardy-edge.service; then
   echo "Wardy restart failed; restoring the previous server certificate" >&2
   sudo install -o "$(id -un)" -g "$(id -gn)" -m 0600 \
     "${temporary_dir}/jetson.key.backup" "${tls_dir}/jetson.key"
@@ -130,6 +131,5 @@ if ! sudo systemctl restart wardy-edge.service; then
   exit 1
 fi
 
-sudo systemctl is-active --quiet wardy-edge.service
 openssl x509 -in "${tls_dir}/jetson.crt" -noout -subject -ext subjectAltName
 echo "Renewed the Jetson server certificate without replacing the Wardy local CA"

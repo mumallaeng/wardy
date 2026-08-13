@@ -52,6 +52,8 @@ test("기존 저장 상태에는 M-04 표시 설정을 켠 상태로 추가한�
 
   const restored = new WardyStore(storage, "legacy-overlay").getState();
   assert.equal(restored.settings.overlay.showFall, true);
+  const persisted = JSON.parse(storage.getItem("legacy-overlay"));
+  assert.equal(persisted.settings.overlay.showFall, true);
 });
 
 test("Jetson 데이터 sample 목록은 계약에 맞는 항목만 보존한다", () => {
