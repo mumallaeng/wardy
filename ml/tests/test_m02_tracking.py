@@ -55,6 +55,9 @@ class _FakePoseFallRuntime:
     def reset_track(self, _track_id: int) -> None:
         pass
 
+    def diagnostics(self, _track_id: int) -> dict[str, int | float]:
+        return {"history_frames": 0, "window_frames": 20, "fall_threshold": 0.5}
+
 
 class _FakeHazard:
     def to_dict(self) -> dict:
