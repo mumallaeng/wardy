@@ -3,6 +3,7 @@
 #include "rules/event_runtime.hpp"
 
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -12,6 +13,17 @@
 #include <vector>
 
 namespace wardy::inference {
+
+struct FallDiagnostics {
+  std::int64_t track_id{};
+  double detector_confidence{};
+  std::optional<double> pose_quality;
+  std::vector<std::array<double, 3>> keypoints;  // normalized x, y, confidence
+  int history_frames{};
+  int window_frames{};
+  std::optional<double> fall_confidence;
+  double fall_threshold{};
+};
 
 struct DetectionOutput {
   std::string id;
@@ -23,6 +35,7 @@ struct DetectionOutput {
   double confidence = 0.0;
   std::string color = "#62b88f";
   std::optional<std::string> subject_id;
+  std::optional<FallDiagnostics> fall_diagnostics;
 };
 
 struct PersonOutput {

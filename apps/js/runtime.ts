@@ -39,6 +39,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isProbability(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function isFallDiagnostics(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (!isRecord(value) || !Number.isInteger(value.trackId) || Number(value.trackId) <= 0 ||
+      !isProbability(value.detectorConfidence) ||
+      !(value.poseQuality === null || isProbability(value.poseQuality)) ||
+      !Number.isInteger(value.historyFrames) || Number(value.historyFrames) < 0 ||
+      !Number.isInteger(value.windowFrames) || Number(value.windowFrames) <= 0 ||
+      Number(value.historyFrames) > Number(value.windowFrames) ||
+      !(value.fallConfidence === null || isProbability(value.fallConfidence)) ||
+      !isProbability(value.fallThreshold) || !Array.isArray(value.keypoints)) return false;
+  return value.keypoints.every((keypoint) => Array.isArray(keypoint) && keypoint.length === 3 &&
+    keypoint.every((part) => isProbability(part)));
+}
+
 function isInferenceSnapshot(value: unknown): value is InferenceSnapshot {
   if (!isRecord(value) || !["none", "temporary", "model"].includes(String(value.source)) ||
       typeof value.observed_at !== "string" || typeof value.operational !== "boolean" ||
@@ -51,6 +69,7 @@ function isInferenceSnapshot(value: unknown): value is InferenceSnapshot {
         !Number.isFinite(detection.confidence) ||
         detection.confidence < 0 || detection.confidence > 1 ||
         !Array.isArray(detection.box) || detection.box.length !== 4) return false;
+    if (!isFallDiagnostics(detection.fallDiagnostics)) return false;
     const [x, y, width, height] = detection.box;
     return [x, y, width, height].every((part) => typeof part === "number" && Number.isFinite(part)) &&
       x >= 0 && y >= 0 && width > 0 && height > 0 && x + width <= 1 && y + height <= 1;
