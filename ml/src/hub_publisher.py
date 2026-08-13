@@ -13,6 +13,23 @@ from typing import Any
 from model_manager import sha256
 
 
+def _artifact_path(source_dir: Path, filename: str) -> Path:
+    if not isinstance(filename, str):
+        raise ValueError("model artifact path must be a string")
+    logical_path = PurePosixPath(filename)
+    if (
+        not logical_path.parts
+        or logical_path.is_absolute()
+        or ".." in logical_path.parts
+    ):
+        raise ValueError(f"unsafe model artifact path: {filename}")
+    source_root = source_dir.resolve()
+    path = source_root.joinpath(*logical_path.parts).resolve()
+    if path == source_root or source_root not in path.parents:
+        raise ValueError(f"unsafe model artifact path: {filename}")
+    return path
+
+
 def load_manifest(source_dir: Path) -> dict[str, Any]:
     manifest_path = source_dir / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -24,7 +41,7 @@ def load_manifest(source_dir: Path) -> dict[str, Any]:
     ):
         raise ValueError("invalid Wardy model manifest")
     for filename, expected in manifest["files"].items():
-        path = source_dir / filename
+        path = _artifact_path(source_dir, filename)
         if not path.is_file() or sha256(path) != expected:
             raise RuntimeError(f"model artifact verification failed: {filename}")
     return manifest
@@ -41,7 +58,7 @@ def stage_publish_tree(source_dir: Path, destination: Path) -> dict[str, Any]:
             raise ValueError(f"unsafe remote artifact path: {remote_name}")
         target = destination.joinpath(*remote_path.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_dir / filename, target)
+        shutil.copy2(_artifact_path(source_dir, filename), target)
     (destination / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n"
     )

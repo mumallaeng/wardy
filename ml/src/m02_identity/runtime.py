@@ -40,15 +40,19 @@ class RegisteredSubjectIdentifier:
         review_threshold: float = 0.30,
         review_cooldown_seconds: float = 30.0,
         refresh_seconds: float = 2.0,
+        max_pending_reviews: int = 200,
     ) -> None:
         if not 0.0 <= review_threshold < match_threshold <= 1.0:
             raise ValueError("identity thresholds must satisfy 0 <= review < match <= 1")
+        if max_pending_reviews <= 0:
+            raise ValueError("max_pending_reviews must be positive")
         self.database_path = database_path
         self.training_data_path = training_data_path.resolve()
         self.match_threshold = match_threshold
         self.review_threshold = review_threshold
         self.review_cooldown_seconds = review_cooldown_seconds
         self.refresh_seconds = refresh_seconds
+        self.max_pending_reviews = max_pending_reviews
         self.detector = cv2.FaceDetectorYN.create(
             str(detector_model), "", (320, 320), 0.8, 0.3, 5000
         )
@@ -56,6 +60,7 @@ class RegisteredSubjectIdentifier:
         self._connection = sqlite3.connect(database_path, timeout=5.0)
         self._connection.execute("PRAGMA busy_timeout=5000")
         self._gallery: list[_GalleryFeature] = []
+        self._feature_cache: dict[Path, tuple[int, int, np.ndarray]] = {}
         self._data_version = -1
         self._last_refresh = 0.0
         self._last_review_by_track: dict[int, float] = {}
@@ -85,13 +90,17 @@ class RegisteredSubjectIdentifier:
         results: dict[int, dict[str, Any]] = {}
         for person in persons:
             track_id = int(person["track_id"])
-            crop, _offset = self._person_crop(frame_bgr, person["bbox_xyxy"])
-            face = self._largest_face(crop)
-            if face is None:
+            try:
+                crop, _offset = self._person_crop(frame_bgr, person["bbox_xyxy"])
+                face = self._largest_face(crop)
+                if face is None:
+                    results[track_id] = {"status": "no_face"}
+                    continue
+                feature = self._feature(crop, face)
+                best = self._best_match(feature)
+            except Exception:
                 results[track_id] = {"status": "no_face"}
                 continue
-            feature = self._feature(crop, face)
-            best = self._best_match(feature)
             confidence = None if best is None else best[1]
             if best is not None and best[1] >= self.match_threshold:
                 subject = best[0].subject
@@ -134,6 +143,7 @@ class RegisteredSubjectIdentifier:
             return
         self._data_version = version
         gallery: list[_GalleryFeature] = []
+        current_paths: set[Path] = set()
         rows = self._connection.execute(
             """
             SELECT s.subject_id,s.name,s.role,r.image_path
@@ -150,18 +160,41 @@ class RegisteredSubjectIdentifier:
             image_path = self._stored_path(str(relative_path))
             if image_path is None:
                 continue
-            image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-            if image is None:
-                continue
-            face = self._largest_face(image)
-            if face is None:
+            current_paths.add(image_path)
+            try:
+                stat = image_path.stat()
+                cached = self._feature_cache.get(image_path)
+                if cached is not None and cached[:2] == (
+                    stat.st_mtime_ns,
+                    stat.st_size,
+                ):
+                    feature = cached[2]
+                else:
+                    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+                    if image is None:
+                        continue
+                    face = self._largest_face(image)
+                    if face is None:
+                        continue
+                    feature = self._feature(image, face)
+                    self._feature_cache[image_path] = (
+                        stat.st_mtime_ns,
+                        stat.st_size,
+                        feature,
+                    )
+            except (OSError, ValueError, cv2.error):
                 continue
             gallery.append(
                 _GalleryFeature(
                     _Subject(str(subject_id), str(name), str(role)),
-                    self._feature(image, face),
+                    feature,
                 )
             )
+        self._feature_cache = {
+            path: cached
+            for path, cached in self._feature_cache.items()
+            if path in current_paths
+        }
         self._gallery = gallery
 
     def _stored_path(self, relative_path: str) -> Path | None:
@@ -227,6 +260,7 @@ class RegisteredSubjectIdentifier:
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:
             return None
+        self._prune_pending_reviews(self.max_pending_reviews - 1)
         crop, _offset = self._person_crop(frame, bbox_xyxy)
         review_id = f"identity-{uuid.uuid4().hex}"
         relative_path = Path("identity") / "reviews" / f"{review_id}.jpg"
@@ -257,3 +291,28 @@ class RegisteredSubjectIdentifier:
             raise
         self._last_review_by_track[track_id] = now
         return review_id
+
+    def _prune_pending_reviews(self, keep: int) -> None:
+        rows = self._connection.execute(
+            """
+            SELECT review_id,image_path FROM identity_reviews
+            WHERE decision='pending'
+            ORDER BY julianday(captured_at) DESC,captured_at DESC,review_id DESC
+            LIMIT -1 OFFSET ?
+            """,
+            (keep,),
+        ).fetchall()
+        if not rows:
+            return
+        with self._connection:
+            self._connection.executemany(
+                "DELETE FROM identity_reviews WHERE review_id=?",
+                ((str(review_id),) for review_id, _image_path in rows),
+            )
+        for _review_id, relative_path in rows:
+            image_path = self._stored_path(str(relative_path))
+            if image_path is not None:
+                try:
+                    image_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
