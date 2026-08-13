@@ -1,4 +1,4 @@
-import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES } from "./constants.ts";
+import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, userFacingEventReason } from "./constants.ts";
 import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -116,7 +116,7 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     const type = document.createElement("strong");
     type.textContent = EVENT_TYPES[event.event_type] ?? event.event_type;
     const reason = document.createElement("small");
-    reason.textContent = event.reason;
+    reason.textContent = userFacingEventReason(event.event_type, event.reason);
     detail.append(type, reason);
 
     const target = document.createElement("td");

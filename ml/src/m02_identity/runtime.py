@@ -86,6 +86,13 @@ class RegisteredSubjectIdentifier:
         *,
         captured_at: str,
     ) -> dict[int, dict[str, Any]]:
+        if not self._identity_processing_enabled():
+            self._gallery.clear()
+            self._feature_cache.clear()
+            self._data_version = -1
+            self._last_refresh = float("-inf")
+            self._last_review_by_track.clear()
+            return {int(person["track_id"]): {"status": "disabled"} for person in persons}
         self._refresh_gallery_if_needed()
         results: dict[int, dict[str, Any]] = {}
         for person in persons:
@@ -132,6 +139,17 @@ class RegisteredSubjectIdentifier:
                 "review_id": review_id,
             }
         return results
+
+    def _identity_processing_enabled(self) -> bool:
+        """Return the current consent setting before any gallery or face match."""
+        try:
+            row = self._connection.execute(
+                "SELECT identity_review_enabled FROM data_collection_settings "
+                "WHERE singleton_id=1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return False
+        return row is not None and bool(row[0])
 
     def _refresh_gallery_if_needed(self) -> None:
         now = time.monotonic()
@@ -286,6 +304,15 @@ class RegisteredSubjectIdentifier:
         predicted_name: str | None,
         confidence: float | None,
     ) -> str | None:
+        try:
+            enabled = self._connection.execute(
+                "SELECT identity_review_enabled FROM data_collection_settings "
+                "WHERE singleton_id=1"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            enabled = None
+        if enabled is None or not bool(enabled[0]):
+            return None
         now = time.monotonic()
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:

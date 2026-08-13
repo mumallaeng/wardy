@@ -72,7 +72,22 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "6");
+  assert(store.schema_version() == "7");
+  auto privacy = store.data_collection_settings();
+  assert(!privacy.identity_review_enabled);
+  assert(!privacy.event_media_enabled);
+  assert(!privacy.model_improvement_enabled);
+  assert(privacy.event_media_retention_days == 7);
+  privacy.identity_review_enabled = true;
+  privacy.model_improvement_enabled = true;
+  privacy.training_data_retention_days = 180;
+  privacy.consented_at = "2026-08-13T06:00:00Z";
+  privacy.updated_at = *privacy.consented_at;
+  store.save_data_collection_settings(privacy);
+  const auto saved_privacy = store.data_collection_settings();
+  assert(saved_privacy.identity_review_enabled);
+  assert(saved_privacy.model_improvement_enabled);
+  assert(saved_privacy.training_data_retention_days == 180);
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -101,6 +116,35 @@ int main() {
   assert(stored_event.has_value());
   assert(stored_event->reason == event.reason);
   assert(!store.get_event("missing").has_value());
+
+  // Live incidents must remain discoverable even when the history window is
+  // filled with newer terminal events. The UI needs the active row in order
+  // to render the acknowledgement/false-detection actions.
+  wardy::storage::SqliteStore live_event_store(":memory:");
+  live_event_store.initialize();
+  auto old_live_event = event;
+  old_live_event.event_id = "EVT-OLD-LIVE";
+  old_live_event.event_status = "new";
+  old_live_event.occurred_at = "2020-01-01T00:00:00Z";
+  old_live_event.first_seen_at = old_live_event.occurred_at;
+  old_live_event.last_seen_at = old_live_event.occurred_at;
+  live_event_store.upsert_event(old_live_event);
+  for (int index = 0; index < 101; ++index) {
+    auto terminal = event;
+    terminal.event_id = "EVT-HISTORY-" + std::to_string(index);
+    terminal.event_status = "released";
+    terminal.occurred_at = "2026-08-13T12:" + std::to_string(index / 60) + ":" +
+                           std::to_string(index % 60) + "Z";
+    terminal.first_seen_at = terminal.occurred_at;
+    terminal.last_seen_at = terminal.occurred_at;
+    live_event_store.upsert_event(terminal);
+  }
+  const auto live_window = live_event_store.list_events();
+  assert(live_window.size() == 100);
+  assert(std::any_of(live_window.begin(), live_window.end(),
+                     [](const auto& candidate) {
+                       return candidate.event_id == "EVT-OLD-LIVE";
+                     }));
 
   wardy::storage::SqliteStore boundary_store(":memory:");
   boundary_store.initialize();
@@ -339,7 +383,7 @@ int main() {
     {
       wardy::storage::SqliteStore migrated(path.string());
       migrated.initialize();
-      assert(migrated.schema_version() == "6");
+      assert(migrated.schema_version() == "7");
       const auto legacy_events = migrated.list_events();
       assert(legacy_events.size() == 1);
       assert(legacy_events[0].event_id == "EVT-LEGACY");
@@ -386,7 +430,7 @@ int main() {
   const auto retry_path =
       std::filesystem::temp_directory_path() / "wardy-schema-retry.sqlite";
   std::filesystem::remove(retry_path);
-  create_version_database(retry_path, 7);
+  create_version_database(retry_path, 8);
   {
     wardy::storage::SqliteStore retry_store(retry_path.string());
     bool rejected = false;
@@ -405,7 +449,7 @@ int main() {
             nullptr, nullptr, nullptr) == SQLITE_OK);
     assert(sqlite3_close(database) == SQLITE_OK);
     retry_store.initialize();
-    assert(retry_store.schema_version() == "6");
+    assert(retry_store.schema_version() == "7");
   }
   std::filesystem::remove(retry_path);
   return 0;

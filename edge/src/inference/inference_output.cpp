@@ -36,6 +36,13 @@ void validate_detection(const DetectionOutput& detection) {
     if (diagnostics.track_id <= 0 || diagnostics.history_frames < 0 ||
         diagnostics.window_frames <= 0 ||
         diagnostics.history_frames > diagnostics.window_frames ||
+        (!diagnostics.keypoints.empty() && diagnostics.keypoints.size() != 17) ||
+        (diagnostics.pose_quality &&
+         (!std::isfinite(*diagnostics.pose_quality) || *diagnostics.pose_quality < 0.0 ||
+          *diagnostics.pose_quality > 1.0)) ||
+        (diagnostics.fall_confidence &&
+         (!std::isfinite(*diagnostics.fall_confidence) || *diagnostics.fall_confidence < 0.0 ||
+          *diagnostics.fall_confidence > 1.0)) ||
         !std::isfinite(diagnostics.detector_confidence) ||
         diagnostics.detector_confidence < 0.0 || diagnostics.detector_confidence > 1.0 ||
         !std::isfinite(diagnostics.fall_threshold) || diagnostics.fall_threshold < 0.0 ||

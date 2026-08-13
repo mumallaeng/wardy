@@ -30,11 +30,15 @@ struct EventCounts {
 EventCounts count_events(const std::vector<storage::EventRecord>& events) {
   EventCounts counts;
   for (const auto& event : events) {
-    const std::string care_status = event.care_status.value_or("normal");
-    if (care_status == "caution") ++counts.caution;
-    else if (care_status == "warning") ++counts.warning;
-    else if (care_status == "emergency") ++counts.emergency;
-    else ++counts.normal;
+    const bool system_fault = event.event_type == "camera_fault" ||
+                              event.event_type == "detection_fault";
+    if (!system_fault) {
+      const std::string care_status = event.care_status.value_or("normal");
+      if (care_status == "caution") ++counts.caution;
+      else if (care_status == "warning") ++counts.warning;
+      else if (care_status == "emergency") ++counts.emergency;
+      else ++counts.normal;
+    }
     if (event.event_status == "new") ++counts.unconfirmed;
   }
   return counts;

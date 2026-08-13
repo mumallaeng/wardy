@@ -105,6 +105,7 @@ void schedule_event_media(const std::shared_ptr<StreamState>& state,
                           const storage::EventRecord& event) noexcept {
   try {
     if (!state->event_media) return;
+    if (!state->database->data_collection_settings().event_media_enabled) return;
     state->event_media->schedule(event);
   } catch (const std::exception& error) {
     std::cerr << "Event media scheduling error: " << error.what() << '\n';
@@ -339,7 +340,28 @@ std::optional<std::string> runtime_snapshot(
     const std::shared_ptr<StreamState>& state) {
   const auto system = state->database->load_system_state();
   if (!system) return std::nullopt;
-  return runtime_snapshot_json(*system, state->database->list_events());
+  auto events = state->database->list_events();
+  const auto active_events = state->database->list_active_events();
+  for (const auto& active : active_events) {
+    const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+      return event.event_id == active.event_id;
+    });
+    if (found == events.end()) events.push_back(active);
+  }
+  return runtime_snapshot_json(*system, events);
+}
+
+std::vector<storage::EventRecord> api_events(
+    const std::shared_ptr<StreamState>& state) {
+  auto events = state->database->list_events();
+  const auto active_events = state->database->list_active_events();
+  for (const auto& active : active_events) {
+    const auto found = std::find_if(events.begin(), events.end(), [&](const auto& event) {
+      return event.event_id == active.event_id;
+    });
+    if (found == events.end()) events.push_back(active);
+  }
+  return events;
 }
 
 void broadcast_payload(const std::shared_ptr<StreamState>& state,
@@ -624,29 +646,33 @@ void save_inference_state(const std::shared_ptr<StreamState>& state) noexcept {
   try {
     if (!state->inference) return;
     const auto inference_snapshot = state->inference->snapshot();
-    std::lock_guard lock(state->system_state_mutex);
-    const auto previous = state->database->load_system_state();
-    const auto care = state->events ? state->events->current_care_status()
-                                    : std::optional<std::string>{};
-    const std::string event_reason = state->events
-        ? state->events->current_reason()
-        : "Event runtime is starting";
-    const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
-    const std::string reason = inference_snapshot.operational
-        ? event_reason : inference_snapshot.fault_reason;
-    if (!previous || previous->care_state != care ||
-        previous->detection_state != detection_state || previous->reason != reason) {
-      state->database->save_system_state({
-          care,
-          previous ? previous->camera_state
-                   : (state->camera_connected ? "connected" : "idle"),
-          detection_state,
-          previous ? previous->event_state : "ready",
-          reason,
-          utc_now(),
-      });
-      broadcast_snapshot(state);
+    bool state_changed = false;
+    {
+      std::lock_guard lock(state->system_state_mutex);
+      const auto previous = state->database->load_system_state();
+      const auto care = state->events ? state->events->current_care_status()
+                                      : std::optional<std::string>{};
+      const std::string event_reason = state->events
+          ? state->events->current_reason()
+          : "Event runtime is starting";
+      const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
+      const std::string reason = inference_snapshot.operational
+          ? event_reason : inference_snapshot.fault_reason;
+      if (!previous || previous->care_state != care ||
+          previous->detection_state != detection_state || previous->reason != reason) {
+        state->database->save_system_state({
+            care,
+            previous ? previous->camera_state
+                     : (state->camera_connected ? "connected" : "idle"),
+            detection_state,
+            previous ? previous->event_state : "ready",
+            reason,
+            utc_now(),
+        });
+        state_changed = true;
+      }
     }
+    if (state_changed) broadcast_snapshot(state);
     broadcast_inference(state);
   } catch (const std::exception& error) {
     std::cerr << "Inference state error: " << error.what() << '\n';
@@ -1000,6 +1026,60 @@ std::string update_notification_setting(
   return notification_settings_json(state->database->list_notification_settings());
 }
 
+bool enabled_header(const std::string& request, const std::string& name) {
+  const std::string value = lowercase(request_header(request, name).value_or(""));
+  if (value == "true" || value == "1" || value == "on") return true;
+  if (value == "false" || value == "0" || value == "off") return false;
+  throw std::invalid_argument("invalid data collection setting");
+}
+
+int retention_header(const std::string& request, const std::string& name,
+                     int minimum, int maximum) {
+  const std::string value = request_header(request, name).value_or("");
+  std::size_t parsed = 0;
+  int days = 0;
+  try {
+    days = std::stoi(value, &parsed);
+  } catch (const std::exception&) {
+    throw std::invalid_argument("invalid data retention period");
+  }
+  if (parsed != value.size() || days < minimum || days > maximum) {
+    throw std::invalid_argument("invalid data retention period");
+  }
+  return days;
+}
+
+std::string consent_version_header(const std::string& request) {
+  const std::string value = request_header(request, "x-wardy-consent-version").value_or("");
+  if (value.empty() || value.size() > 64 ||
+      std::any_of(value.begin(), value.end(), [](unsigned char character) {
+        return !(std::isalnum(character) || character == '-' || character == '_' || character == '.');
+      })) {
+    throw std::invalid_argument("invalid consent version");
+  }
+  return value;
+}
+
+std::string update_data_collection_settings(
+    const std::string& request, const std::shared_ptr<StreamState>& state) {
+  const std::string now = utc_now();
+  storage::DataCollectionSettingsRecord settings;
+  settings.identity_review_enabled =
+      enabled_header(request, "x-wardy-identity-review-enabled");
+  settings.event_media_enabled = enabled_header(request, "x-wardy-event-media-enabled");
+  settings.model_improvement_enabled =
+      enabled_header(request, "x-wardy-model-improvement-enabled");
+  settings.event_media_retention_days =
+      retention_header(request, "x-wardy-event-media-retention-days", 1, 365);
+  settings.training_data_retention_days =
+      retention_header(request, "x-wardy-training-data-retention-days", 1, 3650);
+  settings.consent_version = consent_version_header(request);
+  settings.consented_at = now;
+  settings.updated_at = now;
+  state->database->save_data_collection_settings(settings);
+  return data_collection_settings_json(settings);
+}
+
 std::string update_identity_review(
     const std::string& request, const std::string& review_id,
     const std::shared_ptr<StreamState>& state) {
@@ -1032,6 +1112,9 @@ std::string update_identity_review(
 
 std::string capture_training_sample(const std::string& request,
                                     const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const std::string item_id = request_header(request, "x-wardy-item-id").value_or("");
   const std::string encoded_label =
       request_header(request, "x-wardy-item-label").value_or("");
@@ -1108,6 +1191,9 @@ std::string capture_training_sample(const std::string& request,
 
 std::string capture_subject_reference(const std::string& request,
                                       const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().identity_review_enabled) {
+    throw std::invalid_argument("identity data collection consent is required");
+  }
   const std::string subject_id =
       request_header(request, "x-wardy-subject-id").value_or("");
   const std::string name = percent_decode(
@@ -1242,6 +1328,9 @@ std::string store_dataset_sample(
 
 std::string capture_dataset_sample(const std::string& request,
                                    const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const auto metadata = dataset_sample_metadata(request);
   if (!state->camera_connected) throw std::runtime_error("Jetson camera is unavailable");
   std::vector<unsigned char> jpeg;
@@ -1271,6 +1360,9 @@ std::string capture_dataset_sample(const std::string& request,
 
 std::string upload_dataset_sample(const std::string& request,
                                   const std::shared_ptr<StreamState>& state) {
+  if (!state->database->data_collection_settings().model_improvement_enabled) {
+    throw std::invalid_argument("data collection consent is required");
+  }
   const auto metadata = dataset_sample_metadata(request);
   const std::string content_type = lowercase(
       request_header(request, "content-type").value_or(""));
@@ -1462,7 +1554,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     serve_stream(socket_fd, state, config.allowed_origin);
   } else if (method == "GET" && path == "/api/events") {
     send_text(socket_fd, json_response(200, "OK",
-        events_json(state->database->list_events()), config.allowed_origin));
+        events_json(api_events(state)), config.allowed_origin));
   } else if (method == "GET" && path == "/api/inference") {
     if (!state->inference) {
       send_text(socket_fd, json_response(200, "OK",
@@ -1614,6 +1706,18 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "POST" && path == "/api/notification-settings") {
     send_text(socket_fd, json_response(200, "OK",
         update_notification_setting(request, state), config.allowed_origin));
+  } else if (method == "GET" && path == "/api/data-collection-settings") {
+    send_text(socket_fd, json_response(200, "OK",
+        data_collection_settings_json(state->database->data_collection_settings()),
+        config.allowed_origin));
+  } else if (method == "POST" && path == "/api/data-collection-settings") {
+    try {
+      send_text(socket_fd, json_response(200, "OK",
+          update_data_collection_settings(request, state), config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
   } else if (method == "GET" && path == "/api/identity-reviews") {
     send_text(socket_fd, json_response(200, "OK",
         identity_reviews_json(state->database->list_identity_reviews()),
@@ -1949,6 +2053,10 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
       });
   state->detection_fault_active =
       state->events->has_active_event_type("detection_fault");
+  // EventRuntime restores unresolved incidents before the camera loop starts.
+  // Persist that restored aggregate immediately so a stale system_state row
+  // cannot disagree with the event card shown to the operator.
+  save_runtime_state(state);
 #if defined(WARDY_WITH_TENSORRT)
   if (!config_.person_detector_engine_path.empty()) {
     const auto pose_fall_client = std::make_shared<inference::PoseFallClient>(

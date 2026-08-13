@@ -121,6 +121,17 @@ struct IdentityReviewRecord {
   std::string updated_at;
 };
 
+struct DataCollectionSettingsRecord {
+  bool identity_review_enabled = false;
+  bool event_media_enabled = false;
+  bool model_improvement_enabled = false;
+  int event_media_retention_days = 7;
+  int training_data_retention_days = 90;
+  std::string consent_version = "wardy-privacy-v1";
+  std::optional<std::string> consented_at;
+  std::string updated_at = "1970-01-01T00:00:00Z";
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -181,6 +192,8 @@ class SqliteStore {
                                        const std::string& decision,
                                        const std::optional<std::string>& subject_id,
                                        const std::string& updated_at);
+  [[nodiscard]] DataCollectionSettingsRecord data_collection_settings() const;
+  void save_data_collection_settings(const DataCollectionSettingsRecord& settings);
   [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;

@@ -31,7 +31,7 @@ export class OverlayController {
   private readonly onZoneCreated: (zone: ZoneRect) => void;
   private detections: readonly Detection[] = [];
   private zones: readonly Zone[] = [];
-  private settings: OverlaySettings = { showClass: true, showRole: true, showName: true, showPosture: true };
+  private settings: OverlaySettings = { showClass: true, showRole: true, showName: true, showPosture: true, showFall: true };
   private mirrored = false;
   private drawing: Drawing | null = null;
   private readonly resizeObserver: ResizeObserver;
@@ -168,15 +168,20 @@ export class OverlayController {
         labels.push(`[M-01] ${detection.className || "person"} ${Math.round(diagnostic.detectorConfidence * 100)}%`);
       }
       if (this.settings.showRole || this.settings.showName) {
-        const identity = [detection.role, detection.name].filter(Boolean).join(" · ");
+        const identity = [
+          this.settings.showRole ? detection.role : "",
+          this.settings.showName ? detection.name : "",
+        ].filter(Boolean).join(" · ");
         labels.push(`[M-02] track #${diagnostic.trackId}${identity ? ` · ${identity}` : ""}`);
       }
       if (this.settings.showPosture) {
         const quality = diagnostic.poseQuality === null ? "--" : `${Math.round(diagnostic.poseQuality * 100)}%`;
         labels.push(`[M-03] ${detection.posture || "자세 확인 불가"} · ${quality}`);
+      }
+      if (this.settings.showFall) {
         labels.push(diagnostic.fallConfidence === null
-          ? `[M-04] 수집 ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
-          : `[M-04] 낙상 ${Math.round(diagnostic.fallConfidence * 100)}% · 기준 ${Math.round(diagnostic.fallThreshold * 100)}%`);
+          ? `[M-04] 분석 중 ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
+          : `[M-04] ${diagnostic.fallConfidence >= diagnostic.fallThreshold ? "낙상 의심" : "낙상 아님"} ${Math.round(diagnostic.fallConfidence * 100)}%`);
       }
     } else {
       if (this.settings.showClass && detection.className) labels.push(detection.className);

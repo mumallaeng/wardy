@@ -172,6 +172,17 @@ inline bool valid_json_array(const std::string& value) {
   return JsonValidator(value).array();
 }
 
+inline std::optional<std::string> event_care_status(const storage::EventRecord& event) {
+  if (event.care_status) return event.care_status;
+  if (event.event_type == "fall_suspected") return std::string("emergency");
+  if (event.event_type == "hazard_proximity" || event.event_type == "inactivity" ||
+      event.event_type == "zone_dwell") return std::string("warning");
+  if (event.event_type == "hazard_detected" || event.event_type == "zone_entry") {
+    return std::string("caution");
+  }
+  return std::string("normal");
+}
+
 inline std::string event_json(const storage::EventRecord& event) {
   const bool source_is_array = valid_json_array(event.source_results_json);
   return "{" 
@@ -186,7 +197,7 @@ inline std::string event_json(const storage::EventRecord& event) {
       ",\"object_id\":" + json_string(event.object_id) +
       ",\"object_class\":" + json_string(event.object_class) +
       ",\"zone_id\":" + json_string(event.zone_id) +
-      ",\"care_status\":" + json_string(event.care_status) +
+      ",\"care_status\":" + json_string(event_care_status(event)) +
       ",\"event_status\":" + json_string(event.event_status) +
       ",\"confirmed_at\":" + json_string(event.confirmed_at) +
       ",\"released_at\":" + json_string(event.released_at) +
@@ -282,6 +293,19 @@ inline std::string notification_settings_json(
         json_string(std::string{setting.enabled ? "on" : "off"});
   }
   return body + "}}";
+}
+
+inline std::string data_collection_settings_json(
+    const storage::DataCollectionSettingsRecord& settings) {
+  return "{\"dataCollection\":{"
+      "\"identityReviewEnabled\":" + std::string(settings.identity_review_enabled ? "true" : "false") +
+      ",\"eventMediaEnabled\":" + std::string(settings.event_media_enabled ? "true" : "false") +
+      ",\"modelImprovementEnabled\":" + std::string(settings.model_improvement_enabled ? "true" : "false") +
+      ",\"eventMediaRetentionDays\":" + std::to_string(settings.event_media_retention_days) +
+      ",\"trainingDataRetentionDays\":" + std::to_string(settings.training_data_retention_days) +
+      ",\"consentVersion\":" + json_string(settings.consent_version) +
+      ",\"consentedAt\":" + json_string(settings.consented_at) +
+      ",\"updatedAt\":" + json_string(settings.updated_at) + "}}";
 }
 
 inline std::string identity_reviews_json(

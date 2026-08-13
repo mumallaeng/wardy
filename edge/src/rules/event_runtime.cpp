@@ -230,7 +230,7 @@ std::string EventRuntime::current_reason() const {
       current = &event;
     }
   }
-  return current ? current->reason : "활성화된 안전 event가 없습니다.";
+  return current ? current->reason : "활성화된 안전 이벤트가 없습니다.";
 }
 
 void EventRuntime::restore_active_events() {
