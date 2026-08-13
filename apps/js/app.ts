@@ -1,7 +1,11 @@
 import { CARE_STATUS, EVENT_TYPES, userFacingCareReason, userFacingEventReason } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
-import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
+import {
+  JetsonConnection,
+  jetsonBrowserBootstrapUrl,
+  normalizeJetsonBaseUrl,
+} from "./jetson.ts";
 import {
   datasetManifest,
   identityFeedbackManifest,
@@ -79,17 +83,38 @@ const IDENTITY_PREVIEW_LIMIT = 8;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
+const DEFAULT_JETSON_BASE_URL = String(import.meta.env.VITE_WARDY_JETSON_URL ?? "").trim();
+const JETSON_TLS_BOOTSTRAP_PREFIX = "wardy-jetson-tls-bootstrap:";
 
-function applyLaunchConfiguration(): void {
-  const url = new URL(window.location.href);
-  const requestedJetson = url.searchParams.get("jetson");
-  if (!requestedJetson) return;
-  store.setJetsonBaseUrl(normalizeJetsonBaseUrl(requestedJetson));
-  url.searchParams.delete("jetson");
-  window.history.replaceState({}, "", url);
+function jetsonTlsBootstrapKey(baseUrl: string): string {
+  return `${JETSON_TLS_BOOTSTRAP_PREFIX}${baseUrl}`;
 }
 
-applyLaunchConfiguration();
+function applyLaunchConfiguration(): boolean {
+  const url = new URL(window.location.href);
+  const requestedJetson = url.searchParams.get("jetson");
+  const bootstrapCompleted = url.searchParams.get("jetson_tls") === "ready";
+  const currentJetson = store.getState().settings.jetson.baseUrl;
+  const selectedJetson = requestedJetson || currentJetson || DEFAULT_JETSON_BASE_URL;
+  if (!selectedJetson) return false;
+
+  const baseUrl = normalizeJetsonBaseUrl(selectedJetson);
+  store.setJetsonBaseUrl(baseUrl);
+  if (bootstrapCompleted) {
+    window.localStorage.setItem(jetsonTlsBootstrapKey(baseUrl), "ready");
+  }
+  url.searchParams.delete("jetson");
+  url.searchParams.delete("jetson_tls");
+  window.history.replaceState({}, "", url);
+
+  if (!bootstrapCompleted && window.localStorage.getItem(jetsonTlsBootstrapKey(baseUrl)) !== "ready") {
+    window.location.assign(jetsonBrowserBootstrapUrl(baseUrl));
+    return true;
+  }
+  return false;
+}
+
+const jetsonTlsRedirecting = applyLaunchConfiguration();
 
 interface SystemGuidance {
   tone: SystemGuidanceTone;
@@ -1237,4 +1262,4 @@ window.addEventListener("online", () => { void connectConfiguredJetson(true).cat
 
 setJetsonStatus(jetsonStatus);
 void registerWardyServiceWorker();
-void connectConfiguredJetson(true).catch(() => undefined);
+if (!jetsonTlsRedirecting) void connectConfiguredJetson(true).catch(() => undefined);

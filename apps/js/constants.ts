@@ -62,7 +62,7 @@ export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: stri
   { key: "showRole", label: "돌봄 역할", description: "돌봄 대상·일반 인물 역할 표시" },
   { key: "showName", label: "식별 이름", description: "등록 대상의 이름 표시" },
   { key: "showPosture", label: "M-03 자세·스켈레톤", description: "관절선과 서 있음·앉음·누움 자세 표시" },
-  { key: "showFall", label: "M-04 낙상 감지", description: "낙상 시퀀스 점수와 분석 진행 상태 표시" },
+  { key: "showFall", label: "M-04 낙상 판단", description: "최근 자세 변화에 대한 낙상 확률과 판단 기준 표시" },
 ]);
 
 /**

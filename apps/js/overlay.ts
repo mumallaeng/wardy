@@ -180,8 +180,8 @@ export class OverlayController {
       }
       if (this.settings.showFall) {
         labels.push(diagnostic.fallConfidence === null
-          ? `[M-04] 분석 중 ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
-          : `[M-04] ${diagnostic.fallConfidence >= diagnostic.fallThreshold ? "낙상 의심" : "낙상 아님"} ${Math.round(diagnostic.fallConfidence * 100)}%`);
+          ? `[M-04] 초기 관찰 · ${diagnostic.historyFrames}/${diagnostic.windowFrames} frame`
+          : `[M-04] 낙상 ${Math.round(diagnostic.fallConfidence * 100)}% · 기준 ${Math.round(diagnostic.fallThreshold * 100)}%`);
       }
     } else {
       if (this.settings.showClass && detection.className) labels.push(detection.className);

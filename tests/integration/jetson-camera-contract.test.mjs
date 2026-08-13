@@ -202,6 +202,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
   const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
   const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
+  const tlsRenewer = await readFile(path.join(root, "edge/scripts/renew_jetson_tls.sh"), "utf8");
 
   for (const packageName of [
     "build-essential",
@@ -244,7 +245,16 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(tlsCreator, /flock -n 9/);
   assert.match(tlsCreator, /installed_artifacts/);
   assert.match(tlsCreator, /wardy-ca\.key/);
+  assert.match(tlsCreator, /jetson_hosts=\("\$@"\)/);
+  assert.match(tlsCreator, /subject_alt_names/);
   assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
+  assert.match(tlsRenewer, /wardy-ca\.key/);
+  assert.match(tlsRenewer, /subjectAltName=/);
+  assert.match(tlsRenewer, /systemctl restart wardy-edge\.service/);
+  assert.match(tlsRenewer,
+    /if ! sudo systemctl restart wardy-edge\.service \|\|[\s\S]*! sudo systemctl is-active --quiet wardy-edge\.service; then/);
+  assert.match(tlsRenewer, /restoring the previous server certificate/);
+  assert.doesNotMatch(tlsRenewer, /install[^\n]*wardy-ca\.(?:key|crt)/);
   assert.match(setup, /install_jetson_dependencies\.sh/);
   assert.match(setup, /create_jetson_tls\.sh/);
   assert.match(setup, /openssl rand -hex 32/);
@@ -348,14 +358,18 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
   assert.match(caddy, /auto_https disable_redirects/);
   assert.match(caddy, /default_sni \{\$WARDY_JETSON_HOST\}/);
-  assert.match(caddy, /https:\/\/\{\$WARDY_JETSON_HOST\}:8443/);
+  assert.match(caddy, /https:\/\/:8443/);
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
   assert.match(caddy, /127\.0\.0\.1:8889/);
   assert.match(caddy, /not remote_ip private_ranges/);
-  assert.match(caddy, /not header Origin \{\$WARDY_UI_ORIGIN\}/);
+  assert.match(caddy, /http\.request\.header\.Origin/);
+  assert.match(caddy, /"https:\/\/" \+ \{http\.request\.hostport\}/);
   assert.match(caddy, /respond @outside_private_network "Forbidden" 403/);
+  assert.match(caddy, /@browser_bootstrap path \/connect/);
+  assert.match(caddy, /jetson_tls=ready/);
   assert.match(caddy, /respond @unexpected_browser_origin "Forbidden" 403/);
+  assert.match(caddy, /header_up Origin \{\$WARDY_UI_ORIGIN\}/);
   assert.match(caddy, /header_up X-Wardy-Access-Token \{\$WARDY_ACCESS_TOKEN\}/);
   assert.match(caddy, /header_up Sec-WebSocket-Protocol "wardy-events, \{\$WARDY_ACCESS_TOKEN\}"/);
   assert.match(launcher, /chmod 0600/);

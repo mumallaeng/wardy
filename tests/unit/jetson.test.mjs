@@ -1,12 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { JetsonConnection, jetsonHealthUrl, normalizeJetsonBaseUrl } from "../../apps/js/jetson.ts";
+import {
+  JetsonConnection,
+  jetsonBrowserBootstrapUrl,
+  jetsonHealthUrl,
+  normalizeJetsonBaseUrl,
+} from "../../apps/js/jetson.ts";
 
 test("Jetson 주소를 정규화하고 health endpoint를 만든다", () => {
   assert.equal(normalizeJetsonBaseUrl(" https://jetson.local:8443/ "), "https://jetson.local:8443");
   assert.equal(normalizeJetsonBaseUrl("https://jetson.local"), "https://jetson.local:8443");
   assert.equal(jetsonHealthUrl("", "https://127.0.0.1:8443"), "https://127.0.0.1:8443/api/health");
+  assert.equal(jetsonBrowserBootstrapUrl("https://jetson.local"), "https://jetson.local:8443/connect");
   assert.throws(() => normalizeJetsonBaseUrl("ws://jetson.local"), /HTTPS/);
   assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8787"), /HTTPS/);
   assert.throws(() => normalizeJetsonBaseUrl("https://user:secret@jetson.local"), /계정 정보/);
