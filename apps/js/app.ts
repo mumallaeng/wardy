@@ -1,4 +1,4 @@
-import { CARE_STATUS, EVENT_TYPES, userFacingCareReason } from "./constants.ts";
+import { CARE_STATUS, EVENT_TYPES, userFacingCareReason, userFacingEventReason } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
@@ -197,7 +197,32 @@ function renderSystemState(): void {
   inferenceBadge.toggleAttribute("hidden", inferenceState?.source !== "temporary");
   $("#event-runtime-status").textContent = runtimeState ? eventLabels[runtimeState.event_state] : "연결 대기";
   $("#event-runtime-dot").className = `status-dot${runtimeState?.event_state === "ready" ? " is-ok" : runtimeState?.event_state === "fault" ? " is-fault" : ""}`;
+  renderFallDetectionStatus();
   renderSystemGuidance();
+}
+
+function renderFallDetectionStatus(): void {
+  const status = $("#m04-fall-status");
+  const detail = $("#m04-fall-detail");
+  if (!inferenceState || !inferenceState.operational || inferenceIsStale()) {
+    status.textContent = "확인 대기";
+    detail.textContent = "M-04 추론 결과를 받지 못했습니다.";
+    return;
+  }
+  const diagnostics = inferenceState.detections
+    .map((detection) => detection.fallDiagnostics)
+    .filter((diagnostic): diagnostic is NonNullable<typeof diagnostic> => Boolean(diagnostic));
+  if (diagnostics.length === 0) {
+    status.textContent = "분석 대상 없음";
+    detail.textContent = "현재 추적 중인 사람의 자세를 분석하지 않고 있습니다.";
+    return;
+  }
+  const suspected = diagnostics.filter((diagnostic) =>
+    diagnostic.fallConfidence !== null && diagnostic.fallConfidence >= diagnostic.fallThreshold);
+  status.textContent = suspected.length > 0 ? "낙상 의심 감지" : "낙상 의심 없음";
+  detail.textContent = suspected.length > 0
+    ? `${suspected.length}명에서 낙상 의심 신호를 확인했습니다.`
+    : `${diagnostics.length}명의 자세 시퀀스를 분석 중입니다.`;
 }
 
 function currentSystemGuidance(): SystemGuidance {
@@ -626,7 +651,7 @@ function renderSummary(events: readonly WardyEvent[]): void {
     const title = document.createElement("strong");
     title.textContent = EVENT_TYPES[latest.event_type] ?? latest.event_type;
     const description = document.createElement("small");
-    description.textContent = `${formatDateTime(latest.occurred_at)} · ${latest.reason}`;
+    description.textContent = `${formatDateTime(latest.occurred_at)} · ${userFacingEventReason(latest.event_type, latest.reason)}`;
     copy.append(title, description);
     const button = document.createElement("button");
     button.className = "button button-secondary";

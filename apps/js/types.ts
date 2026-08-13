@@ -10,7 +10,7 @@ export type EventType =
   | "camera_fault"
   | "detection_fault";
 export type MediaType = "none" | "image" | "video";
-export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture";
+export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture" | "showFall";
 export type NotificationSetting = "off" | "on";
 export type ManagedItemPolicy = "included" | "excluded";
 export type CameraStatus = "idle" | "connecting" | "connected" | "fault";

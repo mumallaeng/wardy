@@ -105,6 +105,9 @@ function migratePersistedState(value: unknown): void {
   const settings = value.settings;
   if (!isRecord(settings)) return;
   if (!isRecord(settings.camera)) settings.camera = {};
+  if (!isRecord(settings.overlay)) settings.overlay = {};
+  const overlay = settings.overlay as Record<string, unknown>;
+  if (typeof overlay.showFall !== "boolean") overlay.showFall = true;
   const camera = settings.camera as Record<string, unknown>;
   if (typeof camera.mirrored !== "boolean") camera.mirrored = false;
   if (!isRecord(settings.jetson)) settings.jetson = {};
@@ -214,6 +217,7 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showRole !== "boolean"
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
+    || typeof settings.overlay.showFall !== "boolean"
     || !isRecord(settings.camera)
     || typeof settings.camera.mirrored !== "boolean"
     || !isNotificationSettings(settings.notifications)

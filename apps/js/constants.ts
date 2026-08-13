@@ -22,6 +22,22 @@ export function userFacingCareReason(status: CareStatus, reason: string): string
   return reason;
 }
 
+/** Keep implementation diagnostics out of caregiver-facing event descriptions. */
+export function userFacingEventReason(eventType: EventType, reason: string): string {
+  const normalized = reason.trim().toLocaleLowerCase("en-US");
+  if (eventType === "fall_suspected" &&
+      (normalized.includes("fall threshold") || normalized.includes("m-04"))) {
+    return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+  }
+  if ((eventType === "camera_fault" || eventType === "detection_fault") &&
+      /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason)) {
+    return eventType === "camera_fault"
+      ? "카메라 입력을 확인해 주세요."
+      : "안전 감지 기능을 확인해 주세요.";
+  }
+  return userFacingCareReason("normal", reason);
+}
+
 export const EVENT_STATUS: Readonly<Record<EventStatus, string>> = Object.freeze({
   new: "신규",
   confirmed: "확인",
@@ -45,6 +61,7 @@ export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: stri
   { key: "showRole", label: "돌봄 역할", description: "돌봄 대상·일반 인물 역할 표시" },
   { key: "showName", label: "식별 이름", description: "등록 대상의 이름 표시" },
   { key: "showPosture", label: "M-03 자세·스켈레톤", description: "관절선과 서 있음·앉음·누움 자세 표시" },
+  { key: "showFall", label: "M-04 낙상 감지", description: "낙상 시퀀스 점수와 분석 진행 상태 표시" },
 ]);
 
 /**
@@ -59,7 +76,7 @@ export function createInitialState(): WardyState {
     careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
     events: [],
     settings: {
-      overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
+      overlay: { showClass: true, showRole: true, showName: true, showPosture: true, showFall: true },
       notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       camera: { mirrored: false },
       jetson: { baseUrl: "" },

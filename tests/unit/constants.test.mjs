@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { userFacingCareReason } from "../../apps/js/constants.ts";
+import { userFacingCareReason, userFacingEventReason } from "../../apps/js/constants.ts";
 
 test("돌봄 상태에는 M-04 내부 진단 문구 대신 사용자용 설명을 표시한다", () => {
   assert.equal(
@@ -11,5 +11,12 @@ test("돌봄 상태에는 M-04 내부 진단 문구 대신 사용자용 설명�
   assert.equal(
     userFacingCareReason("normal", "Event runtime is starting"),
     "활성화된 안전 이벤트가 없습니다.",
+  );
+});
+
+test("이벤트 기록에도 모델 내부 진단 문구를 노출하지 않는다", () => {
+  assert.equal(
+    userFacingEventReason("fall_suspected", "M-04 temporal pose sequence exceeded the fall threshold"),
+    "낙상 의심 신호가 일정 시간 누적되었습니다.",
   );
 });
