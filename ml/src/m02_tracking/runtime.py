@@ -99,6 +99,7 @@ class TrackingPoseFallRuntime:
                 persons.append({
                     **tracked_person,
                     "accepted": False,
+                    **self.pose_fall.diagnostics(person.track_id),
                     **({"identity": identity} if identity is not None else {}),
                 })
                 continue

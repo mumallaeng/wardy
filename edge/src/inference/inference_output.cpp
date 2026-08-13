@@ -31,6 +31,26 @@ void validate_detection(const DetectionOutput& detection) {
       detection.confidence > 1.0) {
     throw std::invalid_argument("inference confidence must be between 0 and 1");
   }
+  if (detection.fall_diagnostics) {
+    const auto& diagnostics = *detection.fall_diagnostics;
+    if (diagnostics.track_id <= 0 || diagnostics.history_frames < 0 ||
+        diagnostics.window_frames <= 0 ||
+        diagnostics.history_frames > diagnostics.window_frames ||
+        !std::isfinite(diagnostics.detector_confidence) ||
+        diagnostics.detector_confidence < 0.0 || diagnostics.detector_confidence > 1.0 ||
+        !std::isfinite(diagnostics.fall_threshold) || diagnostics.fall_threshold < 0.0 ||
+        diagnostics.fall_threshold > 1.0) {
+      throw std::invalid_argument("fall diagnostics contain invalid progress or confidence");
+    }
+    for (const auto& keypoint : diagnostics.keypoints) {
+      if (!std::isfinite(keypoint[0]) || !std::isfinite(keypoint[1]) ||
+          !std::isfinite(keypoint[2]) || keypoint[0] < 0.0 || keypoint[0] > 1.0 ||
+          keypoint[1] < 0.0 || keypoint[1] > 1.0 || keypoint[2] < 0.0 ||
+          keypoint[2] > 1.0) {
+        throw std::invalid_argument("fall diagnostics contain invalid keypoints");
+      }
+    }
+  }
 }
 
 rules::EventObservation observation(
@@ -270,7 +290,30 @@ std::string inference_json(const InferenceSnapshot& snapshot) {
         ",\"confidence\":" + api::json_number(detection.confidence) +
         ",\"color\":" + api::json_string(detection.color) +
         ",\"subjectId\":" +
-        (detection.subject_id ? api::json_string(*detection.subject_id) : "null") + "}";
+        (detection.subject_id ? api::json_string(*detection.subject_id) : "null") +
+        ",\"fallDiagnostics\":";
+    if (!detection.fall_diagnostics) {
+      body += "null}";
+      continue;
+    }
+    const auto& diagnostics = *detection.fall_diagnostics;
+    body += "{\"trackId\":" + std::to_string(diagnostics.track_id) +
+        ",\"detectorConfidence\":" + api::json_number(diagnostics.detector_confidence) +
+        ",\"poseQuality\":" +
+        (diagnostics.pose_quality ? api::json_number(*diagnostics.pose_quality) : "null") +
+        ",\"keypoints\":[";
+    for (std::size_t keypoint_index = 0;
+         keypoint_index < diagnostics.keypoints.size(); ++keypoint_index) {
+      if (keypoint_index > 0) body += ',';
+      const auto& keypoint = diagnostics.keypoints[keypoint_index];
+      body += "[" + api::json_number(keypoint[0]) + "," +
+          api::json_number(keypoint[1]) + "," + api::json_number(keypoint[2]) + "]";
+    }
+    body += "],\"historyFrames\":" + std::to_string(diagnostics.history_frames) +
+        ",\"windowFrames\":" + std::to_string(diagnostics.window_frames) +
+        ",\"fallConfidence\":" +
+        (diagnostics.fall_confidence ? api::json_number(*diagnostics.fall_confidence) : "null") +
+        ",\"fallThreshold\":" + api::json_number(diagnostics.fall_threshold) + "}}";
   }
   return body + "]}";
 }

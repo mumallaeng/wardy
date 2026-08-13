@@ -830,6 +830,23 @@ void apply_tracking_results(
       rendered.detection.confidence = person.detection_confidence;
       rendered.detection.color = person.fall_suspected.value_or(false)
           ? "#d85d52" : "#62b88f";
+      inference::FallDiagnostics diagnostics;
+      diagnostics.track_id = person.track_id;
+      diagnostics.detector_confidence = person.detection_confidence;
+      diagnostics.pose_quality = person.pose_quality;
+      diagnostics.history_frames = person.history_frames;
+      diagnostics.window_frames = person.window_frames;
+      diagnostics.fall_confidence = person.fall_confidence;
+      diagnostics.fall_threshold = person.fall_threshold;
+      diagnostics.keypoints.reserve(person.keypoints_xyc.size());
+      for (const auto& keypoint : person.keypoints_xyc) {
+        diagnostics.keypoints.push_back({
+            std::clamp(keypoint[0] / frame_width, 0.0, 1.0),
+            std::clamp(keypoint[1] / frame_height, 0.0, 1.0),
+            keypoint[2],
+        });
+      }
+      rendered.detection.fall_diagnostics = std::move(diagnostics);
       // Fall events remain owned by the M-02 track lifecycle above so a
       // one-frame detector miss does not release an active alert.
       rendered.fall_suspected = false;

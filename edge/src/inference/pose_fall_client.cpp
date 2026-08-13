@@ -247,6 +247,49 @@ std::array<float, 4> parse_bbox(const cv::FileNode& node,
   return box;
 }
 
+int nonnegative_integer(const cv::FileNode& node, const char* error_message) {
+  if (!node.isInt()) throw std::runtime_error(error_message);
+  const int value = static_cast<int>(node);
+  if (value < 0) throw std::runtime_error(error_message);
+  return value;
+}
+
+double probability(const cv::FileNode& node, const char* error_message) {
+  if (!node.isInt() && !node.isReal()) throw std::runtime_error(error_message);
+  const double value = static_cast<double>(node);
+  if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
+    throw std::runtime_error(error_message);
+  }
+  return value;
+}
+
+std::vector<std::array<double, 3>> parse_keypoints(const cv::FileNode& node) {
+  if (node.type() != cv::FileNode::SEQ || node.size() != 17) {
+    throw std::runtime_error("tracking response pose requires 17 COCO keypoints");
+  }
+  std::vector<std::array<double, 3>> result;
+  result.reserve(17);
+  for (const auto& keypoint : node) {
+    if (keypoint.type() != cv::FileNode::SEQ || keypoint.size() != 3) {
+      throw std::runtime_error("tracking response contains an invalid COCO keypoint");
+    }
+    std::array<double, 3> parsed{};
+    std::size_t index = 0;
+    for (const auto& value : keypoint) {
+      if (!value.isInt() && !value.isReal()) {
+        throw std::runtime_error("tracking response contains an invalid COCO keypoint");
+      }
+      parsed[index++] = static_cast<double>(value);
+    }
+    if (!std::isfinite(parsed[0]) || !std::isfinite(parsed[1]) ||
+        !std::isfinite(parsed[2]) || parsed[2] < 0.0 || parsed[2] > 1.0) {
+      throw std::runtime_error("tracking response contains an invalid COCO keypoint");
+    }
+    result.push_back(parsed);
+  }
+  return result;
+}
+
 TrackingPoseFallResponse parse_tracking_response(std::string response) {
   cv::FileStorage document(response, cv::FileStorage::READ |
       cv::FileStorage::MEMORY | cv::FileStorage::FORMAT_JSON);
@@ -307,7 +350,17 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
         throw std::runtime_error("tracking response person contains invalid pose quality");
       }
       person.pose_quality = static_cast<double>(quality);
+      person.keypoints_xyc = parse_keypoints(pose["keypoints_xyc"]);
     }
+    person.history_frames = nonnegative_integer(
+        node["history_frames"], "tracking response contains invalid M-04 history length");
+    person.window_frames = nonnegative_integer(
+        node["window_frames"], "tracking response contains invalid M-04 window length");
+    if (person.window_frames <= 0 || person.history_frames > person.window_frames) {
+      throw std::runtime_error("tracking response contains invalid M-04 progress");
+    }
+    person.fall_threshold = probability(
+        node["fall_threshold"], "tracking response contains invalid M-04 threshold");
     parse_fall_result(node, person.fall_suspected, person.fall_confidence);
     parse_identity_result(node, person);
     parsed.persons.push_back(std::move(person));

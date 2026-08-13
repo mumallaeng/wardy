@@ -91,10 +91,16 @@ int main() {
     const std::string tracking_response =
         "{\"ok\":true,\"active_track_ids\":[42,2],\"persons\":["
         "{\"track_id\":42,\"accepted\":true,\"bbox_xyxy\":[2,3,20,22],"
-        "\"detection_confidence\":0.95,\"pose\":{\"pose_quality\":0.88},\"fall\":{"
+        "\"detection_confidence\":0.95,\"history_frames\":20,\"window_frames\":20,"
+        "\"fall_threshold\":0.5,\"pose\":{\"pose_quality\":0.88,\"keypoints_xyc\":["
+        "[3,4,0.9],[4,5,0.9],[5,6,0.9],[6,7,0.9],[7,8,0.9],"
+        "[8,9,0.9],[9,10,0.9],[10,11,0.9],[11,12,0.9],[12,13,0.9],"
+        "[13,14,0.9],[14,15,0.9],[15,16,0.9],[16,17,0.9],[17,18,0.9],"
+        "[18,19,0.9],[19,20,0.9]]},\"fall\":{"
         "\"fall_suspected\":true,\"confidence\":0.875}},"
         "{\"track_id\":2,\"accepted\":false,\"bbox_xyxy\":[4,5,18,20],"
-        "\"detection_confidence\":0.8}],\"hazards\":[{\"detection_id\":\"frame-2:hazard:0\","
+        "\"detection_confidence\":0.8,\"history_frames\":4,\"window_frames\":20,"
+        "\"fall_threshold\":0.5}],\"hazards\":[{\"detection_id\":\"frame-2:hazard:0\","
         "\"class_name\":\"scissors\",\"confidence\":0.91,"
         "\"bbox_xyxy\":[12,14,18,20]}]}\n";
     assert(send(connection, tracking_response.data(), tracking_response.size(), 0) ==
@@ -127,6 +133,10 @@ int main() {
          *tracking.persons[0].fall_confidence == 0.875);
   assert(tracking.persons[0].pose_quality &&
          *tracking.persons[0].pose_quality == 0.88);
+  assert(tracking.persons[0].keypoints_xyc.size() == 17);
+  assert(tracking.persons[0].history_frames == 20);
+  assert(tracking.persons[0].window_frames == 20);
+  assert(tracking.persons[0].fall_threshold == 0.5);
   assert(tracking.persons[0].detection_confidence == 0.95F);
   assert(tracking.hazards.size() == 1);
   assert(tracking.hazards[0].class_name == "scissors");

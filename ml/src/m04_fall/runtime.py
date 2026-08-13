@@ -17,9 +17,17 @@ class RuntimeResult:
     accepted: bool
     pose: PoseResult | None
     fall: FallResult | None
+    history_frames: int
+    window_frames: int
+    fall_threshold: float
 
     def to_dict(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {"accepted": self.accepted}
+        payload: dict[str, Any] = {
+            "accepted": self.accepted,
+            "history_frames": self.history_frames,
+            "window_frames": self.window_frames,
+            "fall_threshold": self.fall_threshold,
+        }
         if self.pose is not None:
             payload["pose"] = self.pose.to_dict()
         if self.fall is not None:
@@ -38,6 +46,13 @@ class PoseFallRuntime:
         )
         self.last_timestamp: dict[int, int] = {}
 
+    def diagnostics(self, track_id: int) -> dict[str, int | float]:
+        return {
+            "history_frames": len(self.histories.get(track_id, ())),
+            "window_frames": self.fall.window_frames,
+            "fall_threshold": self.fall.threshold,
+        }
+
     def process(self, frame_bgr: np.ndarray, person: PersonInput) -> RuntimeResult:
         previous = self.last_timestamp.get(person.track_id)
         if previous is not None and person.timestamp_ms <= previous:
@@ -50,7 +65,12 @@ class PoseFallRuntime:
             self.reset_track(person.track_id)
             previous = None
         if previous is not None and person.timestamp_ms - previous < self.interval_ms:
-            return RuntimeResult(accepted=False, pose=None, fall=None)
+            return RuntimeResult(
+                accepted=False,
+                pose=None,
+                fall=None,
+                **self.diagnostics(person.track_id),
+            )
         result = self.pose.infer(frame_bgr, person)
         history = self.histories[person.track_id]
         history.append(result)
@@ -61,7 +81,12 @@ class PoseFallRuntime:
             fall_result = self.fall.predict(
                 features, person.track_id, person.timestamp_ms
             )
-        return RuntimeResult(accepted=True, pose=result, fall=fall_result)
+        return RuntimeResult(
+            accepted=True,
+            pose=result,
+            fall=fall_result,
+            **self.diagnostics(person.track_id),
+        )
 
     def reset_track(self, track_id: int) -> None:
         self.histories.pop(track_id, None)
