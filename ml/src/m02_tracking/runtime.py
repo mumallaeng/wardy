@@ -88,8 +88,20 @@ class TrackingPoseFallRuntime:
                 track_id=tracked_person["track_id"],
                 bbox_xyxy=tracked_person["bbox_xyxy"],
             )
-            inference = self.pose_fall.process(frame_bgr, person)
             identity = identity_results.get(tracked_person["track_id"])
+            try:
+                inference = self.pose_fall.process(frame_bgr, person)
+            except Exception:
+                # A malformed pose for one crop is a skipped observation, not
+                # a frame-wide detection outage. Reset only that track's
+                # temporal history so M04 never consumes a broken sequence.
+                self.pose_fall.reset_track(person.track_id)
+                persons.append({
+                    **tracked_person,
+                    "accepted": False,
+                    **({"identity": identity} if identity is not None else {}),
+                })
+                continue
             persons.append({
                 **tracked_person,
                 **inference.to_dict(),

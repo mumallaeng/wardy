@@ -50,10 +50,15 @@ int main() {
 
   fall.active = false;
   fall.observed_at = "2026-08-10T10:00:03Z";
-  const auto released = runtime.apply(fall);
-  assert(changed_events.back() == emergency.event.event_id);
-  assert(released.released);
-  assert(released.event.event_status == "released");
+  const auto latched = runtime.apply(fall);
+  assert(!latched.released);
+  assert(latched.event.event_status == "new");
+  assert(runtime.current_care_status() == "emergency");
+  assert(runtime.update_status(emergency.event.event_id, "confirmed",
+                               "2026-08-10T10:00:03Z"));
+  assert(runtime.current_care_status() == "caution");
+  assert(runtime.update_status(emergency.event.event_id, "released",
+                               "2026-08-10T10:00:04Z"));
   assert(runtime.current_care_status() == "caution");
 
   assert(runtime.update_status(created.event.event_id, "confirmed",
@@ -107,6 +112,6 @@ int main() {
   }
   wardy::rules::EventRuntime restored_runtime(restore_database);
   assert(restored_runtime.has_active_event_type("hazard_detected"));
-  assert(restored_runtime.current_care_status() == "caution");
+  assert(restored_runtime.current_care_status() == "normal");
   return 0;
 }

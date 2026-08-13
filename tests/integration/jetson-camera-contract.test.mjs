@@ -117,6 +117,9 @@ test("M-01과 M-05 배포 artifact 및 M-05 dataset은 고정된 Hugging Face re
 
 test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시에만 적용된다", async () => {
   const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const eventRuntime = await readFile(
+    path.join(root, "edge/src/rules/event_runtime.cpp"), "utf8",
+  );
 
   assert.match(api, /std::mutex system_state_mutex/);
   assert.equal(
@@ -128,12 +131,22 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   assert.match(api, /apply && \*person\.fall_suspected/);
   assert.doesNotMatch(api, /Tracked person expired; fall alert released/);
   assert.match(api, /clear_all_fall_tracks\(locked\)/);
+  assert.match(api, /event observation did not change runtime state/);
   assert.doesNotMatch(api, /Camera stream reset; anonymous fall track released/);
+  assert.match(eventRuntime, /Safety incidents are acknowledged and closed by an operator/);
+  assert.match(eventRuntime, /found->second\.event_type == "fall_suspected"/);
 });
 
 test("내부 추론 예외는 웹 상태에 그대로 노출하지 않는다", async () => {
   const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const personRuntime = await readFile(
+    path.join(root, "edge/src/inference/person_inference_runtime.cpp"), "utf8",
+  );
   assert.match(api, /Inference pipeline error:/);
+  assert.match(personRuntime, /kFailuresBeforeFault = 5/);
+  assert.match(personRuntime, /kSuccessesBeforeRecovery = 3/);
+  assert.match(personRuntime, /consecutive_failures >= kFailuresBeforeFault/);
+  assert.match(personRuntime, /recovery_ready && on_result_/);
   assert.match(api, /AI 안전 감지를 일시적으로 사용할 수 없습니다\./);
   assert.doesNotMatch(api, /save_detection_state\(locked, "fault", message\)/);
   assert.doesNotMatch(api, /apply_detection_fault\(locked, true, message\)/);

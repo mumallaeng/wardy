@@ -29,6 +29,8 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(html, /id="enable-browser-notifications"/);
   assert.match(html, /id="fall-incident"/);
   assert.match(html, /낙상 의심 확인/);
+  assert.match(html, /data-fall-action="confirm">확인</);
+  assert.match(html, /data-fall-action="false-detection">오탐</);
   assert.doesNotMatch(html, /상황별 알림/);
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
@@ -44,6 +46,7 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(appSource, /applyLaunchConfiguration/);
   assert.match(appSource, /IDENTITY_PREVIEW_LIMIT = 8/);
   assert.match(appSource, /renderFallIncident/);
+  assert.match(appSource, /추후 모델 학습용 판정 자료로 저장됩니다/);
   assert.match(appSource, /loading\.controller\.abort\(\)/);
   assert.match(appSource, /controller\.signal/);
   assert.match(appSource, /generation !== datasetPreviewGeneration/);
@@ -78,6 +81,10 @@ test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공�
   assert.match(jetson, /systemctl restart wardy-pose-fall\.service wardy-edge\.service/);
   assert.match(macos, /npm run serve/);
   assert.match(macos, /search|\?jetson=/);
+  assert.match(macos, /ssh -N -o ExitOnForwardFailure=yes/);
+  assert.match(macos, /8443:127\.0\.0\.1:8443/);
+  assert.match(macos, /8189:127\.0\.0\.1:8189/);
+  assert.match(macos, /trap cleanup EXIT/);
   assert.match(windows, /npm run serve/);
   for (const source of [jetson, macos, windows]) {
     assert.match(source, /\[실패\]/);
