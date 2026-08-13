@@ -102,8 +102,8 @@
         </section>
 
         <aside class="card status-card">
-          <div class="card-heading"><div><span class="section-kicker">CARE STATUS</span><h2>돌봄 대상자 상태</h2></div><span class="badge" id="care-status-badge">기본</span></div>
-          <div class="care-orb is-normal" id="care-orb"><span id="care-status-label">기본</span><small id="care-status-code">normal</small></div>
+          <div class="card-heading"><div><span class="section-kicker">CARE STATUS</span><h2>돌봄 대상자 상태</h2></div><span class="badge" id="care-status-badge">정상</span></div>
+          <div class="care-orb is-normal" id="care-orb"><span id="care-status-label">정상</span><small id="care-status-code">normal</small></div>
           <p class="status-reason" id="care-status-reason">활성화된 안전 이벤트가 없습니다.</p>
           <p class="helper">상태는 연결된 Jetson의 event runtime이 자동으로 갱신합니다.</p>
         </aside>
@@ -130,7 +130,7 @@
         <div class="filters">
           <label class="search-field"><span>검색</span><input id="event-search" type="search" placeholder="종류, 대상, 위치"></label>
           <label><span>처리 상태</span><select id="event-status-filter"><option value="all">전체</option><option value="new">신규</option><option value="confirmed">확인</option><option value="released">해제</option><option value="false_detection">오탐</option></select></label>
-          <label><span>돌봄 상태</span><select id="care-status-filter"><option value="all">전체</option><option value="normal">기본</option><option value="caution">주의</option><option value="warning">경고</option><option value="emergency">긴급</option></select></label>
+          <label><span>돌봄 상태</span><select id="care-status-filter"><option value="all">전체</option><option value="normal">정상</option><option value="caution">주의</option><option value="warning">경고</option><option value="emergency">긴급</option></select></label>
         </div>
         <div class="table-wrap"><table><thead><tr><th>발생 시각</th><th>이벤트·이유</th><th>대상·위치</th><th>돌봄 상태</th><th>자료</th><th>처리 상태</th><th>작업</th></tr></thead><tbody id="event-table-body"></tbody></table></div>
         <div class="empty-state" id="event-empty" hidden>조건에 맞는 이벤트가 없습니다.</div>

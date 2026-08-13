@@ -62,7 +62,7 @@ int main() {
   assert(fallback.find("미확인 2건") != std::string::npos);
 
   const std::string generated =
-      "오늘 총 3건의 안전 확인 이벤트가 기록되었습니다. 기본 0건, 주의 1건, "
+      "오늘 총 3건의 안전 확인 이벤트가 기록되었습니다. 정상 0건, 주의 1건, "
       "경고 1건, 긴급 1건이며 미확인 2건입니다.";
   const std::string response =
       "{\"model\":\"qwen3.5:4b\",\"response\":\"{\\\"summary\\\":\\\"" +
