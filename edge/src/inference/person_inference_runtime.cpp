@@ -65,17 +65,22 @@ void PersonInferenceRuntime::worker_loop() {
     }
     try {
       const auto detections = detector_.detect(current.frame_bgr);
-      if (on_result_) {
+      ++consecutive_successes;
+      const bool recovery_ready = !fault_reported ||
+          consecutive_successes >= kSuccessesBeforeRecovery;
+      if (recovery_ready && on_result_) {
         on_result_(current.frame_bgr, current.frame_id, current.timestamp_ms,
                    detections, current.reset_tracking || reset_after_fault);
       }
-      reset_after_fault = false;
       consecutive_failures = 0;
-      ++consecutive_successes;
-      if (fault_reported && consecutive_successes >= kSuccessesBeforeRecovery &&
-          on_status_) {
-        on_status_(true, "M-01 through M-05 inference pipeline recovered");
+      if (fault_reported && recovery_ready) {
+        reset_after_fault = false;
+        if (on_status_) {
+          on_status_(true, "M-01 through M-05 inference pipeline recovered");
+        }
         fault_reported = false;
+      } else if (!fault_reported) {
+        reset_after_fault = false;
       }
     } catch (const std::exception& error) {
       reset_after_fault = true;

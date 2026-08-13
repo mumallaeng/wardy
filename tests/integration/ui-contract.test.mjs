@@ -81,7 +81,9 @@ test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공�
   assert.match(jetson, /systemctl restart wardy-pose-fall\.service wardy-edge\.service/);
   assert.match(macos, /npm run serve/);
   assert.match(macos, /search|\?jetson=/);
-  assert.match(macos, /ssh -N/);
+  assert.match(macos, /ssh -N -o ExitOnForwardFailure=yes/);
+  assert.match(macos, /8443:127\.0\.0\.1:8443/);
+  assert.match(macos, /8189:127\.0\.0\.1:8189/);
   assert.match(macos, /trap cleanup EXIT/);
   assert.match(windows, /npm run serve/);
   for (const source of [jetson, macos, windows]) {

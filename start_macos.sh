@@ -49,7 +49,10 @@ if ! curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null
   step="Jetson SSH 터널 시작"
   echo "Direct Jetson access is unavailable. Starting the Wardy SSH tunnel."
   echo "Keep this terminal open while using the camera."
-  ssh -N "${ssh_target}" &
+  ssh -N -o ExitOnForwardFailure=yes \
+    -L "${jetson_host}:8443:127.0.0.1:8443" \
+    -L "${jetson_host}:8189:127.0.0.1:8189" \
+    "${ssh_target}" &
   tunnel_pid=$!
   for _ in {1..20}; do
     if curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null 2>&1; then
