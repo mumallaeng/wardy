@@ -101,6 +101,30 @@ test("inference confidence는 유한한 0부터 1 사이 값이어야 한다", a
   );
 });
 
+test("M-03 관절점은 비어 있거나 COCO-17 전체여야 한다", async () => {
+  const client = new WardyRuntimeClient(async (url) => {
+    if (String(url).endsWith("/api/state")) return Response.json(state);
+    if (String(url).endsWith("/api/events")) return Response.json({ events: [] });
+    return Response.json({
+      ...inference,
+      detections: [{
+        id: "track-1", className: "사람", role: "", name: "", posture: "서 있음",
+        color: "#62b88f", confidence: 0.9, box: [0.1, 0.1, 0.2, 0.6],
+        fallDiagnostics: {
+          trackId: 1, detectorConfidence: 0.9, poseQuality: 0.8,
+          historyFrames: 1, windowFrames: 20, fallConfidence: null,
+          fallThreshold: 0.5, keypoints: [[0.2, 0.2, 0.9]],
+        },
+      }],
+    });
+  });
+
+  await assert.rejects(
+    client.loadSnapshot("https://jetson.local:8443", "token", "https://ui.local"),
+    /inference output 형식/,
+  );
+});
+
 test("식별 검토 장면과 답변은 인증된 Jetson API를 사용한다", async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {
