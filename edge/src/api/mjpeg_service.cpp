@@ -800,9 +800,21 @@ void apply_tracking_results(
     }
   }
   for (const auto& [track_id, identity] : disappeared_falls) {
+    auto persisted_identity = identity;
+    if (!persisted_identity.first) {
+      const std::string marker = "\"track_id\":" + std::to_string(track_id);
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            event.source_results_json.find(marker) != std::string::npos) {
+          persisted_identity = {event.subject_id, event.subject_name};
+          break;
+        }
+      }
+    }
+    if (!persisted_identity.first) continue;
     apply_fall_observation(state, track_id, false, std::nullopt,
                            "낙상 의심 자세가 더 이상 감지되지 않습니다.",
-                           identity.first, identity.second);
+                           persisted_identity.first, persisted_identity.second);
   }
 
   for (const auto& person : response.persons) {
@@ -831,6 +843,22 @@ void apply_tracking_results(
           state->active_fall_identities.erase(identity);
         }
       }
+    }
+    if (!fall_active && !event_subject_id) {
+      const std::string marker = "\"track_id\":" +
+                                 std::to_string(person.track_id);
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            event.source_results_json.find(marker) != std::string::npos) {
+          event_subject_id = event.subject_id;
+          event_subject_name = event.subject_name;
+          break;
+        }
+      }
+      // Do not synthesize a track-* identity when there is no persisted
+      // incident to reconcile. This keeps a restored-event release tied to
+      // the original subject key.
+      if (!event_subject_id) apply = false;
     }
     if (apply) {
       apply_fall_observation(

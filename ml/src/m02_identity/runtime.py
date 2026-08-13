@@ -326,13 +326,21 @@ class RegisteredSubjectIdentifier:
             if transaction_started:
                 self._connection.rollback()
             return None
-        crop, _offset = self._person_crop(frame, bbox_xyxy)
-        review_id = f"identity-{uuid.uuid4().hex}"
-        relative_path = Path("identity") / "reviews" / f"{review_id}.jpg"
-        absolute_path = self.training_data_path / relative_path
-        absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        if not cv2.imwrite(str(absolute_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 90]):
-            raise RuntimeError("unable to save identity review image")
+        absolute_path: Path | None = None
+        try:
+            crop, _offset = self._person_crop(frame, bbox_xyxy)
+            review_id = f"identity-{uuid.uuid4().hex}"
+            relative_path = Path("identity") / "reviews" / f"{review_id}.jpg"
+            absolute_path = self.training_data_path / relative_path
+            absolute_path.parent.mkdir(parents=True, exist_ok=True)
+            if not cv2.imwrite(str(absolute_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 90]):
+                raise RuntimeError("unable to save identity review image")
+        except Exception:
+            if transaction_started:
+                self._connection.rollback()
+            if absolute_path is not None:
+                absolute_path.unlink(missing_ok=True)
+            raise
         pruned_rows: list[tuple[str, str]] = []
         try:
             self._connection.execute(
@@ -374,7 +382,8 @@ class RegisteredSubjectIdentifier:
         except Exception:
             if transaction_started:
                 self._connection.rollback()
-            absolute_path.unlink(missing_ok=True)
+            if absolute_path is not None:
+                absolute_path.unlink(missing_ok=True)
             raise
         for _stored_review_id, stored_image_path in pruned_rows:
             self._delete_stored_image(stored_image_path)

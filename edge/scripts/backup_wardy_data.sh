@@ -32,7 +32,10 @@ resume_services() {
 }
 trap resume_services EXIT
 
-sudo systemctl stop wardy-edge.service wardy-pose-fall.service 2>/dev/null || true
+if ! sudo systemctl stop wardy-edge.service wardy-pose-fall.service 2>/dev/null; then
+  echo "failed to stop Wardy services before backup" >&2
+  exit 1
+fi
 
 install -d -m 0700 "${backup_path}" "${stage}/db" "${stage}/training" "${stage}/events"
 if [[ -f "${database_path}" ]]; then
