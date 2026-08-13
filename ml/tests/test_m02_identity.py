@@ -104,6 +104,24 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         self.assertEqual(result[7]["subject_id"], "subject-1")
         self.assertEqual(result[7]["subject_name"], "김연우")
 
+    def test_identity_processing_stops_when_consent_is_disabled(self) -> None:
+        self.runtime._gallery = [
+            _GalleryFeature(_Subject("subject-1", "등록 인물", "돌봄 대상"),
+                            np.array([[100.0]], dtype=np.float32))
+        ]
+        with self.runtime._connection:
+            self.runtime._connection.execute(
+                "UPDATE data_collection_settings SET identity_review_enabled=0 WHERE singleton_id=1"
+            )
+        result = self.runtime.identify(
+            np.full((30, 30, 3), 100, dtype=np.uint8),
+            [{"track_id": 8, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:00Z",
+        )
+        self.assertEqual(result, {8: {"status": "disabled"}})
+        self.assertEqual(self.runtime._gallery, [])
+        self.assertEqual(self.runtime.recognizer.feature_calls, 0)
+
     def test_yunet_input_is_letterboxed_and_face_coordinates_are_restored(self) -> None:
         image = np.full((61, 47, 3), 100, dtype=np.uint8)
         face = self.runtime._largest_face(image)

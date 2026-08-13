@@ -625,29 +625,33 @@ void save_inference_state(const std::shared_ptr<StreamState>& state) noexcept {
   try {
     if (!state->inference) return;
     const auto inference_snapshot = state->inference->snapshot();
-    std::lock_guard lock(state->system_state_mutex);
-    const auto previous = state->database->load_system_state();
-    const auto care = state->events ? state->events->current_care_status()
-                                    : std::optional<std::string>{};
-    const std::string event_reason = state->events
-        ? state->events->current_reason()
-        : "Event runtime is starting";
-    const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
-    const std::string reason = inference_snapshot.operational
-        ? event_reason : inference_snapshot.fault_reason;
-    if (!previous || previous->care_state != care ||
-        previous->detection_state != detection_state || previous->reason != reason) {
-      state->database->save_system_state({
-          care,
-          previous ? previous->camera_state
-                   : (state->camera_connected ? "connected" : "idle"),
-          detection_state,
-          previous ? previous->event_state : "ready",
-          reason,
-          utc_now(),
-      });
-      broadcast_snapshot(state);
+    bool state_changed = false;
+    {
+      std::lock_guard lock(state->system_state_mutex);
+      const auto previous = state->database->load_system_state();
+      const auto care = state->events ? state->events->current_care_status()
+                                      : std::optional<std::string>{};
+      const std::string event_reason = state->events
+          ? state->events->current_reason()
+          : "Event runtime is starting";
+      const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
+      const std::string reason = inference_snapshot.operational
+          ? event_reason : inference_snapshot.fault_reason;
+      if (!previous || previous->care_state != care ||
+          previous->detection_state != detection_state || previous->reason != reason) {
+        state->database->save_system_state({
+            care,
+            previous ? previous->camera_state
+                     : (state->camera_connected ? "connected" : "idle"),
+            detection_state,
+            previous ? previous->event_state : "ready",
+            reason,
+            utc_now(),
+        });
+        state_changed = true;
+      }
     }
+    if (state_changed) broadcast_snapshot(state);
     broadcast_inference(state);
   } catch (const std::exception& error) {
     std::cerr << "Inference state error: " << error.what() << '\n';
@@ -1024,6 +1028,17 @@ int retention_header(const std::string& request, const std::string& name,
   return days;
 }
 
+std::string consent_version_header(const std::string& request) {
+  const std::string value = request_header(request, "x-wardy-consent-version").value_or("");
+  if (value.empty() || value.size() > 64 ||
+      std::any_of(value.begin(), value.end(), [](unsigned char character) {
+        return !(std::isalnum(character) || character == '-' || character == '_' || character == '.');
+      })) {
+    throw std::invalid_argument("invalid consent version");
+  }
+  return value;
+}
+
 std::string update_data_collection_settings(
     const std::string& request, const std::shared_ptr<StreamState>& state) {
   const std::string now = utc_now();
@@ -1037,6 +1052,7 @@ std::string update_data_collection_settings(
       retention_header(request, "x-wardy-event-media-retention-days", 1, 365);
   settings.training_data_retention_days =
       retention_header(request, "x-wardy-training-data-retention-days", 1, 3650);
+  settings.consent_version = consent_version_header(request);
   settings.consented_at = now;
   settings.updated_at = now;
   state->database->save_data_collection_settings(settings);

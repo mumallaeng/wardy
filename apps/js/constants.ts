@@ -24,18 +24,19 @@ export function userFacingCareReason(status: CareStatus, reason: string): string
 
 /** Keep implementation diagnostics out of caregiver-facing event descriptions. */
 export function userFacingEventReason(eventType: EventType, reason: string): string {
-  const normalized = reason.trim().toLocaleLowerCase("en-US");
-  if (eventType === "fall_suspected" &&
-      (normalized.includes("fall threshold") || normalized.includes("m-04"))) {
-    return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+  const technical = /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason);
+  if (!technical) return reason.trim() || CARE_STATUS.normal.reason;
+  switch (eventType) {
+    case "fall_suspected": return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+    case "camera_fault": return "카메라 입력을 확인해 주세요.";
+    case "detection_fault": return "안전 감지 기능을 확인해 주세요.";
+    case "hazard_detected": return "위험물이 감지되었습니다.";
+    case "hazard_proximity": return "위험물이 돌봄 대상자 가까이에 있습니다.";
+    case "inactivity": return "장시간 움직임이 없어 확인이 필요합니다.";
+    case "zone_entry": return "주의 구역 진입이 감지되었습니다.";
+    case "zone_dwell": return "주의 구역에 오래 머물고 있습니다.";
+    default: return CARE_STATUS.normal.reason;
   }
-  if ((eventType === "camera_fault" || eventType === "detection_fault") &&
-      /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason)) {
-    return eventType === "camera_fault"
-      ? "카메라 입력을 확인해 주세요."
-      : "안전 감지 기능을 확인해 주세요.";
-  }
-  return userFacingCareReason("normal", reason);
 }
 
 export const EVENT_STATUS: Readonly<Record<EventStatus, string>> = Object.freeze({

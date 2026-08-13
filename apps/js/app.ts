@@ -219,6 +219,12 @@ function renderFallDetectionStatus(): void {
   }
   const suspected = diagnostics.filter((diagnostic) =>
     diagnostic.fallConfidence !== null && diagnostic.fallConfidence >= diagnostic.fallThreshold);
+  const scored = diagnostics.filter((diagnostic) => diagnostic.fallConfidence !== null);
+  if (scored.length === 0) {
+    status.textContent = "분석 중";
+    detail.textContent = "M-04가 자세 시퀀스를 모으고 있습니다.";
+    return;
+  }
   status.textContent = suspected.length > 0 ? "낙상 의심 감지" : "낙상 의심 없음";
   detail.textContent = suspected.length > 0
     ? `${suspected.length}명에서 낙상 의심 신호를 확인했습니다.`

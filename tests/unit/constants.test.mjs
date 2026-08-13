@@ -19,4 +19,7 @@ test("이벤트 기록에도 모델 내부 진단 문구를 노출하지 않는�
     userFacingEventReason("fall_suspected", "M-04 temporal pose sequence exceeded the fall threshold"),
     "낙상 의심 신호가 일정 시간 누적되었습니다.",
   );
+  assert.equal(userFacingEventReason("fall_suspected", "낙상 의심"), "낙상 의심");
+  assert.equal(userFacingEventReason("hazard_detected", "위험물이 탐지됨"), "위험물이 탐지됨");
+  assert.equal(userFacingEventReason("camera_fault", "카메라 입력이 중단됨"), "카메라 입력이 중단됨");
 });

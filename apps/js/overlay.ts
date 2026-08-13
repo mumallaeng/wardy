@@ -168,7 +168,10 @@ export class OverlayController {
         labels.push(`[M-01] ${detection.className || "person"} ${Math.round(diagnostic.detectorConfidence * 100)}%`);
       }
       if (this.settings.showRole || this.settings.showName) {
-        const identity = [detection.role, detection.name].filter(Boolean).join(" · ");
+        const identity = [
+          this.settings.showRole ? detection.role : "",
+          this.settings.showName ? detection.name : "",
+        ].filter(Boolean).join(" · ");
         labels.push(`[M-02] track #${diagnostic.trackId}${identity ? ` · ${identity}` : ""}`);
       }
       if (this.settings.showPosture) {

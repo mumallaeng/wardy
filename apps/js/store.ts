@@ -101,6 +101,13 @@ function migratePersistedState(value: unknown): void {
     value.events = value.events.filter(
       (event) => !isRecord(event) || event.event_type !== "managed_item_moved",
     );
+    (value.events as unknown[]).forEach((event: unknown) => {
+      if (isRecord(event) &&
+          (event.event_type === "camera_fault" || event.event_type === "detection_fault") &&
+          event.care_status === null) {
+        event.care_status = "normal";
+      }
+    });
   }
   const settings = value.settings;
   if (!isRecord(settings)) return;

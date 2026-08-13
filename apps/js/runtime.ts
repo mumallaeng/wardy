@@ -298,6 +298,7 @@ export class WardyRuntimeClient {
           "X-Wardy-Model-Improvement-Enabled": String(settings.modelImprovementEnabled),
           "X-Wardy-Event-Media-Retention-Days": String(settings.eventMediaRetentionDays),
           "X-Wardy-Training-Data-Retention-Days": String(settings.trainingDataRetentionDays),
+          "X-Wardy-Consent-Version": settings.consentVersion,
         }),
       });
     return body.dataCollection;
