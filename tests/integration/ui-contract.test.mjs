@@ -44,6 +44,8 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(appSource, /applyLaunchConfiguration/);
   assert.match(appSource, /IDENTITY_PREVIEW_LIMIT = 8/);
   assert.match(appSource, /renderFallIncident/);
+  assert.match(appSource, /loading\.controller\.abort\(\)/);
+  assert.match(appSource, /controller\.signal/);
   assert.match(appSource, /generation !== datasetPreviewGeneration/);
   assert.match(appSource, /if \(!dialog\.open\) dialog\.showModal\(\)/);
   assert.match(html, /Jetson camera 촬영/);

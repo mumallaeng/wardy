@@ -86,8 +86,21 @@
       }
     },
     "m05_hazard": {
-      "default_version": "hazard-objects-v2-finetune-v3",
+      "default_version": "hazard-objects-c270-finetune-v1",
       "versions": {
+        "hazard-objects-c270-finetune-v1": {
+          "source": "huggingface",
+          "repo_id": "chocochip119/wardy-m05-hazard-detector",
+          "revision": "dae7078876c27c81b2647540b074ecff25078086",
+          "files": {
+            "model.pt": "558969fe45df95cf5f4f88c838666e08eb0c1deb8287278805072ebb8af8556b",
+            "training_args.yaml": "a17c5adc7d03adb0f47525195ccebf7a2660e2713b8d15cdda99270459b95cf7"
+          },
+          "remote_files": {
+            "model.pt": "weights/best.pt",
+            "training_args.yaml": "args.yaml"
+          }
+        },
         "hazard-objects-v2-finetune-v3": {
           "source": "huggingface",
           "repo_id": "chocochip119/wardy-m05-hazard-detector",

@@ -877,27 +877,11 @@ void apply_tracking_results(
   state->inference->apply(output);
 }
 
-void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
-                             const std::string& reason) {
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> active_tracks;
+void clear_all_fall_tracks(const std::shared_ptr<StreamState>& state) {
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
-    for (const auto track_id : state->active_fall_tracks) {
-      const auto identity = state->active_fall_identities.find(track_id);
-      active_tracks.emplace_back(
-          track_id,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.first,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.second);
-    }
     state->active_fall_tracks.clear();
     state->active_fall_identities.clear();
-  }
-  for (const auto& [track_id, subject_id, subject_name] : active_tracks) {
-    apply_fall_observation(state, track_id, false, std::nullopt, reason,
-                           subject_id, subject_name);
   }
 }
 #endif
@@ -1953,8 +1937,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
             bool reset_tracking) {
           if (const auto locked = weak_state.lock()) {
             if (reset_tracking) {
-              release_all_fall_tracks(
-                  locked, "Camera stream reset; anonymous fall track released");
+              clear_all_fall_tracks(locked);
             }
             const auto response = pose_fall_client->infer_frame(
                 frame, frame_id, timestamp_ms, detections, reset_tracking);

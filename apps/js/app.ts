@@ -69,7 +69,10 @@ let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
 const identityReviewUrls = new Map<string, string>();
-const identityReviewLoads = new Map<string, Promise<string>>();
+const identityReviewLoads = new Map<string, {
+  promise: Promise<string>;
+  controller: AbortController;
+}>();
 let activeIdentityReviewIds = new Set<string>();
 const IDENTITY_PREVIEW_LIMIT = 8;
 
@@ -365,7 +368,9 @@ async function resolveIdentityReview(reviewId: string,
 async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
                                              hasSubjects: boolean): Promise<void> {
   const currentIds = new Set(reviews.map((review) => review.id));
-  activeIdentityReviewIds = currentIds;
+  const previewReviews = reviews.slice(0, IDENTITY_PREVIEW_LIMIT);
+  const previewIds = new Set(previewReviews.map((review) => review.id));
+  activeIdentityReviewIds = previewIds;
   identityReviewUrls.forEach((url, reviewId) => {
     if (!currentIds.has(reviewId)) {
       URL.revokeObjectURL(url);
@@ -373,8 +378,9 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
     }
   });
   identityReviewLoads.forEach((loading, reviewId) => {
-    if (currentIds.has(reviewId)) return;
-    void loading.then((url) => {
+    if (previewIds.has(reviewId)) return;
+    loading.controller.abort();
+    void loading.promise.then((url) => {
       if (!activeIdentityReviewIds.has(reviewId)
           && identityReviewUrls.get(reviewId) === url) {
         URL.revokeObjectURL(url);
@@ -382,7 +388,6 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
       }
     }).catch(() => undefined);
   });
-  const previewReviews = reviews.slice(0, IDENTITY_PREVIEW_LIMIT);
   reviews.slice(IDENTITY_PREVIEW_LIMIT).forEach((review) => {
     const notice = document.querySelector<HTMLElement>(
       `[data-review-notice="${CSS.escape(review.id)}"]`,
@@ -393,7 +398,7 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
     const image = document.querySelector<HTMLImageElement>(
       `[data-review-image="${CSS.escape(review.id)}"]`,
     );
-    if (!image) return;
+    if (!image) continue;
     document.querySelectorAll<HTMLButtonElement>(
       `[data-review-action="${CSS.escape(review.id)}"]`,
     ).forEach((button) => {
@@ -406,12 +411,14 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
     try {
       let url = identityReviewUrls.get(review.id);
       if (!url) {
-        let loading = identityReviewLoads.get(review.id);
-        if (!loading) {
-          loading = (async () => {
+        let load = identityReviewLoads.get(review.id);
+        if (!load) {
+          const controller = new AbortController();
+          const loading = (async () => {
             const connection = runtimeConnection();
             const blob = await runtime.loadIdentityReviewMedia(
-              connection.baseUrl, connection.accessToken, connection.origin, review.id);
+              connection.baseUrl, connection.accessToken, connection.origin, review.id,
+              controller.signal);
             const createdUrl = URL.createObjectURL(blob);
             if (!activeIdentityReviewIds.has(review.id)) {
               URL.revokeObjectURL(createdUrl);
@@ -420,14 +427,15 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
             identityReviewUrls.set(review.id, createdUrl);
             return createdUrl;
           })();
-          identityReviewLoads.set(review.id, loading);
+          load = { promise: loading, controller };
+          identityReviewLoads.set(review.id, load);
           void loading.finally(() => {
-            if (identityReviewLoads.get(review.id) === loading) {
+            if (identityReviewLoads.get(review.id)?.promise === loading) {
               identityReviewLoads.delete(review.id);
             }
           }).catch(() => undefined);
         }
-        url = await loading;
+        url = await load.promise;
       }
       image.src = url;
       const notice = document.querySelector<HTMLElement>(
@@ -437,6 +445,7 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
         ? "장면을 확인하고 답변을 선택해 주세요."
         : "등록 인물이 없어 미등록 또는 학습 제외로 답할 수 있습니다.";
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") continue;
       const notice = document.querySelector<HTMLElement>(
         `[data-review-notice="${CSS.escape(review.id)}"]`,
       );
@@ -1143,6 +1152,7 @@ $("#system-guidance-action").addEventListener("click", () => openView("jetson"))
 window.addEventListener("beforeunload", () => {
   closeDatasetPreview();
   activeIdentityReviewIds.clear();
+  identityReviewLoads.forEach((load) => load.controller.abort());
   identityReviewUrls.forEach((url) => URL.revokeObjectURL(url));
   camera.stop();
   runtime.stop();

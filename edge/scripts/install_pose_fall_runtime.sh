@@ -23,7 +23,7 @@ absolute_from_repo() {
 
 venv_dir="$(absolute_from_repo "${WARDY_ML_VENV:-edge/.venv-ml}")"
 model_root="$(absolute_from_repo "${WARDY_MODEL_ROOT:-edge/models}")"
-hazard_model="$(absolute_from_repo "${WARDY_HAZARD_MODEL:-edge/models/m05_hazard/hazard-objects-v2-finetune-v3/model.onnx}")"
+hazard_model="$(absolute_from_repo "${WARDY_HAZARD_MODEL:-edge/models/m05_hazard/hazard-objects-c270-finetune-v1/model.onnx}")"
 python_bin="${venv_dir}/bin/python"
 
 if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
