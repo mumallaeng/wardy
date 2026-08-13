@@ -98,8 +98,9 @@
             <label><input type="checkbox" data-overlay-setting="showRole">돌봄 역할</label>
             <label><input type="checkbox" data-overlay-setting="showName">식별 이름</label>
             <label><input type="checkbox" data-overlay-setting="showPosture">M-03 자세·스켈레톤</label>
-            <label><input type="checkbox" data-overlay-setting="showFall">M-04 낙상 감지</label>
+            <label><input type="checkbox" data-overlay-setting="showFall">M-04 낙상 판단</label>
           </div>
+          <p class="helper">M-04는 최근 20 frame(10 FPS 기준 약 2초)을 문맥으로 사용합니다. 예를 들어 0.5초 낙상은 약 5 frame의 빠른 전이로 입력되며, 20 frame은 낙상 지속 시간이나 판정 대기 시간이 아닙니다.</p>
         </section>
 
         <aside class="card status-card">
