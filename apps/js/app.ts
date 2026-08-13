@@ -76,6 +76,17 @@ const IDENTITY_PREVIEW_LIMIT = 8;
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
 
+function applyLaunchConfiguration(): void {
+  const url = new URL(window.location.href);
+  const requestedJetson = url.searchParams.get("jetson");
+  if (!requestedJetson) return;
+  store.setJetsonBaseUrl(normalizeJetsonBaseUrl(requestedJetson));
+  url.searchParams.delete("jetson");
+  window.history.replaceState({}, "", url);
+}
+
+applyLaunchConfiguration();
+
 interface SystemGuidance {
   tone: SystemGuidanceTone;
   label: string;
