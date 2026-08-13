@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import sqlite3
 import sys
 import tempfile
@@ -20,7 +21,11 @@ from m02_tracking import (  # noqa: E402
     M02TrackingAdapter,
     TrackingPoseFallRuntime,
 )
-from pose_fall_worker import process_request, validate_identity_database  # noqa: E402
+from pose_fall_worker import (  # noqa: E402
+    encode_response,
+    process_request,
+    validate_identity_database,
+)
 
 
 class _FakeRuntimeResult:
@@ -286,6 +291,23 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["persons"][0]["track_id"], 1)
         self.assertEqual(response["persons"][0]["processed_track_id"], 1)
+
+    def test_worker_response_omits_optional_nulls_for_opencv_json(self) -> None:
+        encoded = encode_response({
+            "ok": True,
+            "persons": [{
+                "identity": {
+                    "status": "unknown",
+                    "confidence": None,
+                    "review_id": "identity-1",
+                }
+            }],
+            "hazards": [],
+        })
+        payload = json.loads(encoded)
+        self.assertEqual(payload["persons"][0]["identity"]["status"], "unknown")
+        self.assertNotIn("confidence", payload["persons"][0]["identity"])
+        self.assertNotIn(b"null", encoded)
 
     def test_worker_adds_m05_hazard_output_to_the_same_frame(self) -> None:
         encoded, jpeg = cv2.imencode(".jpg", self.frame)

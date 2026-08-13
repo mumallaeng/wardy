@@ -26,6 +26,26 @@ MAX_REQUEST_BYTES = 2 * 1024 * 1024
 IDENTITY_TABLES = {"subjects", "subject_reference_samples", "identity_reviews"}
 
 
+def opencv_json_compatible(value: Any) -> Any:
+    """Remove optional null fields unsupported by OpenCV FileStorage JSON."""
+    if isinstance(value, dict):
+        return {
+            key: opencv_json_compatible(item)
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, list):
+        return [opencv_json_compatible(item) for item in value if item is not None]
+    return value
+
+
+def encode_response(response: dict[str, Any]) -> bytes:
+    compatible = opencv_json_compatible(response)
+    return (
+        json.dumps(compatible, ensure_ascii=False, allow_nan=False) + "\n"
+    ).encode()
+
+
 def validate_identity_database(database_path: Path) -> None:
     if not database_path.is_file():
         raise FileNotFoundError(f"identity database not found: {database_path}")
@@ -116,9 +136,7 @@ class PoseFallRequestHandler(socketserver.StreamRequestHandler):
                 )
             except Exception as error:
                 response = {"ok": False, "error": str(error)}
-        self.wfile.write(
-            (json.dumps(response, ensure_ascii=False, allow_nan=False) + "\n").encode()
-        )
+        self.wfile.write(encode_response(response))
 
 
 class PoseFallServer(socketserver.UnixStreamServer):

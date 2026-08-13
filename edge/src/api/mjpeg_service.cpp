@@ -1988,9 +1988,12 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
               }
             } else {
               locked->detection_running_reported = false;
-              save_detection_state(locked, "fault", message);
+              std::cerr << "Inference pipeline error: " << message << '\n';
+              const std::string public_message =
+                  "AI 안전 감지를 일시적으로 사용할 수 없습니다.";
+              save_detection_state(locked, "fault", public_message);
               if (!locked->detection_fault_active.exchange(true)) {
-                apply_detection_fault(locked, true, message);
+                apply_detection_fault(locked, true, public_message);
               }
             }
           }
