@@ -9,8 +9,9 @@
 ```text
 USB webcam
   → Jetson wardy-edge.service
-      ├─ M-01 사람 탐지 · M-02 추적/식별
-      ├─ M-03 자세 · M-04 낙상 의심 · M-05 위험물
+      ├─ M-01 사람 탐지 · M-05 위험물
+      ├─ M-02 추적/식별
+      ├─ M-03 자세 · M-04 낙상 의심
       ├─ SQLite 이벤트/상태/검토 자료
       ├─ HTTPS API :8443
       └─ WebRTC :8189
