@@ -745,20 +745,11 @@ void apply_tracking_results(
   }
   const std::set<std::int64_t> retained(
       response.active_track_ids.begin(), response.active_track_ids.end());
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> expired_falls;
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
     for (auto iterator = state->active_fall_tracks.begin();
          iterator != state->active_fall_tracks.end();) {
       if (retained.count(*iterator) == 0) {
-        const auto identity = state->active_fall_identities.find(*iterator);
-        expired_falls.emplace_back(
-            *iterator,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.first,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.second);
         state->active_fall_identities.erase(*iterator);
         iterator = state->active_fall_tracks.erase(iterator);
       } else {
@@ -766,11 +757,9 @@ void apply_tracking_results(
       }
     }
   }
-  for (const auto& [track_id, subject_id, subject_name] : expired_falls) {
-    apply_fall_observation(state, track_id, false, std::nullopt,
-                           "Tracked person expired; fall alert released",
-                           subject_id, subject_name);
-  }
+  // A fall is an incident, not a frame-level status. Losing the track must not
+  // clear an alert before a caregiver has reviewed it. The runtime event stays
+  // active until the user explicitly releases or dismisses it.
 
   for (const auto& person : response.persons) {
     if (!person.fall_suspected) continue;
@@ -795,13 +784,11 @@ void apply_tracking_results(
         }
       }
     }
-    if (apply) {
+    if (apply && *person.fall_suspected) {
       apply_fall_observation(
-          state, person.track_id, *person.fall_suspected,
+          state, person.track_id, true,
           person.fall_confidence,
-          *person.fall_suspected
-              ? "M-04 temporal pose sequence exceeded the fall threshold"
-              : "M-04 temporal pose sequence returned below the fall threshold",
+          "M-04 temporal pose sequence exceeded the fall threshold",
           event_subject_id, event_subject_name);
     }
   }

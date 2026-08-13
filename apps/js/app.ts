@@ -71,6 +71,7 @@ let knownEventIds: Set<string> | null = null;
 const identityReviewUrls = new Map<string, string>();
 const identityReviewLoads = new Map<string, Promise<string>>();
 let activeIdentityReviewIds = new Set<string>();
+const IDENTITY_PREVIEW_LIMIT = 8;
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
@@ -370,7 +371,14 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
       }
     }).catch(() => undefined);
   });
-  await Promise.all(reviews.map(async (review) => {
+  const previewReviews = reviews.slice(0, IDENTITY_PREVIEW_LIMIT);
+  reviews.slice(IDENTITY_PREVIEW_LIMIT).forEach((review) => {
+    const notice = document.querySelector<HTMLElement>(
+      `[data-review-notice="${CSS.escape(review.id)}"]`,
+    );
+    if (notice) notice.textContent = `요청 과부하 방지를 위해 최근 ${IDENTITY_PREVIEW_LIMIT}건만 미리 불러옵니다.`;
+  });
+  for (const review of previewReviews) {
     const image = document.querySelector<HTMLImageElement>(
       `[data-review-image="${CSS.escape(review.id)}"]`,
     );
@@ -423,7 +431,22 @@ async function hydrateIdentityReviewPreviews(reviews: readonly IdentityReview[],
       );
       if (notice) notice.textContent = errorMessage(error);
     }
-  }));
+  }
+}
+
+function renderFallIncident(events: readonly WardyEvent[]): void {
+  const active = events.find((event) => event.event_type === "fall_suspected"
+    && !["released", "false_detection"].includes(event.event_status));
+  $("#fall-incident").classList.toggle("is-active", Boolean(active));
+  $("#fall-incident-empty").toggleAttribute("hidden", Boolean(active));
+  $("#fall-incident-active").toggleAttribute("hidden", !active);
+  if (!active) return;
+  $("#fall-incident-time").textContent = formatDateTime(active.occurred_at);
+  $("#fall-incident-target").textContent = active.subject_name || active.subject_id || "대상 확인 필요";
+  $("#fall-incident-reason").textContent = "모델 값이 다시 낮아져도 자동 해제되지 않습니다. 직접 확인 후 처리해 주세요.";
+  $$<HTMLButtonElement>("[data-fall-action]").forEach((button) => {
+    button.dataset.eventId = active.event_id;
+  });
 }
 
 /**
@@ -890,6 +913,7 @@ function downloadJson(filename: string, value: unknown): void {
  */
 function render(state: WardyState = store.getState()): void {
   renderCareState(state);
+  renderFallIncident(state.events);
   renderSummary(state.events);
   renderEvents(state.events);
   renderDashboardOverlayControls(state.settings.overlay);
@@ -979,6 +1003,13 @@ $$<HTMLInputElement>('[data-overlay-setting]').forEach((input) => input.addEvent
   store.setOverlaySetting(input.dataset.overlaySetting as OverlaySettingKey, input.checked);
 }));
 $("#generate-ai-summary").addEventListener("click", () => { void generateDailySummary(); });
+$$<HTMLButtonElement>("[data-fall-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const eventId = button.dataset.eventId;
+    const action = button.dataset.fallAction as "confirm" | "release" | "false-detection";
+    if (eventId) void runEventAction(eventId, action);
+  });
+});
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
   .forEach((control) => control.addEventListener("input", () => renderEvents(store.getState().events)));
