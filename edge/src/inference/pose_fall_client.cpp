@@ -199,7 +199,7 @@ void parse_identity_result(const cv::FileNode& container,
   }
   const std::string identity_status = static_cast<std::string>(status);
   static const std::set<std::string> allowed_statuses = {
-      "registered", "uncertain", "unknown", "no_face"};
+      "registered", "uncertain", "unknown", "no_face", "disabled"};
   if (!allowed_statuses.count(identity_status)) {
     throw std::runtime_error("tracking response identity contains invalid status");
   }
