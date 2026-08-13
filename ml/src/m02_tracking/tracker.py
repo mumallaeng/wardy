@@ -13,7 +13,9 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
-DEFAULT_MAX_AGE_FRAMES = 3
+# M-01 can briefly miss a low-contrast or lying person. Keep the anonymous
+# track alive long enough for M-03/M-04 to complete its temporal window.
+DEFAULT_MAX_AGE_FRAMES = 10
 DEFAULT_MIN_HITS = 1
 DEFAULT_COST_LIMIT = 0.85
 MIN_IOU_GATE = 0.01
