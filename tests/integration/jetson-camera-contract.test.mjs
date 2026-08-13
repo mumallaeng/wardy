@@ -131,6 +131,7 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   assert.match(api, /apply && \*person\.fall_suspected/);
   assert.doesNotMatch(api, /Tracked person expired; fall alert released/);
   assert.match(api, /clear_all_fall_tracks\(locked\)/);
+  assert.match(api, /event observation did not change runtime state/);
   assert.doesNotMatch(api, /Camera stream reset; anonymous fall track released/);
   assert.match(eventRuntime, /Safety incidents are acknowledged and closed by an operator/);
   assert.match(eventRuntime, /found->second\.event_type == "fall_suspected"/);
