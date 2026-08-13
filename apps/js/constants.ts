@@ -24,7 +24,7 @@ export function userFacingCareReason(status: CareStatus, reason: string): string
 
 /** Keep implementation diagnostics out of caregiver-facing event descriptions. */
 export function userFacingEventReason(eventType: EventType, reason: string): string {
-  const technical = /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason);
+  const technical = /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold|failed|error|exception|cannot|unable|stopped|recovered|input|encode|encoding|frame)\b/i.test(reason);
   if (!technical) return reason.trim() || CARE_STATUS.normal.reason;
   switch (eventType) {
     case "fall_suspected": return "낙상 의심 신호가 일정 시간 누적되었습니다.";

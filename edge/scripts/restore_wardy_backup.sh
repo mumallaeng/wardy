@@ -39,6 +39,8 @@ restore_cleanup() {
 }
 trap restore_cleanup EXIT
 tar -C "${stage}" -xzf "${archive}"
+[[ -d "${stage}/training" ]] || { echo "backup is missing training data" >&2; exit 1; }
+[[ -d "${stage}/events" ]] || { echo "backup is missing event data" >&2; exit 1; }
 
 systemctl is-active --quiet wardy-edge.service && edge_was_active=1 || true
 systemctl is-active --quiet wardy-pose-fall.service && pose_was_active=1 || true
@@ -46,10 +48,11 @@ sudo systemctl stop wardy-edge.service wardy-pose-fall.service 2>/dev/null || tr
 "${script_dir}/backup_wardy_data.sh"
 
 install -d -m 0700 "$(dirname "${database_path}")" "${training_path}" "${event_path}"
+rm -f -- "${database_path}-wal" "${database_path}-shm" "${database_path}-journal"
 if [[ -f "${stage}/db/wardy.sqlite" ]]; then
   install -m 0600 "${stage}/db/wardy.sqlite" "${database_path}"
 else
-  rm -f -- "${database_path}" "${database_path}-wal" "${database_path}-shm" "${database_path}-journal"
+  rm -f -- "${database_path}"
 fi
 find "${training_path}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 find "${event_path}" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +

@@ -22,4 +22,5 @@ test("이벤트 기록에도 모델 내부 진단 문구를 노출하지 않는�
   assert.equal(userFacingEventReason("fall_suspected", "낙상 의심"), "낙상 의심");
   assert.equal(userFacingEventReason("hazard_detected", "위험물이 탐지됨"), "위험물이 탐지됨");
   assert.equal(userFacingEventReason("camera_fault", "카메라 입력이 중단됨"), "카메라 입력이 중단됨");
+  assert.equal(userFacingEventReason("camera_fault", "failed to encode the Jetson camera frame"), "카메라 입력을 확인해 주세요.");
 });

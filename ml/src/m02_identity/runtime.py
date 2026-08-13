@@ -90,6 +90,7 @@ class RegisteredSubjectIdentifier:
             self._gallery.clear()
             self._feature_cache.clear()
             self._data_version = -1
+            self._last_refresh = float("-inf")
             self._last_review_by_track.clear()
             return {int(person["track_id"]): {"status": "disabled"} for person in persons}
         self._refresh_gallery_if_needed()

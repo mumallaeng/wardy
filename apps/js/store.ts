@@ -104,7 +104,7 @@ function migratePersistedState(value: unknown): void {
     (value.events as unknown[]).forEach((event: unknown) => {
       if (isRecord(event) &&
           (event.event_type === "camera_fault" || event.event_type === "detection_fault") &&
-          event.care_status === null) {
+          (event.care_status === null || event.care_status === undefined)) {
         event.care_status = "normal";
       }
     });

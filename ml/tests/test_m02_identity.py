@@ -121,6 +121,16 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         self.assertEqual(result, {8: {"status": "disabled"}})
         self.assertEqual(self.runtime._gallery, [])
         self.assertEqual(self.runtime.recognizer.feature_calls, 0)
+        with self.runtime._connection:
+            self.runtime._connection.execute(
+                "UPDATE data_collection_settings SET identity_review_enabled=1 WHERE singleton_id=1"
+            )
+        self.runtime.identify(
+            np.full((30, 30, 3), 100, dtype=np.uint8),
+            [{"track_id": 9, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:01Z",
+        )
+        self.assertGreaterEqual(self.runtime.recognizer.feature_calls, 1)
 
     def test_yunet_input_is_letterboxed_and_face_coordinates_are_restored(self) -> None:
         image = np.full((61, 47, 3), 100, dtype=np.uint8)
