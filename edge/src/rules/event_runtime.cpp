@@ -47,7 +47,7 @@ std::optional<std::string> EventRuntime::care_status_for(
     return "caution";
   }
   if (event_type == "camera_fault" || event_type == "detection_fault") {
-    return std::nullopt;
+    return "normal";
   }
   throw std::invalid_argument("unsupported event type: " + event_type);
 }
@@ -211,6 +211,7 @@ std::optional<std::string> EventRuntime::current_care_status() const {
   for (const auto& [key, event] : active_events_) {
     (void)key;
     if (event.event_status == "confirmed") continue;
+    if (event.event_type == "camera_fault" || event.event_type == "detection_fault") continue;
     if (!event.care_status) continue;
     if (care_rank(event.care_status) > care_rank(current)) current = event.care_status;
   }
@@ -223,6 +224,7 @@ std::string EventRuntime::current_reason() const {
   for (const auto& [key, event] : active_events_) {
     (void)key;
     if (event.event_status == "confirmed") continue;
+    if (event.event_type == "camera_fault" || event.event_type == "detection_fault") continue;
     if (!event.care_status) continue;
     if (!current || care_rank(event.care_status) > care_rank(current->care_status)) {
       current = &event;

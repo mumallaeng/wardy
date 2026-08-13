@@ -33,7 +33,7 @@ export interface WardyEvent {
   object_id: string | null;
   object_class: string | null;
   zone_id: string | null;
-  care_status: CareStatus | null;
+  care_status: CareStatus;
   event_status: EventStatus;
   confirmed_at: string | null;
   released_at: string | null;

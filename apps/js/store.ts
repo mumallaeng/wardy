@@ -147,7 +147,7 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && isStringOrNull(value.object_id)
     && isStringOrNull(value.object_class)
     && isStringOrNull(value.zone_id)
-    && (value.care_status === null || (typeof value.care_status === "string" && Object.hasOwn(CARE_STATUS, value.care_status)))
+    && typeof value.care_status === "string" && Object.hasOwn(CARE_STATUS, value.care_status)
     && typeof value.event_status === "string" && Object.hasOwn(EVENT_STATUS, value.event_status)
     && isStringOrNull(value.confirmed_at)
     && isStringOrNull(value.released_at)

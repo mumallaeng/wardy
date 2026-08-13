@@ -14,11 +14,12 @@ int main() {
   event.last_seen_at = event.occurred_at;
   event.subject_location = "unknown";
   event.event_status = "new";
+  event.care_status = "normal";
   event.reason = "camera \"fault\"\nretry";
   event.source_results_json = R"([{"source":"camera","note":"offline"}])";
 
   const std::string json = wardy::api::event_json(event);
-  assert(json.find("\"care_status\":null") != std::string::npos);
+  assert(json.find("\"care_status\":\"normal\"") != std::string::npos);
   assert(json.find("camera \\\"fault\\\"\\nretry") != std::string::npos);
   assert(json.find("\"source_results\":[{\"source\":\"camera\"") != std::string::npos);
 
