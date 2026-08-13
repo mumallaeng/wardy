@@ -245,7 +245,7 @@ function renderFallDetectionStatus(): void {
   const suspected = diagnostics.filter((diagnostic) =>
     diagnostic.fallConfidence !== null && diagnostic.fallConfidence >= diagnostic.fallThreshold);
   const scored = diagnostics.filter((diagnostic) => diagnostic.fallConfidence !== null);
-  if (scored.length === 0) {
+  if (suspected.length === 0 && scored.length < diagnostics.length) {
     status.textContent = "분석 중";
     detail.textContent = "M-04가 자세 시퀀스를 모으고 있습니다.";
     return;

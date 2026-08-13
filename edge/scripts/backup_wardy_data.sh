@@ -19,7 +19,23 @@ backup_path="${1:-${WARDY_BACKUP_PATH:-/var/lib/wardy/backups}}"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 archive="${backup_path}/wardy-backup-${timestamp}.tar.gz"
 stage="$(mktemp -d)"
-trap 'rm -rf -- "${stage}"' EXIT
+edge_was_active=0
+pose_was_active=0
+systemctl is-active --quiet wardy-edge.service && edge_was_active=1 || true
+systemctl is-active --quiet wardy-pose-fall.service && pose_was_active=1 || true
+resume_services() {
+  local status=$?
+  rm -rf -- "${stage}"
+  (( edge_was_active )) && sudo systemctl start wardy-edge.service || true
+  (( pose_was_active )) && sudo systemctl start wardy-pose-fall.service || true
+  return "$status"
+}
+trap resume_services EXIT
+
+if ! sudo systemctl stop wardy-edge.service wardy-pose-fall.service 2>/dev/null; then
+  echo "failed to stop Wardy services before backup" >&2
+  exit 1
+fi
 
 install -d -m 0700 "${backup_path}" "${stage}/db" "${stage}/training" "${stage}/events"
 if [[ -f "${database_path}" ]]; then

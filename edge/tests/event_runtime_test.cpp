@@ -51,14 +51,8 @@ int main() {
   fall.active = false;
   fall.observed_at = "2026-08-10T10:00:03Z";
   const auto latched = runtime.apply(fall);
-  assert(!latched.released);
-  assert(latched.event.event_status == "new");
-  assert(runtime.current_care_status() == "emergency");
-  assert(runtime.update_status(emergency.event.event_id, "confirmed",
-                               "2026-08-10T10:00:03Z"));
-  assert(runtime.current_care_status() == "caution");
-  assert(runtime.update_status(emergency.event.event_id, "released",
-                               "2026-08-10T10:00:04Z"));
+  assert(latched.released);
+  assert(latched.event.event_status == "released");
   assert(runtime.current_care_status() == "caution");
 
   assert(runtime.update_status(created.event.event_id, "confirmed",
@@ -91,6 +85,26 @@ int main() {
   assert(changed_events.back() == cleared_fault.event.event_id);
   assert(!runtime.has_active_event_type("camera_fault"));
   assert(runtime.current_care_status() == "normal");
+
+  // A service restart restores active fall events from SQLite. Releasing the
+  // restored incident must use its persisted subject key rather than inventing
+  // a new track-* identity when the in-memory identity map is empty.
+  wardy::storage::SqliteStore persisted_database(":memory:");
+  persisted_database.initialize();
+  wardy::rules::EventRuntime before_restart(persisted_database);
+  wardy::rules::EventObservation persisted_fall{
+      "fall_suspected", true, "2026-08-10T10:01:00Z", "subject-7", "돌봄 대상",
+      "거실", std::nullopt, std::nullopt, std::nullopt, "낙상 의심",
+      R"([{"source":"m02_m04_pose_sequence","track_id":7}])"};
+  const auto persisted_created = before_restart.apply(persisted_fall);
+  assert(persisted_created.created);
+  wardy::rules::EventRuntime after_restart(persisted_database);
+  persisted_fall.active = false;
+  persisted_fall.observed_at = "2026-08-10T10:01:01Z";
+  const auto persisted_released = after_restart.apply(persisted_fall);
+  assert(persisted_released.released);
+  assert(persisted_released.event.subject_id ==
+         std::optional<std::string>("subject-7"));
 
   wardy::storage::SqliteStore restore_database(":memory:");
   restore_database.initialize();

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -45,6 +46,12 @@ class PoseFallRuntime:
             lambda: deque(maxlen=fall.window_frames)
         )
         self.last_timestamp: dict[int, int] = {}
+        # Landmark noise can flip a posture label for one frame. Keep the
+        # displayed label stable with a short per-track majority vote while
+        # preserving the raw keypoints used by M-04.
+        self.posture_histories: dict[int, deque[str]] = defaultdict(
+            lambda: deque(maxlen=5)
+        )
 
     def diagnostics(self, track_id: int) -> dict[str, int | float]:
         return {
@@ -72,6 +79,18 @@ class PoseFallRuntime:
                 **self.diagnostics(person.track_id),
             )
         result = self.pose.infer(frame_bgr, person)
+        posture_history = self.posture_histories[person.track_id]
+        if result.posture != "unknown":
+            posture_history.append(result.posture)
+        if posture_history:
+            labels, counts = np.unique(np.asarray(posture_history), return_counts=True)
+            max_count = int(counts.max())
+            candidates = {str(label) for label, count in zip(labels, counts) if int(count) == max_count}
+            smoothed_posture = (
+                result.posture if result.posture in candidates else str(labels[int(np.argmax(counts))])
+            )
+            if smoothed_posture != result.posture:
+                result = replace(result, posture=smoothed_posture)
         history = self.histories[person.track_id]
         history.append(result)
         self.last_timestamp[person.track_id] = person.timestamp_ms
@@ -91,6 +110,7 @@ class PoseFallRuntime:
     def reset_track(self, track_id: int) -> None:
         self.histories.pop(track_id, None)
         self.last_timestamp.pop(track_id, None)
+        self.posture_histories.pop(track_id, None)
 
     def retain_tracks(self, active_track_ids: set[int] | frozenset[int]) -> None:
         """Discard temporal state after the owning anonymous track expires."""
@@ -101,3 +121,4 @@ class PoseFallRuntime:
     def reset_all(self) -> None:
         self.histories.clear()
         self.last_timestamp.clear()
+        self.posture_histories.clear()
