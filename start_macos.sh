@@ -5,6 +5,16 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${repo_dir}"
 step="시작 준비"
 device_file="${repo_dir}/.wardy-device"
+tunnel_pid=""
+
+cleanup() {
+  if [[ -n "${tunnel_pid}" ]] && kill -0 "${tunnel_pid}" 2>/dev/null; then
+    kill "${tunnel_pid}" 2>/dev/null || true
+    wait "${tunnel_pid}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 help_on_failure() {
   local status=$?
@@ -33,6 +43,24 @@ if [[ -z "${jetson_host}" && -t 0 ]]; then read -r -p "Jetson IP 또는 DNS: " j
 [[ -n "${jetson_host}" ]] || { step="Jetson 주소 탐색: ./start_macos.sh <Jetson IP>로 한 번 실행하세요"; false; }
 printf '%s\n' "${jetson_host}" >"${device_file}"
 
+ssh_target="${WARDY_SSH_ALIAS:-wardy-jetson-macos}"
+ssh_alias_host="$(ssh -G "${ssh_target}" 2>/dev/null | awk '$1 == "hostname" {print $2; exit}')"
+if ! curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null 2>&1; then
+  step="Jetson SSH 터널 시작"
+  echo "Direct Jetson access is unavailable. Starting the Wardy SSH tunnel."
+  echo "Keep this terminal open while using the camera."
+  ssh -N "${ssh_target}" &
+  tunnel_pid=$!
+  for _ in {1..20}; do
+    if curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null 2>&1; then
+      break
+    fi
+    kill -0 "${tunnel_pid}" 2>/dev/null || false
+    sleep 1
+  done
+  curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null
+fi
+
 step="웹 의존성 설치"
 if [[ ! -d node_modules ]]; then
   echo "Installing Wardy web dependencies. The initial setup can take a few minutes."
@@ -43,7 +71,11 @@ ca_file="${HOME}/Library/Application Support/Wardy/wardy-ca.crt"
 if [[ ! -f "${ca_file}" ]]; then
   step="Jetson CA 인증서 가져오기"
   mkdir -p "$(dirname "${ca_file}")"
-  scp "${WARDY_SSH_USER:-mumallaeng}@${jetson_host}:/etc/wardy/tls/wardy-ca.crt" "${ca_file}"
+  if [[ -n "${tunnel_pid}" || "${ssh_alias_host}" == "${jetson_host}" ]]; then
+    scp "${ssh_target}:/etc/wardy/tls/wardy-ca.crt" "${ca_file}"
+  else
+    scp "${WARDY_SSH_USER:-mumallaeng}@${jetson_host}:/etc/wardy/tls/wardy-ca.crt" "${ca_file}"
+  fi
   step="Jetson CA 인증서 신뢰 등록"
   sudo security add-trusted-cert -d -r trustRoot \
     -k /Library/Keychains/System.keychain "${ca_file}"
@@ -58,4 +90,4 @@ step="브라우저 열기"
 (sleep 2; open "${url}") &
 trap - ERR
 echo "Wardy UI 시작: ${url}"
-exec npm run serve
+npm run serve

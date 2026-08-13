@@ -48,7 +48,8 @@ int main() {
   assert(database.list_events().front().subject_id == "subject-1");
 
   runtime.apply(normal.infer("frame-4", "2026-08-12T00:00:03Z"));
-  assert(database.list_events().front().event_status == "released");
+  assert(database.list_events().front().event_status == "new");
+  assert(events.current_care_status() == "emergency");
 
   wardy::inference::TemporaryInferenceProducer proximity("proximity");
   runtime.apply(proximity.infer("frame-5", "2026-08-12T00:00:04Z"));

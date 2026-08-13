@@ -1,5 +1,6 @@
 #include "inference/person_inference_runtime.hpp"
 
+#include <cstddef>
 #include <exception>
 #include <utility>
 
@@ -47,8 +48,12 @@ void PersonInferenceRuntime::stop() {
 
 void PersonInferenceRuntime::worker_loop() {
   if (on_status_) on_status_(true, "M-01 person detector is ready");
+  constexpr std::size_t kFailuresBeforeFault = 5;
+  constexpr std::size_t kSuccessesBeforeRecovery = 3;
   bool fault_reported = false;
   bool reset_after_fault = false;
+  std::size_t consecutive_failures = 0;
+  std::size_t consecutive_successes = 0;
   while (true) {
     PendingFrame current;
     {
@@ -65,13 +70,19 @@ void PersonInferenceRuntime::worker_loop() {
                    detections, current.reset_tracking || reset_after_fault);
       }
       reset_after_fault = false;
-      if (fault_reported && on_status_) {
+      consecutive_failures = 0;
+      ++consecutive_successes;
+      if (fault_reported && consecutive_successes >= kSuccessesBeforeRecovery &&
+          on_status_) {
         on_status_(true, "M-01 through M-05 inference pipeline recovered");
         fault_reported = false;
       }
     } catch (const std::exception& error) {
       reset_after_fault = true;
-      if (!fault_reported && on_status_) {
+      consecutive_successes = 0;
+      ++consecutive_failures;
+      if (!fault_reported && consecutive_failures >= kFailuresBeforeFault &&
+          on_status_) {
         on_status_(false, error.what());
         fault_reported = true;
       }

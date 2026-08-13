@@ -49,7 +49,14 @@ class RuntimeContractTest(unittest.TestCase):
         simcc_y[:, :, 256] = 0.7
         decoded = decode_simcc(simcc_x, simcc_y, center, scale)
         self.assertEqual(decoded.shape, (1, 17, 3))
-        np.testing.assert_allclose(decoded[0, :, 2], 0.7)
+        expected = 1.0 / (1.0 + np.exp(-0.7))
+        np.testing.assert_allclose(decoded[0, :, 2], expected)
+
+        simcc_x[:, :, 192] = 8.0
+        simcc_y[:, :, 256] = 7.0
+        decoded = decode_simcc(simcc_x, simcc_y, center, scale)
+        self.assertTrue(np.all(decoded[0, :, 2] <= 1.0))
+        self.assertTrue(np.all(decoded[0, :, 2] >= 0.0))
 
     def test_feature_contract_is_twenty_by_eighty(self) -> None:
         pose = FakePose()
