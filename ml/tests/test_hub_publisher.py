@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock, patch
 
-from hub_publisher import load_manifest, stage_publish_tree
+from hub_publisher import load_manifest, publish_model, stage_publish_tree
 from model_manager import install_model
 
 
@@ -43,6 +46,13 @@ class HubPublisherTest(unittest.TestCase):
                 )
             )
             with self.assertRaises(RuntimeError):
+                load_manifest(root)
+
+    def test_manifest_rejects_non_object_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "manifest.json").write_text("[]")
+            with self.assertRaisesRegex(ValueError, "invalid Wardy model manifest"):
                 load_manifest(root)
 
     def test_manifest_rejects_artifact_outside_source_directory(self) -> None:
@@ -121,6 +131,104 @@ class HubPublisherTest(unittest.TestCase):
                 source_dir=published,
             )
             self.assertEqual((installed / "model.onnx").read_bytes(), content)
+
+    def test_remote_targets_reject_reserved_and_duplicate_paths(self) -> None:
+        content = b"wardy-model"
+        digest = hashlib.sha256(content).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            destination = root / "published"
+            source.mkdir()
+            (source / "one.onnx").write_bytes(content)
+            (source / "two.onnx").write_bytes(content)
+            base = {
+                "model_id": "m03_pose",
+                "version": "v1",
+                "files": {"one.onnx": digest, "two.onnx": digest},
+            }
+            for remote_files in (
+                {"one.onnx": "manifest.json", "two.onnx": "two.onnx"},
+                {"one.onnx": "same.onnx", "two.onnx": "same.onnx"},
+                {"one.onnx": "", "two.onnx": "two.onnx"},
+            ):
+                (source / "manifest.json").write_text(
+                    json.dumps({**base, "remote_files": remote_files})
+                )
+                with self.subTest(remote_files=remote_files), self.assertRaises(
+                    ValueError
+                ):
+                    stage_publish_tree(source, destination)
+
+    def test_staged_artifact_is_verified_after_copy(self) -> None:
+        content = b"wardy-model"
+        digest = hashlib.sha256(content).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "model.onnx").write_bytes(content)
+            (root / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "model_id": "m03_pose",
+                        "version": "v1",
+                        "files": {"model.onnx": digest},
+                    }
+                )
+            )
+            with patch("hub_publisher.sha256", side_effect=[digest, "0" * 64]):
+                with self.assertRaisesRegex(RuntimeError, "staged model artifact"):
+                    stage_publish_tree(root, root / "published")
+
+    def test_publish_model_uses_authenticated_hub_api_without_network(self) -> None:
+        content = b"wardy-model"
+        digest = hashlib.sha256(content).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+            (source / "model.onnx").write_bytes(content)
+            (source / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "model_id": "m03_pose",
+                        "version": "v1",
+                        "files": {"model.onnx": digest},
+                    }
+                )
+            )
+            api = MagicMock()
+            api.whoami.return_value = {"name": "wardy-user"}
+            api.upload_folder.return_value = SimpleNamespace(
+                oid="commit-sha", commit_url="https://example.invalid/commit"
+            )
+            module = ModuleType("huggingface_hub")
+            module.HfApi = MagicMock(return_value=api)  # type: ignore[attr-defined]
+            with patch.dict(sys.modules, {"huggingface_hub": module}):
+                result = publish_model(
+                    "wardy-user/model", source, tag="v1", private=True
+                )
+            self.assertEqual(result, "https://example.invalid/commit")
+            api.create_repo.assert_called_once_with(
+                "wardy-user/model", repo_type="model", private=True, exist_ok=True
+            )
+            api.upload_folder.assert_called_once()
+            api.create_tag.assert_called_once_with(
+                repo_id="wardy-user/model",
+                repo_type="model",
+                tag="v1",
+                revision="commit-sha",
+                tag_message="Wardy m03_pose v1",
+            )
+
+    def test_publish_model_rejects_missing_authentication(self) -> None:
+        api = MagicMock()
+        api.whoami.return_value = {}
+        module = ModuleType("huggingface_hub")
+        module.HfApi = MagicMock(return_value=api)  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            sys.modules, {"huggingface_hub": module}
+        ):
+            with self.assertRaisesRegex(RuntimeError, "authentication is required"):
+                publish_model("wardy-user/model", Path(directory), tag="v1")
+        api.create_repo.assert_not_called()
 
 
 if __name__ == "__main__":

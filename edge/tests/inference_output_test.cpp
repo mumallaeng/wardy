@@ -45,6 +45,7 @@ int main() {
   runtime.apply(fall.infer("frame-3", "2026-08-12T00:00:02Z"));
   assert(database.list_events().size() == 1);
   assert(database.list_events().front().event_status == "new");
+  assert(database.list_events().front().subject_id == "subject-1");
 
   runtime.apply(normal.infer("frame-4", "2026-08-12T00:00:03Z"));
   assert(database.list_events().front().event_status == "released");
