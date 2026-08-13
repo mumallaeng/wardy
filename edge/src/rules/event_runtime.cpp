@@ -104,13 +104,6 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       if (found == active_events_.end()) {
         return transition;
       }
-      // Safety incidents are acknowledged and closed by an operator. A model
-      // miss or a person leaving the frame must not make the visible alert
-      // disappear. System faults remain self-clearing when the runtime recovers.
-      if (found->second.event_type == "fall_suspected") {
-        transition.event = found->second;
-        return transition;
-      }
       found->second.last_seen_at = observation.observed_at;
       found->second.event_status = "released";
       found->second.released_at = observation.observed_at;

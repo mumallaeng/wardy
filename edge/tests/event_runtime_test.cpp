@@ -51,14 +51,8 @@ int main() {
   fall.active = false;
   fall.observed_at = "2026-08-10T10:00:03Z";
   const auto latched = runtime.apply(fall);
-  assert(!latched.released);
-  assert(latched.event.event_status == "new");
-  assert(runtime.current_care_status() == "emergency");
-  assert(runtime.update_status(emergency.event.event_id, "confirmed",
-                               "2026-08-10T10:00:03Z"));
-  assert(runtime.current_care_status() == "caution");
-  assert(runtime.update_status(emergency.event.event_id, "released",
-                               "2026-08-10T10:00:04Z"));
+  assert(latched.released);
+  assert(latched.event.event_status == "released");
   assert(runtime.current_care_status() == "caution");
 
   assert(runtime.update_status(created.event.event_id, "confirmed",

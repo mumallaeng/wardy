@@ -819,7 +819,11 @@ void apply_tracking_results(
               person.subject_id, person.subject_name};
         }
       } else {
-        apply = state->active_fall_tracks.erase(person.track_id) != 0;
+        // Always submit an inactive observation.  This also reconciles an
+        // active incident restored from SQLite after a service restart even
+        // when the in-memory track set has not seen the track yet.
+        apply = true;
+        state->active_fall_tracks.erase(person.track_id);
         const auto identity = state->active_fall_identities.find(person.track_id);
         if (identity != state->active_fall_identities.end()) {
           event_subject_id = identity->second.first;
@@ -834,7 +838,7 @@ void apply_tracking_results(
           fall_active ? person.fall_confidence : std::nullopt,
           fall_active
               ? "M-04 temporal pose sequence exceeded the fall threshold"
-              : (person.fall_suspected
+              : (person.fall_suspected.has_value()
                      ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
                      : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
           event_subject_id, event_subject_name);

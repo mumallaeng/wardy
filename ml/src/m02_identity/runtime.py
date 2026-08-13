@@ -304,18 +304,27 @@ class RegisteredSubjectIdentifier:
         predicted_name: str | None,
         confidence: float | None,
     ) -> str | None:
+        transaction_started = False
         try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            transaction_started = True
             enabled = self._connection.execute(
                 "SELECT identity_review_enabled FROM data_collection_settings "
                 "WHERE singleton_id=1"
             ).fetchone()
         except sqlite3.OperationalError:
+            if transaction_started:
+                self._connection.rollback()
             enabled = None
         if enabled is None or not bool(enabled[0]):
+            if transaction_started:
+                self._connection.rollback()
             return None
         now = time.monotonic()
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:
+            if transaction_started:
+                self._connection.rollback()
             return None
         crop, _offset = self._person_crop(frame, bbox_xyxy)
         review_id = f"identity-{uuid.uuid4().hex}"
@@ -326,42 +335,45 @@ class RegisteredSubjectIdentifier:
             raise RuntimeError("unable to save identity review image")
         pruned_rows: list[tuple[str, str]] = []
         try:
-            with self._connection:
-                self._connection.execute(
+            self._connection.execute(
+                """
+                INSERT INTO identity_reviews(
+                  review_id,image_path,captured_at,predicted_name,confidence,
+                  decision,subject_id,updated_at
+                ) VALUES(?,?,?,?,?,'pending',NULL,?)
+                """,
+                (
+                    review_id,
+                    relative_path.as_posix(),
+                    captured_at,
+                    predicted_name,
+                    confidence,
+                    captured_at,
+                ),
+            )
+            pruned_rows = [
+                (str(stored_review_id), str(stored_image_path))
+                for stored_review_id, stored_image_path
+                in self._connection.execute(
                     """
-                    INSERT INTO identity_reviews(
-                      review_id,image_path,captured_at,predicted_name,confidence,
-                      decision,subject_id,updated_at
-                    ) VALUES(?,?,?,?,?,'pending',NULL,?)
+                    SELECT review_id,image_path FROM identity_reviews
+                    WHERE decision='pending'
+                    ORDER BY julianday(captured_at) DESC,captured_at DESC,
+                             review_id DESC
+                    LIMIT -1 OFFSET ?
                     """,
-                    (
-                        review_id,
-                        relative_path.as_posix(),
-                        captured_at,
-                        predicted_name,
-                        confidence,
-                        captured_at,
-                    ),
-                )
-                pruned_rows = [
-                    (str(stored_review_id), str(stored_image_path))
-                    for stored_review_id, stored_image_path
-                    in self._connection.execute(
-                        """
-                        SELECT review_id,image_path FROM identity_reviews
-                        WHERE decision='pending'
-                        ORDER BY julianday(captured_at) DESC,captured_at DESC,
-                                 review_id DESC
-                        LIMIT -1 OFFSET ?
-                        """,
-                        (self.max_pending_reviews,),
-                    ).fetchall()
-                ]
-                self._connection.executemany(
-                    "DELETE FROM identity_reviews WHERE review_id=?",
-                    ((stored_review_id,) for stored_review_id, _path in pruned_rows),
-                )
+                    (self.max_pending_reviews,),
+                ).fetchall()
+            ]
+            self._connection.executemany(
+                "DELETE FROM identity_reviews WHERE review_id=?",
+                ((stored_review_id,) for stored_review_id, _path in pruned_rows),
+            )
+            self._connection.commit()
+            transaction_started = False
         except Exception:
+            if transaction_started:
+                self._connection.rollback()
             absolute_path.unlink(missing_ok=True)
             raise
         for _stored_review_id, stored_image_path in pruned_rows:

@@ -41,15 +41,16 @@ int main() {
   assert(database.list_events().front().subject_id == "subject-1");
 
   // Recognition can disappear frame-to-frame while the M-02 track remains.
-  // The active event must keep its track-derived key instead of churning.
-  runtime.apply(fall.infer("frame-3", "2026-08-12T00:00:02Z"));
+  // A non-fall result releases the active event instead of leaving emergency
+  // latched in the dashboard.
+  runtime.apply(normal.infer("frame-3", "2026-08-12T00:00:02Z"));
   assert(database.list_events().size() == 1);
-  assert(database.list_events().front().event_status == "new");
+  assert(database.list_events().front().event_status == "released");
   assert(database.list_events().front().subject_id == "subject-1");
 
   runtime.apply(normal.infer("frame-4", "2026-08-12T00:00:03Z"));
-  assert(database.list_events().front().event_status == "new");
-  assert(events.current_care_status() == "emergency");
+  assert(database.list_events().front().event_status == "released");
+  assert(events.current_care_status() == "normal");
 
   wardy::inference::TemporaryInferenceProducer proximity("proximity");
   runtime.apply(proximity.infer("frame-5", "2026-08-12T00:00:04Z"));
