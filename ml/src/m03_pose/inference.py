@@ -6,7 +6,7 @@ from typing import Sequence
 import numpy as np
 import onnxruntime as ort
 
-from .contract import PersonInput, PoseResult
+from .contract import PersonInput, PoseResult, classify_posture
 from .preprocess import decode_simcc, preprocess_pose
 
 
@@ -47,4 +47,5 @@ class PoseEstimator:
             bbox_xyxy=person.bbox_xyxy,
             keypoints_xyc=keypoints,
             pose_quality=float(keypoints[:, 2].mean()),
+            posture=classify_posture(keypoints),
         )

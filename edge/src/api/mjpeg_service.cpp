@@ -624,6 +624,7 @@ void save_inference_state(const std::shared_ptr<StreamState>& state) noexcept {
   try {
     if (!state->inference) return;
     const auto inference_snapshot = state->inference->snapshot();
+    std::lock_guard lock(state->system_state_mutex);
     const auto previous = state->database->load_system_state();
     const auto care = state->events ? state->events->current_care_status()
                                     : std::optional<std::string>{};
@@ -633,8 +634,8 @@ void save_inference_state(const std::shared_ptr<StreamState>& state) noexcept {
     const std::string detection_state = inference_snapshot.operational ? "running" : "fault";
     const std::string reason = inference_snapshot.operational
         ? event_reason : inference_snapshot.fault_reason;
-    if (!previous || previous->detection_state != detection_state ||
-        (!inference_snapshot.operational && previous->reason != reason)) {
+    if (!previous || previous->care_state != care ||
+        previous->detection_state != detection_state || previous->reason != reason) {
       state->database->save_system_state({
           care,
           previous ? previous->camera_state
@@ -825,8 +826,15 @@ void apply_tracking_results(
       rendered.detection.role = person.subject_role.value_or("");
       rendered.detection.name = person.subject_name.value_or("");
       rendered.detection.subject_id = person.subject_id;
+      const auto posture_label = [&person] {
+        if (!person.posture) return std::string{"추적 중"};
+        if (*person.posture == "standing") return std::string{"서 있음"};
+        if (*person.posture == "sitting") return std::string{"앉아 있음"};
+        if (*person.posture == "lying") return std::string{"누워 있음"};
+        return std::string{"자세 확인 불가"};
+      }();
       rendered.detection.posture = person.fall_suspected.value_or(false)
-          ? "낙상 의심" : person.pose_quality ? "자세 인식" : "추적 중";
+          ? "낙상 의심" : posture_label;
       rendered.detection.confidence = person.detection_confidence;
       rendered.detection.color = person.fall_suspected.value_or(false)
           ? "#d85d52" : "#62b88f";
