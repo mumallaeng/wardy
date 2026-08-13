@@ -101,3 +101,29 @@ pgrep -af 'ssh.*wardy-jetson-macos'
 - TCP `8443`: HTTPS API와 WebRTC signaling
 - TCP/UDP `8189`: WebRTC media
 - TCP `22`: SSH 유지보수와 최초 CA 인증서 복사
+
+## 유선·Wi-Fi 동시 접속
+
+Jetson에서 두 주소와 listener를 확인합니다.
+
+```bash
+ip -4 -o addr show scope global
+ss -lntup | grep -E ':(8443|8189)\b'
+```
+
+`8443/TCP`와 `8189/TCP·UDP`가 `*`에 열려 있으면 두 network interface에서 받을 수 있습니다. 인증서에는 실제 접속에 사용할 주소가 모두 포함되어야 합니다.
+
+```bash
+./edge/scripts/renew_jetson_tls.sh 10.10.20.40 172.16.1.252
+openssl x509 -in /etc/wardy/tls/jetson.crt -noout -ext subjectAltName
+```
+
+같은 Wi-Fi에 연결된 휴대전화에서는 Mac의 `./start_macos.sh`가 출력하는 주소 하나만 엽니다.
+
+1. `휴대전화 Wardy 주소: http://MAC_WIFI_IP:8000/`
+2. 인증 확인 기록이 없으면 앱이 Jetson `/connect`로 자동 이동
+3. 인증 확인 뒤 Wardy UI로 자동 복귀하여 API·카메라 연결 시작
+
+브라우저나 운영체제의 인증서 승인 화면은 보안상 웹앱이 대신 누를 수 없습니다. 최초 한 번 승인한 뒤에도 영상이 열리지 않으면 `8189/UDP` 방화벽과 공유기의 client isolation 설정을 확인합니다.
+
+공유기의 guest Wi-Fi나 client isolation이 활성화되어 있으면 같은 `172.16.1.0/24` 주소를 받아도 휴대전화에서 Jetson으로 직접 접근할 수 없습니다.

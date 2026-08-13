@@ -44,6 +44,18 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
   });
 });
 
+test("기존 저장 상태에는 M-04 표시 설정을 켠 상태로 추가한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  delete initial.settings.overlay.showFall;
+  storage.setItem("legacy-overlay", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-overlay").getState();
+  assert.equal(restored.settings.overlay.showFall, true);
+  const persisted = JSON.parse(storage.getItem("legacy-overlay"));
+  assert.equal(persisted.settings.overlay.showFall, true);
+});
+
 test("Jetson 데이터 sample 목록은 계약에 맞는 항목만 보존한다", () => {
   const storage = new MemoryStorage();
   const store = new WardyStore(storage, "dataset-samples");

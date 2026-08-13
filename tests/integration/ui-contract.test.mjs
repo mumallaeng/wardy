@@ -44,6 +44,9 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   const appSource = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
   assert.match(appSource, /searchParams\.get\("jetson"\)/);
   assert.match(appSource, /applyLaunchConfiguration/);
+  assert.match(appSource, /VITE_WARDY_JETSON_URL/);
+  assert.match(appSource, /jetsonBrowserBootstrapUrl/);
+  assert.match(appSource, /searchParams\.get\("jetson_tls"\) === "ready"/);
   assert.match(appSource, /IDENTITY_PREVIEW_LIMIT = 8/);
   assert.match(appSource, /renderFallIncident/);
   assert.match(appSource, /추후 모델 학습용 판정 자료로 저장됩니다/);
@@ -81,6 +84,8 @@ test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공�
   assert.match(jetson, /systemctl restart wardy-pose-fall\.service wardy-edge\.service/);
   assert.match(macos, /npm run serve/);
   assert.match(macos, /search|\?jetson=/);
+  assert.match(macos, /VITE_WARDY_JETSON_URL/);
+  assert.match(macos, /휴대전화 Wardy 주소/);
   assert.match(macos, /ssh -N -o ExitOnForwardFailure=yes/);
   assert.match(macos, /WARDY_SSH_ALIAS:-wardy-jetson-macos/);
   assert.match(macos, /ifconfig lo0 alias/);
@@ -135,6 +140,10 @@ test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 �
   assert.match(overlay, /if \(this\.settings\.showClass\) this\.context\.strokeRect/);
   assert.match(overlay, /if \(this\.settings\.showPosture\) this\.#drawSkeleton/);
   assert.match(overlay, /\[M-03\].*detection\.posture/);
+  assert.match(html, /data-overlay-setting="showFall"/);
+  assert.match(overlay, /if \(this\.settings\.showFall\)/);
+  assert.match(overlay, /\[M-04\] 초기 관찰/);
+  assert.doesNotMatch(overlay, /\[M-04\] 수집/);
 });
 
 test("카메라 화면은 브라우저 장치 대신 Jetson WebRTC stream만 사용한다", async () => {

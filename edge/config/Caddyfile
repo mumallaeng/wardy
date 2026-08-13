@@ -3,25 +3,36 @@
 	default_sni {$WARDY_JETSON_HOST}
 }
 
-https://{$WARDY_JETSON_HOST}:8443 {
+https://:8443 {
 	tls {$WARDY_TLS_CERTIFICATE} {$WARDY_TLS_PRIVATE_KEY}
 
-	@outside_private_network not remote_ip private_ranges
-	respond @outside_private_network "Forbidden" 403
+	route {
+		@outside_private_network not remote_ip private_ranges
+		respond @outside_private_network "Forbidden" 403
 
-	@unexpected_browser_origin not header Origin {$WARDY_UI_ORIGIN}
-	respond @unexpected_browser_origin "Forbidden" 403
+		# A top-level visit reaches the browser certificate screen first. Once the
+		# certificate is accepted, Caddy returns the phone to the configured UI.
+		@browser_bootstrap path /connect
+		redir @browser_bootstrap "{$WARDY_UI_ORIGIN}/?jetson=https://{http.request.hostport}&jetson_tls=ready" 302
 
-	@edge_websocket path /api/ws
-	reverse_proxy @edge_websocket 127.0.0.1:8787 {
-		header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
+		@unexpected_browser_origin expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$WARDY_UI_ORIGIN}" && {http.request.header.Origin} != "https://" + {http.request.hostport}`
+		respond @unexpected_browser_origin "Forbidden" 403
+
+		@edge_websocket path /api/ws
+		reverse_proxy @edge_websocket 127.0.0.1:8787 {
+			header_up Origin {$WARDY_UI_ORIGIN}
+			header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
+		}
+
+		@edge_api path /api/*
+		reverse_proxy @edge_api 127.0.0.1:8787 {
+			header_up Origin {$WARDY_UI_ORIGIN}
+			header_up X-Wardy-Access-Token {$WARDY_ACCESS_TOKEN}
+		}
+
+		@webrtc path /wardy /wardy/*
+		reverse_proxy @webrtc 127.0.0.1:8889 {
+			header_up Origin {$WARDY_UI_ORIGIN}
+		}
 	}
-
-	@edge_api path /api/*
-	reverse_proxy @edge_api 127.0.0.1:8787 {
-		header_up X-Wardy-Access-Token {$WARDY_ACCESS_TOKEN}
-	}
-
-	@webrtc path /wardy /wardy/*
-	reverse_proxy @webrtc 127.0.0.1:8889
 }
