@@ -6,8 +6,15 @@
 https://{$WARDY_JETSON_HOST}:8443 {
 	tls {$WARDY_TLS_CERTIFICATE} {$WARDY_TLS_PRIVATE_KEY}
 
+	@edge_websocket path /api/ws
+	reverse_proxy @edge_websocket 127.0.0.1:8787 {
+		header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
+	}
+
 	@edge_api path /api/*
-	reverse_proxy @edge_api 127.0.0.1:8787
+	reverse_proxy @edge_api 127.0.0.1:8787 {
+		header_up X-Wardy-Access-Token {$WARDY_ACCESS_TOKEN}
+	}
 
 	@webrtc path /wardy /wardy/*
 	reverse_proxy @webrtc 127.0.0.1:8889

@@ -1,6 +1,5 @@
 import { CARE_STATUS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
-import { JetsonCredentialStore } from "./credentials.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import {
@@ -58,7 +57,6 @@ function errorMessage(error: unknown): string {
 
 const store = new WardyStore(window.localStorage);
 const colorTheme = new ColorThemeController(window.localStorage, document);
-const credentialStore = new JetsonCredentialStore(window.sessionStorage);
 const trainingSamples = new TrainingSampleClient();
 const runtime = new WardyRuntimeClient();
 let jetsonStatus: JetsonStatus = "idle";
@@ -75,6 +73,7 @@ const identityReviewLoads = new Map<string, Promise<string>>();
 let activeIdentityReviewIds = new Set<string>();
 
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
+const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
 
 interface SystemGuidance {
   tone: SystemGuidanceTone;
@@ -87,7 +86,7 @@ interface SystemGuidance {
 function runtimeConnection(): { baseUrl: string; accessToken: string; origin: string } {
   return {
     baseUrl: store.getState().settings.jetson.baseUrl,
-    accessToken: credentialStore.get().accessToken,
+    accessToken: EDGE_GATEWAY_CREDENTIAL,
     origin: window.location.origin,
   };
 }
@@ -187,11 +186,10 @@ function renderSystemState(): void {
 
 function currentSystemGuidance(): SystemGuidance {
   const hasBaseUrl = Boolean(store.getState().settings.jetson.baseUrl);
-  const credentials = credentialStore.get();
   if (!hasBaseUrl) {
     return {
       tone: "setup", label: "연결 준비", title: "Jetson 연결을 설정해 주세요",
-      message: "서비스 주소와 토큰을 최초 1회 저장하면 이후 접속부터 자동으로 다시 연결합니다.",
+      message: "서비스 주소를 최초 1회 저장하면 이후 접속부터 자동으로 다시 연결합니다.",
       actionLabel: "연결 설정 열기",
     };
   }
@@ -209,27 +207,10 @@ function currentSystemGuidance(): SystemGuidance {
       actionLabel: "연결 상태 보기",
     };
   }
-  if (!credentials.accessToken && jetsonStatus === "connected") {
-    const hasViewerToken = Boolean(credentials.viewerToken.trim());
-    return {
-      tone: "limited", label: "기능 제한", title: "이벤트·상태 동기화 토큰이 없습니다",
-      message: hasViewerToken
-        ? "카메라 영상만 연결할 수 있으며 이벤트와 돌봄 상태는 갱신되지 않습니다. 데이터 API 토큰을 저장해 주세요."
-        : "카메라 미리보기와 이벤트·상태 동기화를 사용할 수 없습니다. 데이터 API 토큰과 카메라 읽기 토큰을 저장해 주세요.",
-      actionLabel: "토큰 입력하기",
-    };
-  }
-  if (!credentials.viewerToken.trim() && jetsonStatus === "connected") {
-    return {
-      tone: "limited", label: "기능 제한", title: "카메라 읽기 토큰이 없습니다",
-      message: "이벤트와 돌봄 상태는 동기화할 수 있지만 카메라 미리보기는 시작할 수 없습니다. 카메라 읽기 토큰을 저장해 주세요.",
-      actionLabel: "토큰 입력하기",
-    };
-  }
-  if (credentials.accessToken && jetsonStatus === "connected" && !runtimeState) {
+  if (jetsonStatus === "connected" && !runtimeState) {
     return {
       tone: "limited", label: "동기화 확인 필요", title: "이벤트·상태 정보를 아직 받지 못했습니다",
-      message: "Jetson 서비스는 연결됐지만 runtime 상태가 확인되지 않았습니다. 자동 재연결 뒤에도 계속되면 데이터 API 토큰과 서비스를 확인해 주세요.",
+      message: "Jetson 서비스는 연결됐지만 runtime 상태가 확인되지 않았습니다. 자동 재연결 뒤에도 계속되면 Jetson gateway와 서비스를 확인해 주세요.",
       actionLabel: "연결 상태 보기",
     };
   }
@@ -458,7 +439,7 @@ function setCameraStatus(status: CameraStatus): void {
   $("#camera-empty").hidden = status === "connected";
   $<HTMLButtonElement>("#start-camera").disabled = status === "connected" || status === "connecting";
   $<HTMLButtonElement>("#stop-camera").disabled = status !== "connected";
-  if (status === "fault" && credentialStore.get().viewerToken && reconnectTimer === null) {
+  if (status === "fault" && store.getState().settings.jetson.baseUrl && reconnectTimer === null) {
     reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true).catch(() => undefined); }, 5000);
   }
   renderSystemGuidance();
@@ -506,32 +487,27 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
     reconnectTimer = null;
   }
   const configured = store.getState().settings.jetson;
-  const credentials = credentialStore.get();
   if (!configured.baseUrl) return;
   try {
     await jetson.check(configured.baseUrl, window.location.origin);
-    if (credentials.accessToken) {
-      const [snapshot, collections, datasetSamples] = await Promise.all([
-        runtime.loadSnapshot(configured.baseUrl, credentials.accessToken, window.location.origin),
-        runtime.loadCollections(configured.baseUrl, credentials.accessToken, window.location.origin),
-        trainingSamples.listDatasetSamples(
-          configured.baseUrl, credentials.accessToken, window.location.origin,
-        ),
-      ]);
-      applyRuntimeSnapshot(snapshot);
-      if (collections.subjects) store.replaceSubjects(collections.subjects);
-      if (collections.managedItems) store.replaceManagedItems(collections.managedItems);
-      if (collections.zones) store.replaceZones(collections.zones);
-      if (collections.notifications) store.replaceNotificationSettings(collections.notifications);
-      if (collections.identityReviews) store.replaceIdentityReviews(collections.identityReviews);
-      store.replaceDatasetSamples(datasetSamples);
-      runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin,
-        applyRuntimeSnapshot, applyInferenceSnapshot);
-    } else {
-      runtime.stop();
-    }
-    if (startCamera && credentials.viewerToken && cameraStatus !== "connected" && cameraStatus !== "connecting") {
-      await camera.start(configured.baseUrl, credentials.viewerToken, window.location.origin);
+    const [snapshot, collections, datasetSamples] = await Promise.all([
+      runtime.loadSnapshot(configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin),
+      runtime.loadCollections(configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin),
+      trainingSamples.listDatasetSamples(
+        configured.baseUrl, EDGE_GATEWAY_CREDENTIAL, window.location.origin,
+      ),
+    ]);
+    applyRuntimeSnapshot(snapshot);
+    if (collections.subjects) store.replaceSubjects(collections.subjects);
+    if (collections.managedItems) store.replaceManagedItems(collections.managedItems);
+    if (collections.zones) store.replaceZones(collections.zones);
+    if (collections.notifications) store.replaceNotificationSettings(collections.notifications);
+    if (collections.identityReviews) store.replaceIdentityReviews(collections.identityReviews);
+    store.replaceDatasetSamples(datasetSamples);
+    runtime.connect(configured.baseUrl, window.location.origin,
+      applyRuntimeSnapshot, applyInferenceSnapshot);
+    if (startCamera && cameraStatus !== "connected" && cameraStatus !== "connecting") {
+      await camera.start(configured.baseUrl, window.location.origin);
     }
   } catch (error) {
     if (startCamera && reconnectTimer === null) {
@@ -545,11 +521,8 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
 
 async function checkJetsonConnection(): Promise<void> {
   try {
-    const cameraConfigured = Boolean(credentialStore.get().viewerToken);
     await connectConfiguredJetson(true);
-    toast(cameraConfigured
-      ? "Jetson Wardy 서비스와 카메라에 연결했습니다."
-      : "Jetson Wardy 서비스에 연결했습니다. 카메라 연결에는 읽기 토큰이 필요합니다.");
+    toast("Jetson Wardy 서비스와 카메라에 연결했습니다.");
   } catch (error) {
     toast(errorMessage(error));
   }
@@ -653,12 +626,11 @@ function renderDashboardOverlayControls(settings: OverlaySettings): void {
  */
 async function captureManagedItemSample(itemId: string): Promise<void> {
   const state = store.getState();
-  const credentials = credentialStore.get();
   const item = state.managedItems.find((candidate) => candidate.id === itemId);
   if (!item) throw new Error(`등록된 물품을 찾을 수 없습니다: ${itemId}`);
   try {
     const result = await trainingSamples.capture(
-      item, state.settings.jetson?.baseUrl ?? "", credentials.accessToken, window.location.origin,
+      item, state.settings.jetson?.baseUrl ?? "", EDGE_GATEWAY_CREDENTIAL, window.location.origin,
     );
     store.setManagedItemSampleCount(item.id, result.sampleCount);
     toast(`'${item.label}' 학습 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -674,12 +646,11 @@ async function captureManagedItemSample(itemId: string): Promise<void> {
  */
 async function captureSubjectReference(subjectId: string): Promise<void> {
   const state = store.getState();
-  const credentials = credentialStore.get();
   const subject = state.subjects.find((candidate) => candidate.id === subjectId);
   if (!subject) throw new Error(`등록된 인물을 찾을 수 없습니다: ${subjectId}`);
   try {
     const result = await trainingSamples.captureSubject(
-      subject, state.settings.jetson?.baseUrl ?? "", credentials.accessToken, window.location.origin,
+      subject, state.settings.jetson?.baseUrl ?? "", EDGE_GATEWAY_CREDENTIAL, window.location.origin,
     );
     store.setSubjectReferenceSampleCount(subject.id, result.sampleCount);
     toast(`'${subject.name}' 식별 기준 사진을 Jetson에 저장했습니다. 총 ${result.sampleCount}장`);
@@ -964,11 +935,6 @@ function render(state: WardyState = store.getState()): void {
   renderZones($("#zone-list"), state.zones, (id) => { void deleteZone(id); });
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
   if (document.activeElement !== jetsonInput) jetsonInput.value = state.settings.jetson.baseUrl;
-  const accessTokenInput = $<HTMLInputElement>("#jetson-access-token");
-  const viewerTokenInput = $<HTMLInputElement>("#jetson-viewer-token");
-  const credentials = credentialStore.get();
-  if (document.activeElement !== accessTokenInput) accessTokenInput.value = credentials.accessToken;
-  if (document.activeElement !== viewerTokenInput) viewerTokenInput.value = credentials.viewerToken;
   const configured = state.settings.jetson.baseUrl || window.location.origin;
   $("#jetson-resolved-url").textContent = configured;
   renderSystemState();
@@ -996,8 +962,7 @@ $("#theme-toggle").addEventListener("click", () => colorTheme.toggle());
 $("#start-camera").addEventListener("click", async () => {
   try {
     const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
-    const viewerToken = credentialStore.get().viewerToken;
-    const endpoint = await camera.start(baseUrl, viewerToken, window.location.origin);
+    const endpoint = await camera.start(baseUrl, window.location.origin);
     toast(`Jetson WebRTC 카메라 stream에 연결합니다: ${endpoint}`);
   } catch (error) {
     setCameraStatus("fault");
@@ -1114,16 +1079,13 @@ $<HTMLInputElement>("#dataset-file-input").addEventListener("change", (event) =>
 });
 $<HTMLInputElement>("#dataset-session").addEventListener("change", saveDataWorkspaceSettings);
 $<HTMLInputElement>("#dataset-version").addEventListener("change", saveDataWorkspaceSettings);
-$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy 화면 설정과 연결 정보를 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("브라우저 설정을 초기화했습니다."); } });
+$("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy 화면 설정과 연결 정보를 초기화할까요?")) { store.reset(); toast("브라우저 설정을 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const rawBaseUrl = $<HTMLInputElement>("#jetson-base-url").value;
-  const accessToken = $<HTMLInputElement>("#jetson-access-token").value;
-  const viewerToken = $<HTMLInputElement>("#jetson-viewer-token").value;
   try {
     const baseUrl = rawBaseUrl.trim() ? normalizeJetsonBaseUrl(rawBaseUrl) : "";
-    credentialStore.set(accessToken, viewerToken);
     store.setJetsonBaseUrl(baseUrl);
     setJetsonStatus("idle");
     await checkJetsonConnection();

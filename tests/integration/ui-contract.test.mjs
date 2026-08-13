@@ -84,6 +84,7 @@ test("설치형 웹앱 shell과 새 이벤트 브라우저 알림을 제공한�
 });
 
 test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 전환된다", async () => {
+  const html = await readFile(path.join(root, "apps/index.html"), "utf8");
   const css = await readFile(path.join(root, "apps/css/app.css"), "utf8");
   const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
   const overlay = await readFile(path.join(root, "apps/js/overlay.ts"), "utf8");
@@ -93,7 +94,9 @@ test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 �
   assert.match(app, /setCameraMirrored/);
   assert.match(app, /connectConfiguredJetson/);
   assert.match(app, /status === "fault".*reconnectTimer/s);
-  assert.match(app, /JetsonCredentialStore\(window\.sessionStorage\)/);
+  assert.doesNotMatch(app, /JetsonCredentialStore|sessionStorage/);
+  assert.doesNotMatch(html, /데이터 API 토큰|카메라 읽기 토큰/);
+  assert.match(html, /내부 인증 정보는 Jetson 밖으로 전달하지 않습니다/);
   assert.doesNotMatch(app, /window\.open/);
   assert.match(overlay, /setMirrored/);
   assert.match(overlay, /1 - zone\.x - zone\.width/);

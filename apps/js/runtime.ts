@@ -85,7 +85,7 @@ export class WardyRuntimeClient {
 
   private async request<T>(baseUrl: string, accessToken: string, fallbackOrigin: string,
                            path: string, init: RequestInit = {}): Promise<T> {
-    if (!accessToken) throw new Error("Jetson 데이터 API 토큰이 필요합니다.");
+    if (!accessToken) throw new Error("Jetson gateway 연결이 필요합니다.");
     const signal = init.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const response = await this.fetchImpl(endpoint(baseUrl, path, fallbackOrigin), {
       ...init,
@@ -154,7 +154,7 @@ export class WardyRuntimeClient {
 
   async loadEventMedia(baseUrl: string, accessToken: string, fallbackOrigin: string,
                        eventId: string): Promise<Blob> {
-    if (!accessToken) throw new Error("Jetson 데이터 API 토큰이 필요합니다.");
+    if (!accessToken) throw new Error("Jetson gateway 연결이 필요합니다.");
     const response = await this.fetchImpl(endpoint(baseUrl,
       `/api/events/${encodeURIComponent(eventId)}/media`, fallbackOrigin), {
       headers: { "X-Wardy-Access-Token": accessToken }, cache: "no-store",
@@ -277,7 +277,7 @@ export class WardyRuntimeClient {
 
   async loadIdentityReviewMedia(baseUrl: string, accessToken: string,
                                 fallbackOrigin: string, reviewId: string): Promise<Blob> {
-    if (!accessToken) throw new Error("Jetson 데이터 API 토큰이 필요합니다.");
+    if (!accessToken) throw new Error("Jetson gateway 연결이 필요합니다.");
     const response = await this.fetchImpl(endpoint(baseUrl,
       `/api/identity-reviews/${encodeURIComponent(reviewId)}/media`, fallbackOrigin), {
       headers: { "X-Wardy-Access-Token": accessToken }, cache: "no-store",
@@ -287,7 +287,7 @@ export class WardyRuntimeClient {
     return response.blob();
   }
 
-  connect(baseUrl: string, accessToken: string, fallbackOrigin: string,
+  connect(baseUrl: string, fallbackOrigin: string,
           onSnapshot: SnapshotHandler, onInference: InferenceHandler): void {
     this.stop();
     this.stopped = false;
@@ -296,7 +296,7 @@ export class WardyRuntimeClient {
       if (this.stopped) return;
       const url = new URL(endpoint(baseUrl, "/api/ws", fallbackOrigin));
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-      const socket = this.websocketFactory(url.toString(), ["wardy-events", accessToken]);
+      const socket = this.websocketFactory(url.toString(), ["wardy-events"]);
       this.socket = socket;
       socket.addEventListener("open", () => {
         if (this.socket !== socket) return;

@@ -184,10 +184,10 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
     (handle) => cancelled.push(handle),
     () => 0.5,
   );
-  client.connect("https://10.10.20.40:8443", "session-token", "https://ui.local",
+  client.connect("https://10.10.20.40:8443", "https://ui.local",
     (snapshot) => snapshots.push(snapshot), (snapshot) => inferences.push(snapshot));
   assert.equal(opened[0].url, "wss://10.10.20.40:8443/api/ws");
-  assert.deepEqual(opened[0].protocols, ["wardy-events", "session-token"]);
+  assert.deepEqual(opened[0].protocols, ["wardy-events"]);
 
   opened[0].socket.dispatchEvent(new Event("open"));
   assert.equal(client.isConnected(), true);
