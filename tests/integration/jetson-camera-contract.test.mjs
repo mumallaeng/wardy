@@ -372,6 +372,8 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   const privateLanOrigin = /^http:\/\/172\.16\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$/;
   assert.ok(caddy.includes('.matches("^http://172\\\\.16\\\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$")'));
   assert.match("http://172.16.1.165:8000", privateLanOrigin);
+  assert.match("http://localhost:8000", /^http:\/\/localhost:8000$/);
+  assert.match("http://127.0.0.1:8000", /^http:\/\/127\.0\.0\.1:8000$/);
   assert.doesNotMatch("http://172.16.1.165:8001", privateLanOrigin);
   assert.doesNotMatch("http://172.15.1.165:8000", privateLanOrigin);
   assert.doesNotMatch("http://172.16.999.1:8000", privateLanOrigin);
