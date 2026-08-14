@@ -819,7 +819,12 @@ void apply_tracking_results(
 
   for (const auto& person : response.persons) {
     bool apply = false;
-    const bool fall_active = person.fall_suspected.value_or(false);
+    // M-04 can produce a high score from a noisy seated or standing pose.
+    // Keep an incident active only while M-03 confirms the person is lying;
+    // standing/sitting observations also reconcile and release a stale fall.
+    const bool fall_active = person.fall_suspected.value_or(false) &&
+                             person.posture.has_value() &&
+                             *person.posture == "lying";
     std::optional<std::string> event_subject_id = person.subject_id;
     std::optional<std::string> event_subject_name = person.subject_name;
     {
@@ -907,10 +912,13 @@ void apply_tracking_results(
         if (*person.posture == "lying") return std::string{"누워 있음"};
         return std::string{"자세 확인 불가"};
       }();
-      rendered.detection.posture = person.fall_suspected.value_or(false)
+      const bool displayed_fall = person.fall_suspected.value_or(false) &&
+                                  person.posture.has_value() &&
+                                  *person.posture == "lying";
+      rendered.detection.posture = displayed_fall
           ? "낙상 의심" : posture_label;
       rendered.detection.confidence = person.detection_confidence;
-      rendered.detection.color = person.fall_suspected.value_or(false)
+      rendered.detection.color = displayed_fall
           ? "#d85d52" : "#62b88f";
       inference::FallDiagnostics diagnostics;
       diagnostics.track_id = person.track_id;

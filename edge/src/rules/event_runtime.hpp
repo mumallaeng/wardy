@@ -23,6 +23,9 @@ struct EventObservation {
   std::optional<std::string> zone_id;
   std::string reason;
   std::string source_results_json = "[]";
+  // Explicit posture recovery may release a latched fall incident. Track
+  // disappearance remains latched until the caregiver handles it.
+  bool release_latched_fall = false;
 };
 
 struct EventTransition {
