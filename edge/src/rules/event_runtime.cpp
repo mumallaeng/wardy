@@ -87,6 +87,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
   }
 
   EventTransition transition;
+  bool latched_fall = false;
   {
     const std::lock_guard lock(mutex_);
     const std::string key = active_key(observation);
@@ -104,14 +105,25 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       if (found == active_events_.end()) {
         return transition;
       }
-      found->second.last_seen_at = observation.observed_at;
-      found->second.event_status = "released";
-      found->second.released_at = observation.observed_at;
-      database_.upsert_event(found->second);
-      transition.event = found->second;
-      transition.released = true;
-      active_events_.erase(found);
-    } else if (found != active_events_.end()) {
+      // A fall incident is operator-latched.  Pose recovery, detector misses,
+      // or a temporary track loss must not clear an emergency before the user
+      // chooses Confirmed, Released, or False detection in the UI.
+      if (observation.event_type == "fall_suspected" &&
+          !terminal_status(found->second.event_status)) {
+        found->second.last_seen_at = observation.observed_at;
+        database_.upsert_event(found->second);
+        transition.event = found->second;
+        latched_fall = true;
+      } else {
+        found->second.last_seen_at = observation.observed_at;
+        found->second.event_status = "released";
+        found->second.released_at = observation.observed_at;
+        database_.upsert_event(found->second);
+        transition.event = found->second;
+        transition.released = true;
+        active_events_.erase(found);
+      }
+    } else if (!latched_fall && found != active_events_.end()) {
       found->second.last_seen_at = observation.observed_at;
       found->second.subject_name = observation.subject_name;
       found->second.subject_location = observation.subject_location;
@@ -120,7 +132,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       found->second.source_results_json = observation.source_results_json;
       database_.upsert_event(found->second);
       transition.event = found->second;
-    } else {
+    } else if (!latched_fall) {
       storage::EventRecord event;
       event.event_id = next_event_id(observation.event_type);
       event.event_type = observation.event_type;

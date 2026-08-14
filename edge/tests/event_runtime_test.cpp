@@ -51,8 +51,11 @@ int main() {
   fall.active = false;
   fall.observed_at = "2026-08-10T10:00:03Z";
   const auto latched = runtime.apply(fall);
-  assert(latched.released);
-  assert(latched.event.event_status == "released");
+  assert(!latched.released);
+  assert(latched.event.event_status == "new");
+  assert(runtime.current_care_status() == "emergency");
+  assert(runtime.update_status(emergency.event.event_id, "released",
+                               "2026-08-10T10:00:04Z"));
   assert(runtime.current_care_status() == "caution");
 
   assert(runtime.update_status(created.event.event_id, "confirmed",
@@ -101,9 +104,9 @@ int main() {
   wardy::rules::EventRuntime after_restart(persisted_database);
   persisted_fall.active = false;
   persisted_fall.observed_at = "2026-08-10T10:01:01Z";
-  const auto persisted_released = after_restart.apply(persisted_fall);
-  assert(persisted_released.released);
-  assert(persisted_released.event.subject_id ==
+  const auto persisted_latched = after_restart.apply(persisted_fall);
+  assert(!persisted_latched.released);
+  assert(persisted_latched.event.subject_id ==
          std::optional<std::string>("subject-7"));
 
   wardy::storage::SqliteStore restore_database(":memory:");
