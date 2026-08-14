@@ -117,6 +117,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       // or a temporary track loss must not clear an emergency before the user
       // chooses Confirmed, Released, or False detection in the UI.
       if (observation.event_type == "fall_suspected" &&
+          !observation.release_latched_fall &&
           !terminal_status(found->second.event_status)) {
         found->second.last_seen_at = observation.observed_at;
         database_.upsert_event(found->second);

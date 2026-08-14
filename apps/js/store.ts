@@ -166,7 +166,8 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && Array.isArray(value.source_results)
     // Edge source results carry model-specific fields such as track_id and
     // confidence; only the common source discriminator is required here.
-    && value.source_results.every((result) => isRecord(result) && typeof result.source === "string")
+    && value.source_results.every((result) => isRecord(result) && typeof result.source === "string" &&
+      (result.note === undefined || typeof result.note === "string"))
     && ["none", "image", "video"].includes(String(value.media_type))
     && isStringOrNull(value.media_path)
     && isStringOrNull(value.media_started_at)

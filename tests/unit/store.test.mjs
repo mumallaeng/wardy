@@ -154,6 +154,21 @@ test("Jetson runtime 목록에서 계약을 위반한 항목을 제외한다", (
   assert.deepEqual(restored.managedItems.map((item) => item.id), ["item-test"]);
 });
 
+test("M-04 source result는 note 없이 모델 metadata를 보존하고 잘못된 note는 제외한다", () => {
+  const store = new WardyStore(new MemoryStorage(), "source-result-contract");
+  const valid = { ...eventFixture("EVT-M04-METADATA"), source_results: [{
+    source: "m02_m04_pose_sequence", track_id: 8, confidence: 0.76,
+  }] };
+  const invalid = { ...eventFixture("EVT-M04-BAD-NOTE"), source_results: [{
+    source: "m02_m04_pose_sequence", note: 42,
+  }] };
+  store.applyRuntimeSnapshot({
+    care_state: "emergency", camera_state: "connected", detection_state: "running",
+    event_state: "processing", reason: "fall", updated_at: "2026-08-11T00:00:00Z",
+  }, [valid, invalid]);
+  assert.deepEqual(store.getState().events.map((event) => event.event_id), ["EVT-M04-METADATA"]);
+});
+
 test("기존 Jetson 설정을 자동 연결 형식으로 이전하고 media port를 교정한다", () => {
   const storage = new MemoryStorage();
   const initial = new WardyStore(null).getState();

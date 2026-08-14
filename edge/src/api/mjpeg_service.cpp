@@ -744,6 +744,7 @@ void apply_fall_observation(const std::shared_ptr<StreamState>& state,
                             std::int64_t track_id, bool active,
                             const std::optional<double>& confidence,
                             const std::string& reason,
+                            bool release_latched_fall = false,
                             const std::optional<std::string>& subject_id = std::nullopt,
                             const std::optional<std::string>& subject_name = std::nullopt) {
   rules::EventObservation observation;
@@ -753,6 +754,7 @@ void apply_fall_observation(const std::shared_ptr<StreamState>& state,
   observation.subject_id = subject_id.value_or("track-" + std::to_string(track_id));
   observation.subject_name = subject_name;
   observation.subject_location = "unknown";
+  observation.release_latched_fall = release_latched_fall;
   observation.reason = reason;
   observation.source_results_json =
       "[{\"source\":\"m02_m04_pose_sequence\",\"track_id\":" +
@@ -814,6 +816,7 @@ void apply_tracking_results(
     if (!persisted_identity.first) continue;
     apply_fall_observation(state, track_id, false, std::nullopt,
                            "낙상 의심 자세가 더 이상 감지되지 않습니다.",
+                           false,
                            persisted_identity.first, persisted_identity.second);
   }
 
@@ -874,6 +877,8 @@ void apply_tracking_results(
               : (person.fall_suspected.has_value()
                      ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
                      : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
+          !fall_active && person.posture.has_value() &&
+              (*person.posture == "standing" || *person.posture == "sitting"),
           event_subject_id, event_subject_name);
     }
   }
