@@ -41,6 +41,38 @@ class FakeFall:
 
 
 class RuntimeContractTest(unittest.TestCase):
+    def test_standing_to_lying_transition_is_a_fall_candidate(self) -> None:
+        class SequencePose:
+            def __init__(self) -> None:
+                self.labels = iter(("standing", "standing", "lying"))
+
+            def infer(self, _frame: np.ndarray, person: PersonInput) -> PoseResult:
+                keypoints = np.zeros((17, 3), dtype=np.float32)
+                keypoints[:, 2] = 0.9
+                return PoseResult(
+                    frame_id=person.frame_id,
+                    timestamp_ms=person.timestamp_ms,
+                    track_id=person.track_id,
+                    bbox_xyxy=person.bbox_xyxy,
+                    keypoints_xyc=keypoints,
+                    pose_quality=0.9,
+                    posture=next(self.labels),
+                )
+
+        fall = FakeFall()
+        fall.window_frames = 20
+        runtime = PoseFallRuntime(SequencePose(), fall)
+        frame = np.zeros((32, 32, 3), dtype=np.uint8)
+        for timestamp in (1000, 1100):
+            result = runtime.process(frame, PersonInput("f", timestamp, 9, [1, 1, 30, 30]))
+            self.assertIsNone(result.fall)
+        candidate = runtime.process(
+            frame, PersonInput("f", 1200, 9, [1, 1, 30, 30])
+        )
+        self.assertIsNotNone(candidate.fall)
+        self.assertTrue(candidate.fall.fall_suspected)
+        self.assertEqual(candidate.fall.model_name, "standing_to_lying_transition")
+
     def test_posture_classification_uses_pose_geometry(self) -> None:
         def pose(points: dict[int, tuple[float, float]]) -> np.ndarray:
             keypoints = np.zeros((17, 3), dtype=np.float32)
@@ -119,10 +151,10 @@ class RuntimeContractTest(unittest.TestCase):
         reset = process(900)
         self.assertTrue(reset.accepted)
         self.assertIsNone(reset.fall)
-        gap_reset = process(1500)
+        gap_reset = process(2200)
         self.assertTrue(gap_reset.accepted)
         self.assertIsNone(gap_reset.fall)
-        self.assertIsNone(process(1600).fall)
+        self.assertIsNone(process(2300).fall)
 
     def test_person_box_rejects_non_positive_area(self) -> None:
         with self.assertRaises(ValueError):

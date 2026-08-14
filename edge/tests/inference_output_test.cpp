@@ -41,15 +41,17 @@ int main() {
   assert(database.list_events().front().subject_id == "subject-1");
 
   // Recognition can disappear frame-to-frame while the M-02 track remains.
-  // A non-fall result releases the active event instead of leaving emergency
-  // latched in the dashboard.
+  // A non-fall result must not clear an emergency; the operator closes it.
   runtime.apply(normal.infer("frame-3", "2026-08-12T00:00:02Z"));
   assert(database.list_events().size() == 1);
-  assert(database.list_events().front().event_status == "released");
+  assert(database.list_events().front().event_status == "new");
   assert(database.list_events().front().subject_id == "subject-1");
+  assert(events.current_care_status() == "emergency");
 
   runtime.apply(normal.infer("frame-4", "2026-08-12T00:00:03Z"));
-  assert(database.list_events().front().event_status == "released");
+  assert(database.list_events().front().event_status == "new");
+  assert(events.update_status(database.list_events().front().event_id, "released",
+                              "2026-08-12T00:00:03.5Z"));
   assert(events.current_care_status() == "normal");
 
   wardy::inference::TemporaryInferenceProducer proximity("proximity");

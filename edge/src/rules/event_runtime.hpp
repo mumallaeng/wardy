@@ -59,7 +59,6 @@ class EventRuntime {
   ChangeCallback on_change_;
   mutable std::mutex mutex_;
   std::map<std::string, storage::EventRecord> active_events_;
-  std::uint64_t sequence_ = 0;
 };
 
 }  // namespace wardy::rules
