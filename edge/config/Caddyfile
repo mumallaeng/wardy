@@ -15,24 +15,30 @@ https://:8443 {
 		@browser_bootstrap path /connect
 		redir @browser_bootstrap "{$WARDY_UI_ORIGIN}/?jetson=https://{http.request.hostport}&jetson_tls=ready" 302
 
-		@unexpected_browser_origin expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$WARDY_UI_ORIGIN}" && {http.request.header.Origin} != "https://" + {http.request.hostport}`
+		# The UI may be served by another host on the trusted private LAN.
+		# Keep the origin restriction, but allow the documented 172.16.x.x:8000
+		# development range as well as the configured UI origin.
+		@unexpected_browser_origin expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$WARDY_UI_ORIGIN}" && {http.request.header.Origin} != "https://" + {http.request.hostport} && !{http.request.header.Origin}.matches("^http://172\\.16\\.[0-9]{1,3}\\.[0-9]{1,3}:8000$")`
 		respond @unexpected_browser_origin "Forbidden" 403
 
 		@edge_websocket path /api/ws
 		reverse_proxy @edge_websocket 127.0.0.1:8787 {
 			header_up Origin {$WARDY_UI_ORIGIN}
+			header_down Access-Control-Allow-Origin {http.request.header.Origin}
 			header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
 		}
 
 		@edge_api path /api/*
 		reverse_proxy @edge_api 127.0.0.1:8787 {
 			header_up Origin {$WARDY_UI_ORIGIN}
+			header_down Access-Control-Allow-Origin {http.request.header.Origin}
 			header_up X-Wardy-Access-Token {$WARDY_ACCESS_TOKEN}
 		}
 
 		@webrtc path /wardy /wardy/*
 		reverse_proxy @webrtc 127.0.0.1:8889 {
 			header_up Origin {$WARDY_UI_ORIGIN}
+			header_down Access-Control-Allow-Origin {http.request.header.Origin}
 		}
 	}
 }
