@@ -139,6 +139,14 @@ export class WardyRuntimeClient {
       : snapshot;
   }
 
+  async loadEvents(baseUrl: string, accessToken: string,
+                   fallbackOrigin: string): Promise<WardyEvent[]> {
+    const body = await this.request<{ events: WardyEvent[] }>(
+      baseUrl, accessToken, fallbackOrigin, "/api/events",
+    );
+    return body.events;
+  }
+
   async loadCollections(baseUrl: string, accessToken: string,
                         fallbackOrigin: string): Promise<RuntimeCollections> {
     const [subjectResult, itemResult, zoneResult, notificationResult, reviewResult] = await Promise.allSettled([
