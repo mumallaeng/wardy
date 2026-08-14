@@ -119,6 +119,17 @@ std::string lowercase(std::string value) {
   return value;
 }
 
+bool fall_event_has_track_id(const storage::EventRecord& event,
+                             std::int64_t track_id) {
+  const std::string marker = "\"track_id\":" + std::to_string(track_id);
+  const std::size_t position = event.source_results_json.find(marker);
+  if (position == std::string::npos) return false;
+  const std::size_t end = position + marker.size();
+  return end < event.source_results_json.size() &&
+      (event.source_results_json[end] == ',' ||
+       event.source_results_json[end] == '}');
+}
+
 std::optional<std::string> request_header(const std::string& request,
                                           const std::string& requested_name) {
   const std::string expected = lowercase(requested_name);
@@ -804,10 +815,9 @@ void apply_tracking_results(
   for (const auto& [track_id, identity] : disappeared_falls) {
     auto persisted_identity = identity;
     if (!persisted_identity.first) {
-      const std::string marker = "\"track_id\":" + std::to_string(track_id);
       for (const auto& event : state->database->list_active_events()) {
         if (event.event_type == "fall_suspected" &&
-            event.source_results_json.find(marker) != std::string::npos) {
+            fall_event_has_track_id(event, track_id)) {
           persisted_identity = {event.subject_id, event.subject_name};
           break;
         }
@@ -853,11 +863,9 @@ void apply_tracking_results(
       }
     }
     if (!fall_active && !event_subject_id) {
-      const std::string marker = "\"track_id\":" +
-                                 std::to_string(person.track_id);
       for (const auto& event : state->database->list_active_events()) {
         if (event.event_type == "fall_suspected" &&
-            event.source_results_json.find(marker) != std::string::npos) {
+            fall_event_has_track_id(event, person.track_id)) {
           event_subject_id = event.subject_id;
           event_subject_name = event.subject_name;
           break;
@@ -872,11 +880,9 @@ void apply_tracking_results(
       // After a restart the in-memory identity map is empty. Always prefer
       // the persisted incident identity when reconciling a track recovery,
       // including events created with the track-* fallback subject ID.
-      const std::string marker = "\"track_id\":" +
-                                 std::to_string(person.track_id);
       for (const auto& event : state->database->list_active_events()) {
         if (event.event_type == "fall_suspected" &&
-            event.source_results_json.find(marker) != std::string::npos) {
+            fall_event_has_track_id(event, person.track_id)) {
           event_subject_id = event.subject_id;
           event_subject_name = event.subject_name;
           break;
