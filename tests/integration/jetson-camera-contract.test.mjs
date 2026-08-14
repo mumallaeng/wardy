@@ -133,13 +133,13 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   assert.match(api, /std::string\{"누워 있음"\}/);
   assert.match(api, /active_fall_tracks\.insert\(person\.track_id\)\.second/);
   assert.doesNotMatch(api, /if \(apply \|\| \*person\.fall_suspected\)/);
-  assert.match(api, /apply && \*person\.fall_suspected/);
+  assert.match(api, /if \(apply\) \{\s+apply_fall_observation\(/);
   assert.doesNotMatch(api, /Tracked person expired; fall alert released/);
   assert.match(api, /clear_all_fall_tracks\(locked\)/);
   assert.match(api, /event observation did not change runtime state/);
   assert.doesNotMatch(api, /Camera stream reset; anonymous fall track released/);
-  assert.match(eventRuntime, /Safety incidents are acknowledged and closed by an operator/);
-  assert.match(eventRuntime, /found->second\.event_type == "fall_suspected"/);
+  assert.match(eventRuntime, /A fall incident is operator-latched/);
+  assert.match(eventRuntime, /observation\.event_type == "fall_suspected"/);
 });
 
 test("내부 추론 예외는 웹 상태에 그대로 노출하지 않는다", async () => {
@@ -380,7 +380,16 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /header_up Origin \{\$WARDY_UI_ORIGIN\}/);
   assert.match(caddy, /header_up X-Wardy-Access-Token \{\$WARDY_ACCESS_TOKEN\}/);
   assert.match(caddy, /header_up Sec-WebSocket-Protocol "wardy-events, \{\$WARDY_ACCESS_TOKEN\}"/);
+  assert.ok(caddy.includes('{http.request.header.Origin} != "http://localhost:8000"'));
+  assert.ok(caddy.includes('{http.request.header.Origin} != "http://127.0.0.1:8000"'));
+  const websocketProxy = caddy.match(/@edge_websocket path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
+  const apiProxy = caddy.match(/@edge_api path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
   const webrtcProxy = caddy.match(/@webrtc path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
+  for (const proxy of [websocketProxy, apiProxy, webrtcProxy]) {
+    assert.match(proxy, /header_down Access-Control-Allow-Origin \{http.request.header.Origin\}/);
+  }
+  assert.match(apiProxy, /header_down \+Vary Origin/);
+  assert.match(webrtcProxy, /header_down Access-Control-Expose-Headers Location/);
   assert.match(webrtcProxy, /header_down \+Vary Origin/);
   assert.match(launcher, /chmod 0600/);
   assert.match(example, /WARDY_ACCESS_TOKEN=/);

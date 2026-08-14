@@ -108,12 +108,22 @@ int main() {
   assert(!persisted_latched.released);
   assert(persisted_latched.event.subject_id ==
          std::optional<std::string>("subject-7"));
+  assert(after_restart.update_status(persisted_created.event.event_id, "confirmed",
+                                     "2026-08-10T10:01:02Z"));
+  assert(!after_restart.has_active_event_type("fall_suspected"));
+  const auto confirmed_inactive = after_restart.apply(persisted_fall);
+  assert(confirmed_inactive.event.event_id.empty());
+  persisted_fall.active = true;
+  persisted_fall.observed_at = "2026-08-10T10:01:03Z";
+  const auto subsequent_fall = after_restart.apply(persisted_fall);
+  assert(subsequent_fall.created);
+  assert(subsequent_fall.event.event_id != persisted_created.event.event_id);
 
   wardy::storage::SqliteStore restore_database(":memory:");
   restore_database.initialize();
   wardy::storage::EventRecord old_active = created.event;
   old_active.event_id = "EVT-OLD-ACTIVE";
-  old_active.event_status = "confirmed";
+  old_active.event_status = "new";
   old_active.occurred_at = "2020-01-01T00:00:00Z";
   old_active.first_seen_at = old_active.occurred_at;
   old_active.last_seen_at = old_active.occurred_at;
@@ -130,6 +140,6 @@ int main() {
   }
   wardy::rules::EventRuntime restored_runtime(restore_database);
   assert(restored_runtime.has_active_event_type("hazard_detected"));
-  assert(restored_runtime.current_care_status() == "normal");
+  assert(restored_runtime.current_care_status() == "caution");
   return 0;
 }

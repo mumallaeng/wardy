@@ -1,6 +1,7 @@
 #include "rules/event_runtime.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -69,10 +70,17 @@ int EventRuntime::care_rank(const std::optional<std::string>& care_status) {
 }
 
 std::string EventRuntime::next_event_id(const std::string& event_type) {
+  // Include a process-local nonce so an event created immediately after a
+  // service restart cannot reuse the previous runtime's millisecond/sequence
+  // identifier.
+  static const auto process_nonce =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  static std::atomic_uint64_t process_sequence{0};
   const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch()).count();
   return "EVT-" + event_type + "-" + std::to_string(milliseconds) + "-" +
-         std::to_string(++sequence_);
+         std::to_string(process_nonce) + "-" +
+         std::to_string(++process_sequence);
 }
 
 EventTransition EventRuntime::apply(const EventObservation& observation) {
@@ -187,11 +195,11 @@ bool EventRuntime::update_status(const std::string& event_id,
         }
       }
     } else if (updated && status == "confirmed") {
-      for (auto& [key, event] : active_events_) {
-        (void)key;
-        if (event.event_id == event_id) {
-          event.event_status = "confirmed";
-          event.confirmed_at = changed_at;
+      for (auto iterator = active_events_.begin(); iterator != active_events_.end();) {
+        if (iterator->second.event_id == event_id) {
+          iterator = active_events_.erase(iterator);
+        } else {
+          ++iterator;
         }
       }
     }
@@ -241,6 +249,7 @@ std::string EventRuntime::current_reason() const {
 void EventRuntime::restore_active_events() {
   const std::lock_guard lock(mutex_);
   for (auto& event : database_.list_active_events()) {
+    if (event.event_status == "confirmed") continue;
     active_events_.insert_or_assign(active_key(event), std::move(event));
   }
 }

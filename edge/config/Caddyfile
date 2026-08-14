@@ -25,6 +25,7 @@ https://:8443 {
 		reverse_proxy @edge_websocket 127.0.0.1:8787 {
 			header_up Origin {$WARDY_UI_ORIGIN}
 			header_down Access-Control-Allow-Origin {http.request.header.Origin}
+			header_down +Vary Origin
 			header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
 		}
 
@@ -32,6 +33,7 @@ https://:8443 {
 		reverse_proxy @edge_api 127.0.0.1:8787 {
 			header_up Origin {$WARDY_UI_ORIGIN}
 			header_down Access-Control-Allow-Origin {http.request.header.Origin}
+			header_down +Vary Origin
 			header_up X-Wardy-Access-Token {$WARDY_ACCESS_TOKEN}
 		}
 
@@ -39,6 +41,7 @@ https://:8443 {
 		reverse_proxy @webrtc 127.0.0.1:8889 {
 			header_up Origin {$WARDY_UI_ORIGIN}
 			header_down Access-Control-Allow-Origin {http.request.header.Origin}
+			header_down Access-Control-Expose-Headers Location
 			header_down +Vary Origin
 		}
 	}

@@ -80,8 +80,9 @@ class PoseFallRuntime:
                 pose=None,
                 fall=None,
                 **self.diagnostics(person.track_id),
-            )
+        )
         result = self.pose.infer(frame_bgr, person)
+        raw_posture = result.posture
         posture_history = self.posture_histories[person.track_id]
         previous_postures = tuple(posture_history)
         if result.posture != "unknown":
@@ -103,12 +104,13 @@ class PoseFallRuntime:
         # before the full temporal model window is available. Require two
         # consecutive smoothed standing samples to avoid one-frame pose noise.
         rapid_transition = (
-            result.posture == "lying"
+            raw_posture == "lying"
             and len(previous_postures) >= 2
             and previous_postures[-1] == "standing"
             and previous_postures[-2] == "standing"
         )
         if rapid_transition:
+            result = replace(result, posture="lying")
             fall_result = FallResult(
                 track_id=person.track_id,
                 timestamp_ms=person.timestamp_ms,
