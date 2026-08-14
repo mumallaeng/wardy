@@ -39,6 +39,7 @@ https://:8443 {
 		reverse_proxy @webrtc 127.0.0.1:8889 {
 			header_up Origin {$WARDY_UI_ORIGIN}
 			header_down Access-Control-Allow-Origin {http.request.header.Origin}
+			header_down +Vary Origin
 		}
 	}
 }
