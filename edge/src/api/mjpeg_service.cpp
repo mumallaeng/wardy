@@ -868,6 +868,21 @@ void apply_tracking_results(
       // the original subject key.
       if (!event_subject_id) apply = false;
     }
+    if (!fall_active) {
+      // After a restart the in-memory identity map is empty. Always prefer
+      // the persisted incident identity when reconciling a track recovery,
+      // including events created with the track-* fallback subject ID.
+      const std::string marker = "\"track_id\":" +
+                                 std::to_string(person.track_id);
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            event.source_results_json.find(marker) != std::string::npos) {
+          event_subject_id = event.subject_id;
+          event_subject_name = event.subject_name;
+          break;
+        }
+      }
+    }
     if (apply) {
       apply_fall_observation(
           state, person.track_id, fall_active,
