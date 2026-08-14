@@ -151,7 +151,7 @@ class RuntimeContractTest(unittest.TestCase):
         reset = process(900)
         self.assertTrue(reset.accepted)
         self.assertIsNone(reset.fall)
-        gap_reset = process(2200)
+        gap_reset = process(12_000)
         self.assertTrue(gap_reset.accepted)
         self.assertIsNone(gap_reset.fall)
         self.assertIsNone(process(2300).fall)
