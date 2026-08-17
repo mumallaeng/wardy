@@ -7,8 +7,12 @@ step="시작 준비"
 device_file="${repo_dir}/.wardy-device"
 tunnel_pid=""
 loopback_alias_added=0
+ui_tls_temp=""
 
 cleanup() {
+  if [[ -n "${ui_tls_temp}" && -d "${ui_tls_temp}" ]]; then
+    rm -rf -- "${ui_tls_temp}"
+  fi
   if [[ -n "${tunnel_pid}" ]] && kill -0 "${tunnel_pid}" 2>/dev/null; then
     kill "${tunnel_pid}" 2>/dev/null || true
     wait "${tunnel_pid}" 2>/dev/null || true
@@ -35,6 +39,8 @@ trap help_on_failure ERR
 
 command -v node >/dev/null || { step="Node.js 확인: Node.js LTS를 설치하세요"; false; }
 command -v npm >/dev/null || { step="npm 확인: Node.js LTS를 다시 설치하세요"; false; }
+command -v openssl >/dev/null || { step="OpenSSL 확인: brew install openssl로 설치하세요"; false; }
+command -v security >/dev/null || { step="macOS Keychain 도구 확인"; false; }
 
 jetson_host="${1:-${WARDY_JETSON_HOST:-}}"
 if [[ -z "${jetson_host}" && -f "${device_file}" ]]; then jetson_host="$(<"${device_file}")"; fi
@@ -106,12 +112,71 @@ if [[ -z "${ui_host}" ]]; then
   fi
 fi
 ui_host="${ui_host:-localhost}"
-ui_origin="http://${ui_host}:8000"
+ui_tls_dir="${HOME}/Library/Application Support/Wardy/ui-tls"
+ui_ca_key="${ui_tls_dir}/wardy-ui-ca.key"
+ui_ca_cert="${ui_tls_dir}/wardy-ui-ca.crt"
+ui_private_key="${ui_tls_dir}/wardy-ui.key"
+ui_certificate="${ui_tls_dir}/wardy-ui.crt"
+mkdir -p "${ui_tls_dir}"
+
+if [[ ! -f "${ui_ca_key}" || ! -f "${ui_ca_cert}" ]]; then
+  step="Mac UI CA 생성"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "${ui_ca_key}"
+  openssl req -x509 -new -sha256 -days 3650 \
+    -key "${ui_ca_key}" -out "${ui_ca_cert}" -subj "/CN=Wardy Local UI CA"
+  chmod 0600 "${ui_ca_key}"
+fi
+
+ui_ca_fingerprint="$(openssl x509 -in "${ui_ca_cert}" -noout -fingerprint -sha1 | awk -F= '{ gsub(":", "", $2); print $2 }')"
+if ! security find-certificate -Z -c "Wardy Local UI CA" \
+  "${HOME}/Library/Keychains/login.keychain-db" 2>/dev/null | \
+  awk '/SHA-1 hash:/ { print $3 }' | grep -Fxq "${ui_ca_fingerprint}"; then
+  step="Mac UI CA 신뢰 등록"
+  security add-trusted-cert -r trustRoot \
+    -k "${HOME}/Library/Keychains/login.keychain-db" "${ui_ca_cert}"
+fi
+
+if [[ ! -f "${ui_private_key}" || ! -f "${ui_certificate}" ]] || \
+   ! openssl verify -CAfile "${ui_ca_cert}" "${ui_certificate}" >/dev/null 2>&1 || \
+   ! openssl x509 -in "${ui_certificate}" -noout -checkhost localhost >/dev/null 2>&1 || \
+   { [[ "${ui_host}" != "localhost" ]] && \
+     ! openssl x509 -in "${ui_certificate}" -noout -checkip "${ui_host}" >/dev/null 2>&1; }; then
+  step="Mac UI HTTPS 인증서 생성"
+  ui_tls_temp="$(mktemp -d)"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${ui_tls_temp}/wardy-ui.key"
+  openssl req -new -sha256 -key "${ui_tls_temp}/wardy-ui.key" \
+    -out "${ui_tls_temp}/wardy-ui.csr" -subj "/CN=${ui_host}"
+  {
+    printf '%s\n' 'basicConstraints=critical,CA:FALSE'
+    printf '%s\n' 'keyUsage=critical,digitalSignature,keyEncipherment'
+    printf '%s\n' 'extendedKeyUsage=serverAuth'
+    if [[ "${ui_host}" == "localhost" ]]; then
+      printf '%s\n' 'subjectAltName=DNS:localhost,IP:127.0.0.1'
+    else
+      printf 'subjectAltName=DNS:localhost,IP:127.0.0.1,IP:%s\n' "${ui_host}"
+    fi
+  } >"${ui_tls_temp}/wardy-ui.ext"
+  openssl x509 -req -sha256 -days 825 \
+    -in "${ui_tls_temp}/wardy-ui.csr" \
+    -CA "${ui_ca_cert}" -CAkey "${ui_ca_key}" \
+    -set_serial "0x$(openssl rand -hex 16)" \
+    -extfile "${ui_tls_temp}/wardy-ui.ext" \
+    -out "${ui_tls_temp}/wardy-ui.crt"
+  install -m 0600 "${ui_tls_temp}/wardy-ui.key" "${ui_private_key}"
+  install -m 0644 "${ui_tls_temp}/wardy-ui.crt" "${ui_certificate}"
+  rm -rf "${ui_tls_temp}"
+  ui_tls_temp=""
+fi
+
+phone_origin="https://${ui_host}:8000"
+mac_origin="https://${ui_host}:8000"
 export VITE_WARDY_JETSON_URL="https://${jetson_host}:8443"
-url="${ui_origin}/?jetson=https%3A%2F%2F${jetson_host}%3A8443"
+export WARDY_UI_TLS_CERTIFICATE="${ui_certificate}"
+export WARDY_UI_TLS_PRIVATE_KEY="${ui_private_key}"
+url="${mac_origin}/?jetson=https%3A%2F%2F${jetson_host}%3A8443&jetson_tls=ready"
 step="브라우저 열기"
 (sleep 2; open "${url}") &
 trap - ERR
 echo "Wardy UI 시작: ${url}"
-echo "휴대전화 Wardy 주소: ${ui_origin}/"
+echo "휴대전화 Wardy 주소: ${phone_origin}/"
 npm run serve
