@@ -13,7 +13,7 @@ USB webcam
       ├─ SQLite 이벤트/상태/검토 자료
       ├─ HTTPS API :8443
       └─ WebRTC :8189
-  → Windows 또는 macOS의 http://localhost:8000
+  → Windows 또는 macOS의 https://MAC_WIFI_IP:8000
 ```
 
 ## 빠른 시작

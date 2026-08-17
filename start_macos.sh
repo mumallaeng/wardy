@@ -127,8 +127,10 @@ if [[ ! -f "${ui_ca_key}" || ! -f "${ui_ca_cert}" ]]; then
   chmod 0600 "${ui_ca_key}"
 fi
 
-if ! security find-certificate -c "Wardy Local UI CA" \
-  "${HOME}/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+ui_ca_fingerprint="$(openssl x509 -in "${ui_ca_cert}" -noout -fingerprint -sha1 | awk -F= '{ gsub(":", "", $2); print $2 }')"
+if ! security find-certificate -Z -c "Wardy Local UI CA" \
+  "${HOME}/Library/Keychains/login.keychain-db" 2>/dev/null | \
+  awk '/SHA-1 hash:/ { print $3 }' | grep -Fxq "${ui_ca_fingerprint}"; then
   step="Mac UI CA 신뢰 등록"
   security add-trusted-cert -r trustRoot \
     -k "${HOME}/Library/Keychains/login.keychain-db" "${ui_ca_cert}"
