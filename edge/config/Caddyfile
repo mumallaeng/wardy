@@ -18,7 +18,7 @@ https://:8443 {
 		# The UI may be served by another host on the trusted private LAN.
 		# Keep the origin restriction, but allow the documented 172.16.x.x:8000
 		# development range as well as the configured UI origin.
-		@unexpected_browser_origin expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$WARDY_UI_ORIGIN}" && {http.request.header.Origin} != "http://localhost:8000" && {http.request.header.Origin} != "http://127.0.0.1:8000" && {http.request.header.Origin} != "https://" + {http.request.hostport} && !{http.request.header.Origin}.matches("^http://172\\.16\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$")`
+		@unexpected_browser_origin expression `{http.request.header.Origin} != "" && {http.request.header.Origin} != "{$WARDY_UI_ORIGIN}" && {http.request.header.Origin} != "http://localhost:8000" && {http.request.header.Origin} != "http://127.0.0.1:8000" && {http.request.header.Origin} != "https://localhost:8000" && {http.request.header.Origin} != "https://127.0.0.1:8000" && {http.request.header.Origin} != "https://" + {http.request.hostport} && !{http.request.header.Origin}.matches("^https?://172\\.16\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$")`
 		respond @unexpected_browser_origin "Forbidden" 403
 
 		@edge_websocket path /api/ws
