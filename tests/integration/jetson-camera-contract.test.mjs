@@ -280,7 +280,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(launcher, /MTX_WEBRTCLOCALTCPADDRESS.*:8189/);
 });
 
-test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을 사용한다", async () => {
+test("Jetson 일일 요약은 고정한 로컬 Nemotron 모델과 안전 fallback을 사용한다", async () => {
   const source = await readFile(path.join(root, "edge/src/llm/daily_summary.cpp"), "utf8");
   const header = await readFile(path.join(root, "edge/src/llm/daily_summary.hpp"), "utf8");
   const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
@@ -288,11 +288,14 @@ test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을
   const serviceInstaller = await readFile(path.join(root, "edge/scripts/install_jetson_service.sh"), "utf8");
   const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
 
-  assert.match(header, /model = "qwen3\.5:4b"/);
+  assert.match(header, /model = "nemotron-3-nano:4b"/);
   assert.match(versions, /^WARDY_OLLAMA_VERSION=0\.32\.5$/m);
   assert.match(versions, /^WARDY_OLLAMA_INSTALL_SHA256=[a-f0-9]{64}$/m);
-  assert.match(versions, /^WARDY_LLM_MODEL=qwen3\.5:4b$/m);
-  assert.match(versions, /^WARDY_LLM_MODEL_DIGEST=[a-f0-9]{64}$/m);
+  assert.match(versions, /^WARDY_LLM_MODEL=nemotron-3-nano:4b$/m);
+  assert.match(
+    versions,
+    /^WARDY_LLM_MODEL_DIGEST=6cc467f054393a55e98a74098abde0c762ffb6d1d8cd64becf30458f38886197$/m,
+  );
   assert.match(installer, /sha256sum --check --status/);
   assert.match(installer, /api\/tags/);
   assert.match(installer, /jq --raw-output --arg model/);
@@ -307,6 +310,8 @@ test("Jetson 일일 요약은 고정한 로컬 Qwen 모델과 안전 fallback을
   assert.match(source, /\\"num_ctx\\":2048/);
   assert.match(source, /\\"num_predict\\":100,\\"temperature\\":0,\\"seed\\":7/);
   assert.match(source, /deterministic_summary/);
+  assert.match(source, /kMaximumPromptEvents = 12/);
+  assert.match(source, /관찰 기록을 요약하거나 답으로 쓰지 마라/);
   assert.match(source, /invalid_output/);
   assert.doesNotMatch(source, /event\.(?:subject_name|subject_id|media_path|source_results_json|reason)/);
   assert.match(api, /path == "\/api\/llm\/daily-summary"/);

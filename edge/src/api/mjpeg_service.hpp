@@ -17,7 +17,7 @@ struct MjpegServiceConfig {
   std::string allowed_origin = "http://localhost:8000";
   std::string access_token;
   bool llm_enabled = true;
-  std::string llm_model = "qwen3.5:4b";
+  std::string llm_model = "nemotron-3-nano:4b";
   int llm_timeout_seconds = 30;
   std::string person_detector_engine_path;
   float person_confidence_threshold = 0.35F;

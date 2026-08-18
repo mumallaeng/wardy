@@ -18,6 +18,7 @@ namespace wardy::llm {
 namespace {
 
 constexpr std::size_t kMaximumResponseBytes = 1024 * 1024;
+constexpr std::size_t kMaximumPromptEvents = 12;
 
 struct EventCounts {
   std::size_t normal = 0;
@@ -320,11 +321,12 @@ std::string post_to_ollama(int port, std::chrono::seconds timeout,
 
 std::string request_body(const DailySummaryConfig& config, const std::string& prompt) {
   const std::string system =
-      "당신은 Wardy 가정 안전 기록의 한국어 문장 편집기다. 프롬프트의 고정 집계 "
-      "문장을 한 글자도 바꾸지 않고 summary의 첫 문장으로 복사하라. 둘째 문장은 "
-      "제공된 한국어 이벤트명과 위치만 사용해 관찰되었다는 표현으로 정리할 수 있다. "
-      "의료 진단, 사고나 사건의 발생 및 확정, 위험 추측, 행동 지시, 시간, 이름, "
-      "식별자, 사진, 영상은 절대 추가하지 마라.";
+      "당신은 Wardy 가정 안전 기록의 한국어 문장 편집기다. 프롬프트에서 고정 집계 "
+      "문장(수정 금지): 다음에 오는 한 문장을 찾아 한 글자도 바꾸지 말고 summary "
+      "값에 복사하라. 고정 집계 문장 앞에는 날짜를 포함해 어떤 문자도 쓰지 마라. "
+      "관찰 기록을 요약하거나 답으로 쓰지 마라. 둘째 문장은 생략해도 된다. 의료 "
+      "진단, 사고나 사건의 발생 및 확정, 위험 추측, 행동 지시, 시간, 이름, 식별자, "
+      "사진, 영상은 절대 추가하지 마라.";
   return "{\"model\":" + api::json_string(config.model) +
       ",\"system\":" + api::json_string(system) +
       ",\"prompt\":" + api::json_string(prompt) +
@@ -335,6 +337,11 @@ std::string request_body(const DailySummaryConfig& config, const std::string& pr
 }
 
 }  // namespace
+
+std::string build_ollama_request_body(
+    const DailySummaryConfig& config, const std::string& prompt) {
+  return request_body(config, prompt);
+}
 
 void DailySummaryConfig::validate() const {
   if (model.empty()) throw std::invalid_argument("LLM model must not be empty");
@@ -362,11 +369,15 @@ std::string deterministic_summary(const std::vector<storage::EventRecord>& event
 
 std::string build_anonymized_prompt(
     const std::string& date, const std::vector<storage::EventRecord>& events) {
+  const std::size_t prompt_event_count =
+      std::min(events.size(), kMaximumPromptEvents);
   std::ostringstream prompt;
   prompt << "날짜: " << date << '\n'
          << "고정 집계 문장(수정 금지): " << deterministic_summary(events)
-         << "\n관찰 기록:\n";
-  for (const auto& event : events) {
+         << "\n관찰 기록(최신 " << prompt_event_count << "건, 전체 "
+         << events.size() << "건):\n";
+  for (std::size_t index = 0; index < prompt_event_count; ++index) {
+    const auto& event = events[index];
     prompt << "- 이벤트 " << korean_event_type(event.event_type)
            << " | 상태 " << korean_care_status(event.care_status)
            << " | 처리 " << korean_event_status(event.event_status)
@@ -390,7 +401,9 @@ DailySummaryService::DailySummaryService(DailySummaryConfig config,
   config_.validate();
   if (!generate_request_) {
     generate_request_ = [config = config_](const std::string& prompt) {
-      return post_to_ollama(config.ollama_port, config.timeout, request_body(config, prompt));
+      return post_to_ollama(
+          config.ollama_port, config.timeout,
+          build_ollama_request_body(config, prompt));
     };
   }
 }

@@ -11,7 +11,7 @@ namespace wardy::llm {
 
 struct DailySummaryConfig {
   bool enabled = true;
-  std::string model = "qwen3.5:4b";
+  std::string model = "nemotron-3-nano:4b";
   int ollama_port = 11434;
   std::chrono::seconds timeout{30};
 
@@ -33,6 +33,8 @@ using GenerateRequest = std::function<std::string(const std::string&)>;
 
 std::string build_anonymized_prompt(
     const std::string& date, const std::vector<storage::EventRecord>& events);
+std::string build_ollama_request_body(
+    const DailySummaryConfig& config, const std::string& prompt);
 std::string deterministic_summary(const std::vector<storage::EventRecord>& events);
 std::string extract_generated_summary(const std::string& ollama_response);
 class DailySummaryService {

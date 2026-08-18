@@ -54,6 +54,30 @@ int main() {
     assert(prompt.find(private_value) == std::string::npos);
   }
 
+  std::vector<wardy::storage::EventRecord> many_events;
+  for (int index = 0; index < 20; ++index) {
+    auto value = event("normal", "released");
+    value.subject_location = "위치" + std::to_string(index);
+    many_events.push_back(std::move(value));
+  }
+  const std::string bounded_prompt =
+      wardy::llm::build_anonymized_prompt("2026-08-11", many_events);
+  assert(bounded_prompt.find("총 20건") != std::string::npos);
+  assert(bounded_prompt.find("관찰 기록(최신 12건, 전체 20건)") !=
+         std::string::npos);
+  assert(bounded_prompt.find("위치11") != std::string::npos);
+  assert(bounded_prompt.find("위치12") == std::string::npos);
+
+  wardy::llm::DailySummaryConfig default_config;
+  assert(default_config.model == "nemotron-3-nano:4b");
+  const std::string request_body =
+      wardy::llm::build_ollama_request_body(default_config, prompt);
+  assert(request_body.find("nemotron-3-nano:4b") != std::string::npos);
+  assert(request_body.find("관찰 기록을 요약하거나 답으로 쓰지 마라") !=
+         std::string::npos);
+  assert(request_body.find("\"keep_alive\":\"0s\"") !=
+         std::string::npos);
+
   const std::string fallback = wardy::llm::deterministic_summary(events);
   assert(fallback.find("총 3건") != std::string::npos);
   assert(fallback.find("주의 1건") != std::string::npos);
@@ -75,7 +99,7 @@ int main() {
       "오늘 총 3건의 안전 확인 이벤트가 기록되었습니다. 정상 0건, 주의 1건, "
       "경고 1건, 긴급 1건이며 미확인 2건입니다.";
   const std::string response =
-      "{\"model\":\"qwen3.5:4b\",\"response\":\"{\\\"summary\\\":\\\"" +
+      "{\"model\":\"nemotron-3-nano:4b\",\"response\":\"{\\\"summary\\\":\\\"" +
       generated + "\\\"}\",\"done\":true}";
   assert(wardy::llm::extract_generated_summary(response) == generated);
   const std::string unicode_response =
