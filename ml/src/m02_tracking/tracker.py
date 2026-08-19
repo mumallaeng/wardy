@@ -200,6 +200,11 @@ class GeometricMultiObjectTracker:
         self._tracks: list[_Track] = []
         self._next_track_id = 1
 
+    @property
+    def active_track_ids(self) -> frozenset[int]:
+        """IDs retained by the tracker, including temporarily missed tracks."""
+        return frozenset(track.track_id for track in self._tracks)
+
     def reset(self) -> None:
         """Start a new anonymous ID namespace after stream reconnect or switch."""
         self._tracks.clear()
