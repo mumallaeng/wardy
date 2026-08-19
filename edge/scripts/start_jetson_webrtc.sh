@@ -72,7 +72,7 @@ for command in "${mediamtx_bin}" "${caddy_bin}" gst-inspect-1.0; do
   fi
 done
 
-for plugin in v4l2src tee queue videoconvert nvvidconv nvv4l2h264enc h264parse rtspclientsink appsink; do
+for plugin in v4l2src tee queue videoconvert nvvidconv x264enc h264parse rtspclientsink appsink; do
   if ! gst-inspect-1.0 "${plugin}" >/dev/null 2>&1; then
     echo "required GStreamer plugin not found: ${plugin}" >&2
     exit 1
@@ -86,9 +86,15 @@ if [[ ! -x "${edge_service}" ]]; then
 fi
 
 camera_source="${WARDY_CAMERA_SOURCE:-v4l2src device=${camera_device} ! video/x-raw,width=${camera_width},height=${camera_height},framerate=${camera_fps}/1}"
+if [[ ! "${webrtc_bitrate}" =~ ^[0-9]+$ ]] ||
+   (( webrtc_bitrate < 1000 || webrtc_bitrate % 1000 != 0 )); then
+  echo "WARDY_WEBRTC_BITRATE must be an integer multiple of 1000 bits per second" >&2
+  exit 1
+fi
+software_bitrate_kbps=$((webrtc_bitrate / 1000))
 export WARDY_CAMERA_PIPELINE="${camera_source} ! tee name=wardy_camera \
 wardy_camera. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR ! appsink drop=true max-buffers=1 sync=false \
-wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! videoconvert ! nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! nvv4l2h264enc control-rate=1 bitrate=${webrtc_bitrate} iframeinterval=${keyframe_interval} insert-sps-pps=1 preset-level=1 ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://wardy-publisher:${publish_token}@127.0.0.1:8554/wardy protocols=tcp latency=0"
+wardy_camera. ! queue leaky=downstream max-size-buffers=2 ! nvvidconv ! video/x-raw,format=I420 ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=${software_bitrate_kbps} key-int-max=${keyframe_interval} bframes=0 threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0 byte-stream=true ! video/x-h264,profile=baseline,stream-format=byte-stream,alignment=au ! h264parse config-interval=-1 ! rtspclientsink location=rtsp://wardy-publisher:${publish_token}@127.0.0.1:8554/wardy protocols=tcp latency=0"
 
 mkdir -p "${edge_dir}/db" "${edge_dir}/data/training"
 chmod 0700 "${edge_dir}/db" "${edge_dir}/data" "${edge_dir}/data/training"

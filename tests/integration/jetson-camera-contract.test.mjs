@@ -33,10 +33,14 @@ test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한�
   assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
 });
 
-test("Jetson WebRTC는 H264 hardware encode와 UDP ICE gateway를 사용한다", async () => {
+test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
-  assert.match(launcher, /nvv4l2h264enc/);
+  assert.match(launcher, /x264enc tune=zerolatency speed-preset=ultrafast/);
+  assert.match(launcher, /threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0/);
+  assert.match(launcher, /software_bitrate_kbps/);
+  assert.match(launcher, /webrtc_bitrate % 1000 != 0/);
+  assert.doesNotMatch(launcher, /nvv4l2h264enc/);
   assert.match(launcher, /video\/x-h264,profile=baseline/);
   assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
   assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
@@ -69,6 +73,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   const packages = await readFile(path.join(root, "edge/config/jetson-apt-packages.txt"), "utf8");
   const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
   const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
+  const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
   const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
   const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
   const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
@@ -80,6 +85,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "libsqlite3-dev",
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
+    "gstreamer1.0-plugins-ugly",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -89,6 +95,10 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
   assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
   assert.match(installer, /apt-get install/);
+  assert.match(installer, /nvidia-l4t-core/);
+  assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
+  assert.match(installer, /l4t_gstreamer_version.*!=.*l4t_core_version/s);
+  assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);
   assert.match(installer, /check_jetson_dependencies\.sh/);
@@ -96,13 +106,27 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(caddyInstaller, /sha512sum --check --status/);
   assert.doesNotMatch(caddyInstaller, /checksums\.txt/);
   assert.match(checker, /nvvidconv/);
-  assert.match(checker, /nvv4l2h264enc/);
+  assert.match(checker, /x264enc/);
+  assert.doesNotMatch(checker, /nvv4l2h264enc/);
   assert.match(tlsCreator, /subjectAltName=/);
   assert.match(tlsCreator, /WARDY_TLS_DIR:-\/etc\/wardy\/tls/);
   assert.match(tlsCreator, /flock -n 9/);
   assert.match(tlsCreator, /installed_artifacts/);
   assert.match(tlsCreator, /wardy-ca\.key/);
   assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
+  assert.match(setup, /install_jetson_dependencies\.sh/);
+  assert.match(setup, /create_jetson_tls\.sh/);
+  assert.match(setup, /openssl rand -hex 32/);
+  assert.match(setup, /certificate_public_key_digest/);
+  assert.match(setup, /private_key_public_digest/);
+  assert.match(setup, /wardy-ca\.crt.*wardy-ca\.key/s);
+  assert.match(setup, /jetson\.crt.*jetson\.key/s);
+  assert.match(setup, /replace-with-\*/);
+  assert.match(setup, /chmod 0600/);
+  assert.match(setup, /cmake --build/);
+  assert.match(setup, /check_jetson_dependencies\.sh/);
+  assert.match(setup, /--no-start/);
+  assert.match(setup, /exec .*start_jetson_webrtc\.sh/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {

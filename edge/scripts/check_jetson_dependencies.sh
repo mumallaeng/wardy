@@ -56,7 +56,7 @@ if command -v pkg-config >/dev/null 2>&1; then
 fi
 
 if command -v gst-inspect-1.0 >/dev/null 2>&1; then
-  for plugin_name in v4l2src tee queue videoconvert nvvidconv nvv4l2h264enc h264parse rtspclientsink appsink; do
+  for plugin_name in v4l2src tee queue videoconvert nvvidconv x264enc h264parse rtspclientsink appsink; do
     require_plugin "${plugin_name}"
   done
 fi
