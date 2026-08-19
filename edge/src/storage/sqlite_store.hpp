@@ -48,6 +48,7 @@ struct ManagedItemRecord {
   std::string policy;
   std::string created_at;
   std::string updated_at;
+  std::size_t sample_count = 0;
 };
 
 struct TrainingSampleRecord {
@@ -65,6 +66,7 @@ struct SubjectRecord {
   std::string role;
   std::string created_at;
   std::string updated_at;
+  std::size_t reference_sample_count = 0;
 };
 
 struct SubjectReferenceSampleRecord {
@@ -88,19 +90,31 @@ class SqliteStore {
 
   void initialize();
   void upsert_event(const EventRecord& event);
+  [[nodiscard]] std::optional<EventRecord> get_event(const std::string& event_id) const;
   [[nodiscard]] std::vector<EventRecord> list_events(std::size_t limit = 100,
                                                       std::size_t offset = 0) const;
+  [[nodiscard]] std::vector<EventRecord> list_active_events() const;
   bool update_event_status(const std::string& event_id, const std::string& event_status,
                            const std::string& changed_at);
+  bool update_event_media(const std::string& event_id, const std::string& media_type,
+                          const std::string& media_path,
+                          const std::string& media_started_at,
+                          const std::string& media_ended_at);
   void save_system_state(const SystemStateRecord& state);
   [[nodiscard]] std::optional<SystemStateRecord> load_system_state() const;
   void upsert_managed_item(const ManagedItemRecord& item);
+  [[nodiscard]] std::vector<ManagedItemRecord> list_managed_items() const;
+  bool delete_managed_item(const std::string& item_id);
   void add_training_sample(const TrainingSampleRecord& sample);
   [[nodiscard]] std::size_t count_training_samples(const std::string& item_id) const;
   void upsert_subject(const SubjectRecord& subject);
+  [[nodiscard]] std::vector<SubjectRecord> list_subjects() const;
+  bool delete_subject(const std::string& subject_id);
   void add_subject_reference_sample(const SubjectReferenceSampleRecord& sample);
   [[nodiscard]] std::size_t count_subject_reference_samples(
       const std::string& subject_id) const;
+  [[nodiscard]] std::optional<std::string> clear_event_media(
+      const std::string& event_id);
   [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;

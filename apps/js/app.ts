@@ -1,4 +1,4 @@
-import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES, createDemoEvent } from "./constants.ts";
+import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { JetsonCredentialStore } from "./credentials.ts";
 import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
@@ -8,7 +8,8 @@ import { OverlayController } from "./overlay.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
-import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, WardyEvent, WardyState } from "./types.ts";
+import { WardyRuntimeClient } from "./runtime.ts";
+import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -50,10 +51,34 @@ function errorMessage(error: unknown): string {
 const store = new WardyStore(window.localStorage);
 const credentialStore = new JetsonCredentialStore(window.sessionStorage);
 const trainingSamples = new TrainingSampleClient();
+const runtime = new WardyRuntimeClient();
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
+let runtimeState: SystemState | null = null;
+
+function runtimeConnection(): { baseUrl: string; accessToken: string; origin: string } {
+  return {
+    baseUrl: store.getState().settings.jetson.baseUrl,
+    accessToken: credentialStore.get().accessToken,
+    origin: window.location.origin,
+  };
+}
+
+function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent[] }): void {
+  runtimeState = snapshot.state;
+  store.applyRuntimeSnapshot(snapshot.state, snapshot.events);
+  renderSystemState();
+}
+
+function renderSystemState(): void {
+  const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
+  const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
+  $("#detection-status").textContent = runtimeState ? detectionLabels[runtimeState.detection_state] : "AI 미연결";
+  $("#event-runtime-status").textContent = runtimeState ? eventLabels[runtimeState.event_state] : "연결 대기";
+  $("#event-runtime-dot").className = `status-dot${runtimeState?.event_state === "ready" ? " is-ok" : runtimeState?.event_state === "fault" ? " is-fault" : ""}`;
+}
 
 /**
  * Displays a temporary notification message.
@@ -140,6 +165,18 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
   if (!configured.baseUrl) return;
   try {
     await jetson.check(configured.baseUrl, window.location.origin);
+    if (credentials.accessToken) {
+      const [snapshot, collections] = await Promise.all([
+        runtime.loadSnapshot(configured.baseUrl, credentials.accessToken, window.location.origin),
+        runtime.loadCollections(configured.baseUrl, credentials.accessToken, window.location.origin),
+      ]);
+      applyRuntimeSnapshot(snapshot);
+      store.replaceSubjects(collections.subjects);
+      store.replaceManagedItems(collections.managedItems);
+      runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
+    } else {
+      runtime.stop();
+    }
     if (startCamera && credentials.viewerToken && cameraStatus !== "connected" && cameraStatus !== "connecting") {
       await camera.start(configured.baseUrl, credentials.viewerToken, window.location.origin);
     }
@@ -169,12 +206,13 @@ async function checkJetsonConnection(): Promise<void> {
  * @param state - The current Wardy application state
  */
 function renderCareState(state: WardyState): void {
-  const care = CARE_STATUS[state.careState.status] ?? CARE_STATUS.normal;
+  const care = state.careState.status ? CARE_STATUS[state.careState.status] :
+    { label: "확인 불가", reason: "안전 상태를 판단할 수 없습니다.", rank: -1 };
   $("#care-status-label").textContent = care.label;
-  $("#care-status-code").textContent = state.careState.status;
+  $("#care-status-code").textContent = state.careState.status ?? "unavailable";
   $("#care-status-badge").textContent = care.label;
   $("#care-status-reason").textContent = state.careState.reason;
-  $("#care-orb").className = `care-orb is-${state.careState.status}`;
+  $("#care-orb").className = `care-orb is-${state.careState.status ?? "unavailable"}`;
   $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === state.careState.status));
 }
 
@@ -295,6 +333,73 @@ async function captureSubjectReference(subjectId: string): Promise<void> {
   }
 }
 
+async function deleteSubject(subjectId: string): Promise<void> {
+  if (!window.confirm("등록 인물과 Jetson에 저장된 기준 사진을 삭제할까요?")) return;
+  try {
+    const connection = runtimeConnection();
+    const subjects = await runtime.deleteSubject(
+      connection.baseUrl, connection.accessToken, connection.origin, subjectId,
+    );
+    store.replaceSubjects(subjects);
+    toast("등록 인물과 기준 사진을 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function deleteManagedItem(itemId: string): Promise<void> {
+  if (!window.confirm("등록 물품과 Jetson에 저장된 학습 사진을 삭제할까요?")) return;
+  try {
+    const connection = runtimeConnection();
+    const items = await runtime.deleteManagedItem(
+      connection.baseUrl, connection.accessToken, connection.origin, itemId,
+    );
+    store.replaceManagedItems(items);
+    toast("등록 물품과 학습 사진을 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function runEventAction(eventId: string,
+                              action: "confirm" | "release" | "false-detection"): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    await runtime.eventAction(connection.baseUrl, connection.accessToken,
+      connection.origin, eventId, action);
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
+    toast(`${eventId} 처리 상태를 저장했습니다.`);
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function viewEventMedia(eventId: string): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const blob = await runtime.loadEventMedia(connection.baseUrl, connection.accessToken,
+      connection.origin, eventId);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function deleteEventMedia(eventId: string): Promise<void> {
+  if (!window.confirm("Jetson에 저장된 이벤트 사진·영상을 삭제할까요?")) return;
+  try {
+    const connection = runtimeConnection();
+    await runtime.deleteEventMedia(connection.baseUrl, connection.accessToken,
+      connection.origin, eventId);
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
+    toast("이벤트 자료를 Jetson에서 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
 /**
  * Downloads a JSON-serializable value as a local file.
  *
@@ -330,8 +435,8 @@ function render(state: WardyState = store.getState()): void {
   overlay.setZones(state.zones);
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
   renderNotifications($("#notification-settings"), state.settings.notifications, (eventType, value) => store.setNotificationSetting(eventType, value));
-  renderSubjects($("#subject-list"), state.subjects, (id) => store.removeSubject(id), captureSubjectReference);
-  renderSubjects($("#data-subject-list"), state.subjects, (id) => store.removeSubject(id), captureSubjectReference);
+  renderSubjects($("#subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
+  renderSubjects($("#data-subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderIdentityReviews(
     $("#identity-review-gallery"), state.identityReviews, state.subjects,
     (reviewId, decision, subjectId) => store.resolveIdentityReview(reviewId, decision, subjectId),
@@ -340,7 +445,7 @@ function render(state: WardyState = store.getState()): void {
   $("#review-count").textContent = `${pendingReviews}건 대기`;
   renderManagedItems(
     $("#item-list"), state.managedItems,
-    (id) => store.removeManagedItem(id), captureManagedItemSample,
+    (id) => { void deleteManagedItem(id); }, captureManagedItemSample,
   );
   renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
@@ -352,6 +457,10 @@ function render(state: WardyState = store.getState()): void {
   if (document.activeElement !== viewerTokenInput) viewerTokenInput.value = credentials.viewerToken;
   const configured = state.settings.jetson.baseUrl || window.location.origin;
   $("#jetson-resolved-url").textContent = configured;
+  $$("#care-state-controls button").forEach((button) => {
+    (button as HTMLButtonElement).disabled = state.careState.source === "jetson_runtime";
+  });
+  renderSystemState();
 }
 
 store.subscribe(render);
@@ -400,10 +509,16 @@ $$<HTMLButtonElement>('#care-state-controls button').forEach((button) => button.
   store.setCareState(status);
 }));
 
-$("#demo-event").addEventListener("click", () => {
-  const state = store.getState();
-  store.addEvent(createDemoEvent(state.events.length + 1));
-  toast("AI와 연결되지 않은 demo event를 추가했습니다.");
+$("#demo-event").addEventListener("click", async () => {
+  try {
+    const connection = runtimeConnection();
+    await runtime.createDebugEvent(connection.baseUrl, connection.accessToken, connection.origin);
+    if (!runtime.isConnected()) {
+      applyRuntimeSnapshot(await runtime.loadSnapshot(
+        connection.baseUrl, connection.accessToken, connection.origin));
+    }
+    toast("AI와 연결되지 않은 runtime 검증 event를 Jetson에 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
 });
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
@@ -414,29 +529,43 @@ $<HTMLTableSectionElement>("#event-table-body").addEventListener("click", (event
   if (!button) return;
   const { action, eventId } = button.dataset;
   if (!eventId) return;
-  if (action === "confirm") { store.confirmEvent(eventId); toast(`${eventId}를 확인 상태로 변경했습니다.`); }
-  if (action === "false") { store.markFalseDetection(eventId); toast(`${eventId}를 오탐으로 기록했습니다.`); }
-  if (action === "delete-media" && window.confirm("이 event의 로컬 자료 경로 metadata를 삭제할까요?")) { store.removeEventMedia(eventId); toast("event 자료 정보를 삭제했습니다."); }
+  if (action === "confirm") void runEventAction(eventId, "confirm");
+  if (action === "false") void runEventAction(eventId, "false-detection");
+  if (action === "release") void runEventAction(eventId, "release");
+  if (action === "view-media") void viewEventMedia(eventId);
+  if (action === "delete-media") void deleteEventMedia(eventId);
 });
 
-$<HTMLFormElement>("#subject-form").addEventListener("submit", (event: SubmitEvent) => {
+$<HTMLFormElement>("#subject-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   const name = String(data.get("name") ?? "").trim();
   if (!name) { toast("이름을 입력해 주세요."); return; }
-  store.addSubject(name, String(data.get("role") ?? "").trim() || "돌봄 대상");
-  form.reset();
+  try {
+    const connection = runtimeConnection();
+    const subjects = await runtime.createSubject(connection.baseUrl, connection.accessToken,
+      connection.origin, name, String(data.get("role") ?? "").trim() || "돌봄 대상");
+    store.replaceSubjects(subjects);
+    form.reset();
+    toast("등록 인물을 Jetson에 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
 });
-$<HTMLFormElement>("#item-form").addEventListener("submit", (event: SubmitEvent) => {
+$<HTMLFormElement>("#item-form").addEventListener("submit", async (event: SubmitEvent) => {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   const policy = String(data.get("policy")) as ManagedItemPolicy;
   const label = String(data.get("label") ?? "").trim();
   if (!label) { toast("물품 이름을 입력해 주세요."); return; }
-  store.addManagedItem(label, policy);
-  form.reset();
+  try {
+    const connection = runtimeConnection();
+    const items = await runtime.createManagedItem(connection.baseUrl, connection.accessToken,
+      connection.origin, label, policy);
+    store.replaceManagedItems(items);
+    form.reset();
+    toast("등록 물품을 Jetson에 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
 });
 $("#draw-zone").addEventListener("click", () => { openView("dashboard"); overlay.beginZoneDrawing(); toast("카메라 화면에서 주의 구역을 드래그하세요."); });
 
@@ -482,7 +611,7 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
 });
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
 
-window.addEventListener("beforeunload", () => camera.stop());
+window.addEventListener("beforeunload", () => { camera.stop(); runtime.stop(); });
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);

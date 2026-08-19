@@ -96,6 +96,10 @@ int main() {
   assert(events[0].event_id == event.event_id);
   assert(events[0].care_status == "warning");
   assert(events[0].media_path == event.media_path);
+  const auto stored_event = store.get_event(event.event_id);
+  assert(stored_event.has_value());
+  assert(stored_event->reason == event.reason);
+  assert(!store.get_event("missing").has_value());
 
   assert(store.update_event_status(event.event_id, "confirmed",
                                    "2026-08-06T12:01:00+09:00"));
@@ -104,6 +108,19 @@ int main() {
   assert(events[0].confirmed_at == "2026-08-06T12:01:00+09:00");
   assert(!store.update_event_status("missing", "confirmed",
                                     "2026-08-06T12:01:00+09:00"));
+  auto active_events = store.list_active_events();
+  assert(active_events.size() == 1);
+  assert(active_events[0].event_id == event.event_id);
+  assert(store.update_event_status(event.event_id, "released",
+                                   "2026-08-06T12:01:30+09:00"));
+  assert(store.list_active_events().empty());
+  assert(store.update_event_status(event.event_id, "confirmed",
+                                   "2026-08-06T12:01:31+09:00"));
+  assert(store.update_event_media(event.event_id, "video", "events/EVT-TEST-001.mp4",
+                                  "2026-08-06T11:59:55+09:00",
+                                  "2026-08-06T12:00:05+09:00"));
+  assert(store.get_event(event.event_id)->media_ended_at ==
+         "2026-08-06T12:00:05+09:00");
 
   wardy::storage::SystemStateRecord state{
       "warning",
@@ -136,6 +153,9 @@ int main() {
       480,
   });
   assert(store.count_training_samples(item.item_id) == 1);
+  const auto items = store.list_managed_items();
+  assert(items.size() == 1);
+  assert(items[0].sample_count == 1);
 
   const wardy::storage::SubjectRecord subject{
       "subject-care-01",
@@ -154,6 +174,22 @@ int main() {
       480,
   });
   assert(store.count_subject_reference_samples(subject.subject_id) == 1);
+  const auto subjects = store.list_subjects();
+  assert(subjects.size() == 1);
+  assert(subjects[0].reference_sample_count == 1);
+
+  const auto removed_media = store.clear_event_media(event.event_id);
+  assert(removed_media == "events/EVT-TEST-001.mp4");
+  assert(store.get_event(event.event_id)->media_type == "none");
+  assert(!store.get_event(event.event_id)->media_path.has_value());
+  assert(!store.clear_event_media("missing").has_value());
+
+  assert(store.delete_managed_item(item.item_id));
+  assert(store.list_managed_items().empty());
+  assert(!store.delete_managed_item(item.item_id));
+  assert(store.delete_subject(subject.subject_id));
+  assert(store.list_subjects().empty());
+  assert(!store.delete_subject(subject.subject_id));
 
   for (const int version : {1, 2}) {
     const auto path = std::filesystem::temp_directory_path() /

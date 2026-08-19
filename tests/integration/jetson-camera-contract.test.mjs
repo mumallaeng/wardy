@@ -186,7 +186,7 @@ test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async ()
 
 test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
-  assert.match(source, /POST \/api\/training\/items\/sample/);
+  assert.match(source, /method == "POST" && path == "\/api\/training\/items\/sample"/);
   assert.match(source, /sample_capture_requests/);
   assert.match(source, /add_training_sample/);
   assert.match(source, /std::filesystem::path\("items"\)/);
@@ -197,7 +197,28 @@ test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장�
 
 test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", async () => {
   const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
-  assert.match(source, /POST \/api\/training\/subjects\/reference/);
+  assert.match(source, /method == "POST" && path == "\/api\/training\/subjects\/reference"/);
   assert.match(source, /add_subject_reference_sample/);
   assert.match(source, /std::filesystem::path\("subjects"\)/);
+});
+
+test("이벤트 상태별 자료는 Jetson 로컬에 제한적으로 저장한다", async () => {
+  const media = await readFile(path.join(root, "edge/src/media/event_media.cpp"), "utf8");
+  const mediaHeader = await readFile(path.join(root, "edge/src/media/event_media.hpp"), "utf8");
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  assert.match(media, /event\.media_type == "image"/);
+  assert.match(media, /event\.media_type == "video"/);
+  assert.match(mediaHeader, /before_event\{5000\}/);
+  assert.match(mediaHeader, /after_event\{5000\}/);
+  assert.match(media, /ring_\.size\(\) > ring_capacity_/);
+  assert.match(mediaHeader, /max_workers = 2/);
+  assert.match(mediaHeader, /max_pending_events = 16/);
+  assert.match(media, /void EventMediaRecorder::worker_loop\(\)/);
+  assert.match(media, /update_event_media/);
+  assert.match(api, /const auto media_event_id = event_media_path\(path\)/);
+  assert.match(api, /method == "GET" && media_event_id/);
+  assert.match(api, /method == "DELETE" && media_event_id/);
+  assert.match(launcher, /data\/events/);
+  assert.doesNotMatch(media, /TensorRT|onnx|inference|tracking/i);
 });
