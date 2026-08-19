@@ -157,7 +157,6 @@ test("비AI runtime과 승인된 AI inference 경계를 분리한다", async () 
       "pose_fall_client.hpp",
       "pose_fall_probe.cpp",
     ],
-    "edge/src/tracking": [".gitkeep"],
     "edge/src/analysis": [".gitkeep"],
   };
   for (const [directory, allowedEntries] of Object.entries(aiDirectories)) {

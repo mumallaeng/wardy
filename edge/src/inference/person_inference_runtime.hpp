@@ -19,7 +19,7 @@ class PersonInferenceRuntime {
  public:
   using ResultCallback = std::function<void(
       const cv::Mat&, const std::string&, std::int64_t,
-      const std::vector<PersonDetection>&)>;
+      const std::vector<PersonDetection>&, bool)>;
   using StatusCallback = std::function<void(bool, const std::string&)>;
 
   PersonInferenceRuntime(PersonDetectorConfig config, ResultCallback on_result,
@@ -31,7 +31,7 @@ class PersonInferenceRuntime {
 
   // The queue holds only the newest frame. Capture never waits for inference.
   void submit(const cv::Mat& frame_bgr, std::string frame_id,
-              std::int64_t timestamp_ms);
+              std::int64_t timestamp_ms, bool reset_tracking = false);
   void stop();
 
  private:
@@ -39,6 +39,7 @@ class PersonInferenceRuntime {
     cv::Mat frame_bgr;
     std::string frame_id;
     std::int64_t timestamp_ms{};
+    bool reset_tracking{};
   };
 
   void worker_loop();
