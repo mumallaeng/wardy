@@ -44,7 +44,9 @@ test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를
   assert.match(api, /apply_tracking_results/);
   assert.match(api, /inference::normalized_response_box/);
   assert.match(api, /item\.policy == "excluded"/);
-  assert.match(api, /rendered\.detection\.role = ""/);
+  assert.match(api, /rendered\.detection\.role = person\.subject_role\.value_or\(""\)/);
+  assert.match(api, /rendered\.detection\.name = person\.subject_name\.value_or\(""\)/);
+  assert.match(api, /rendered\.detection\.subject_id = person\.subject_id/);
   assert.doesNotMatch(api, /rendered\.detection\.role = "돌봄 대상"/);
   assert.match(runtime, /frame_bgr\.clone\(\)/);
   assert.match(runtime, /pending_ = PendingFrame/);
@@ -56,6 +58,46 @@ test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를
   assert.match(detector, /enqueueV3/);
   assert.match(detector, /\[1,3,640,640\]/);
   assert.match(example, /WARDY_PERSON_ENGINE/);
+});
+
+test("M-01과 M-05 배포 artifact 및 M-05 dataset은 고정된 Hugging Face revision을 사용한다", async () => {
+  const models = JSON.parse(
+    await readFile(path.join(root, "ml/config/model-registry.json"), "utf8"),
+  );
+  const datasets = JSON.parse(
+    await readFile(path.join(root, "ml/config/dataset-registry.json"), "utf8"),
+  );
+  const prepare = await readFile(
+    path.join(root, "edge/scripts/prepare_yolo_models.sh"),
+    "utf8",
+  );
+  const setup = await readFile(
+    path.join(root, "edge/scripts/setup_jetson.sh"),
+    "utf8",
+  );
+
+  const m01 = models.models.m01_person.versions["v1.0.1"];
+  assert.equal(m01.repo_id, "jjm15955/wardy-m1-person-detector");
+  assert.equal(m01.revision, "v1.0.1");
+  assert.match(m01.files["model.pt"], /^[a-f0-9]{64}$/);
+
+  const m05 = models.models.m05_hazard.versions["hazard-objects-v2-finetune-v3"];
+  assert.equal(m05.repo_id, "chocochip119/wardy-m05-hazard-detector");
+  assert.equal(m05.revision, "hazard-objects-v2-finetune-v3");
+  assert.match(m05.files["model.pt"], /^[a-f0-9]{64}$/);
+
+  const hazardDataset = datasets.datasets.m05_hazard;
+  const dataset = hazardDataset.versions[hazardDataset.default_version];
+  assert.equal(dataset.repo_id, "chocochip119/hazard");
+  assert.match(dataset.revision, /^[a-f0-9]{40}$/);
+  assert.match(dataset.files["dataset.zip"], /^[a-f0-9]{64}$/);
+
+  assert.match(prepare, /install_model m01_person/);
+  assert.match(prepare, /install_model m05_hazard/);
+  assert.match(prepare, /ultralytics\/ultralytics@sha256:[a-f0-9]{64}/);
+  assert.match(setup, /set_env_default[\s\S]*WARDY_PERSON_ENGINE/);
+  assert.match(setup, /set_env_default[\s\S]*WARDY_HAZARD_MODEL/);
+  assert.doesNotMatch(setup, /set_env_value WARDY_(PERSON_ENGINE|HAZARD_MODEL)/);
 });
 
 test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시에만 적용된다", async () => {

@@ -26,7 +26,7 @@ class HuggingFaceInstallTest(unittest.TestCase):
     def test_private_repository_uses_read_only_token(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"HF_TOKEN": "test-token"}, clear=True
-        ), patch("model_manager._download") as download:
+        ), patch("model_manager.download_file") as download:
             _install_huggingface(self.specification, Path(directory))
 
         download.assert_called_once_with(
@@ -38,7 +38,7 @@ class HuggingFaceInstallTest(unittest.TestCase):
     def test_public_repository_uses_no_authorization_header(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {}, clear=True
-        ), patch("model_manager._download") as download:
+        ), patch("model_manager.download_file") as download:
             _install_huggingface(self.specification, Path(directory))
 
         download.assert_called_once_with(
@@ -53,7 +53,7 @@ class HuggingFaceInstallTest(unittest.TestCase):
             "urls": {"model.onnx": "https://example.test/model.onnx"},
         }
         with tempfile.TemporaryDirectory() as directory, patch(
-            "model_manager._download"
+            "model_manager.download_file"
         ) as download:
             _install_direct_files(specification, Path(directory))
         download.assert_called_once_with(
