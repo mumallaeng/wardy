@@ -14,7 +14,6 @@ import cv2
 import numpy as np
 
 from m02_tracking import M02TrackingAdapter, TrackingPoseFallRuntime
-from m02_identity import RegisteredSubjectIdentifier
 from m03_pose import PersonInput, PoseEstimator
 from m04_fall import FallInferenceSession, PoseFallRuntime
 from m05_hazard import HazardDetector
@@ -110,32 +109,14 @@ class PoseFallServer(socketserver.UnixStreamServer):
         os.chmod(socket_path, 0o600)
 
 
-def build_runtime(
-    model_root: Path,
-    database_path: Path | None = None,
-    training_data_path: Path | None = None,
-    identity_match_threshold: float = 0.45,
-    identity_review_threshold: float = 0.30,
-) -> TrackingPoseFallRuntime:
+def build_runtime(model_root: Path) -> TrackingPoseFallRuntime:
     m03 = install_model("m03_pose", model_root=model_root)
     m04 = install_model("m04_fall", model_root=model_root)
     pose_fall = PoseFallRuntime(
         PoseEstimator(m03 / "model.onnx"),
         FallInferenceSession(m04 / "model.onnx", m04 / "metadata.json"),
     )
-    identity = None
-    if database_path is not None and training_data_path is not None:
-        detector = install_model("m02_face_detector", model_root=model_root)
-        recognizer = install_model("m02_face_recognizer", model_root=model_root)
-        identity = RegisteredSubjectIdentifier(
-            detector / "model.onnx",
-            recognizer / "model.onnx",
-            database_path,
-            training_data_path,
-            match_threshold=identity_match_threshold,
-            review_threshold=identity_review_threshold,
-        )
-    return TrackingPoseFallRuntime(M02TrackingAdapter(), pose_fall, identity)
+    return TrackingPoseFallRuntime(M02TrackingAdapter(), pose_fall)
 
 
 def main() -> int:
@@ -148,33 +129,14 @@ def main() -> int:
     )
     parser.add_argument("--hazard-model", type=Path)
     parser.add_argument("--hazard-confidence", type=float, default=0.5)
-    parser.add_argument("--database", type=Path)
-    parser.add_argument("--training-data", type=Path)
-    parser.add_argument("--identity-match-threshold", type=float, default=0.45)
-    parser.add_argument("--identity-review-threshold", type=float, default=0.30)
     args = parser.parse_args()
-    if (args.database is None) != (args.training_data is None):
-        parser.error("--database and --training-data must be provided together")
-    if not (
-        0.0
-        <= args.identity_review_threshold
-        < args.identity_match_threshold
-        <= 1.0
-    ):
-        parser.error("identity thresholds must satisfy 0 <= review < match <= 1")
     if args.socket.parent.exists():
         if not args.socket.parent.is_dir():
             raise NotADirectoryError(args.socket.parent)
     else:
         args.socket.parent.mkdir(parents=True, mode=0o700)
     args.socket.unlink(missing_ok=True)
-    runtime = build_runtime(
-        args.model_root,
-        args.database,
-        args.training_data,
-        args.identity_match_threshold,
-        args.identity_review_threshold,
-    )
+    runtime = build_runtime(args.model_root)
     hazard_detector = None if args.hazard_model is None else HazardDetector(
         args.hazard_model, args.hazard_confidence
     )
