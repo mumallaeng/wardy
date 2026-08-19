@@ -276,12 +276,15 @@ export class WardyRuntimeClient {
   }
 
   async loadIdentityReviewMedia(baseUrl: string, accessToken: string,
-                                fallbackOrigin: string, reviewId: string): Promise<Blob> {
+                                fallbackOrigin: string, reviewId: string,
+                                signal?: AbortSignal): Promise<Blob> {
     if (!accessToken) throw new Error("Jetson gateway 연결이 필요합니다.");
     const response = await this.fetchImpl(endpoint(baseUrl,
       `/api/identity-reviews/${encodeURIComponent(reviewId)}/media`, fallbackOrigin), {
       headers: { "X-Wardy-Access-Token": accessToken }, cache: "no-store",
-      signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(MEDIA_TIMEOUT_MS)])
+        : AbortSignal.timeout(MEDIA_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`식별 검토 장면을 불러오지 못했습니다. HTTP ${response.status}`);
     return response.blob();

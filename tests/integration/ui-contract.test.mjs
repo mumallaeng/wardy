@@ -27,6 +27,8 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(html, /알림 설정/);
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
   assert.match(html, /id="enable-browser-notifications"/);
+  assert.match(html, /id="fall-incident"/);
+  assert.match(html, /낙상 의심 확인/);
   assert.doesNotMatch(html, /상황별 알림/);
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
@@ -38,6 +40,12 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   const dataWorkspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
   assert.match(dataWorkspace, /sample\.reviewStatus === status && label\.value\.trim\(\) === sample\.label/);
   const appSource = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  assert.match(appSource, /searchParams\.get\("jetson"\)/);
+  assert.match(appSource, /applyLaunchConfiguration/);
+  assert.match(appSource, /IDENTITY_PREVIEW_LIMIT = 8/);
+  assert.match(appSource, /renderFallIncident/);
+  assert.match(appSource, /loading\.controller\.abort\(\)/);
+  assert.match(appSource, /controller\.signal/);
   assert.match(appSource, /generation !== datasetPreviewGeneration/);
   assert.match(appSource, /if \(!dialog\.open\) dialog\.showModal\(\)/);
   assert.match(html, /Jetson camera 촬영/);
@@ -59,6 +67,22 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(html, /event·state 동기화<\/dt><dd>인증 WebSocket · 자동 재연결/);
   assert.match(html, /<code>\/dev\/video0<\/code>/);
   assert.match(html, /V4L2/);
+});
+
+test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공한다", async () => {
+  const jetson = await readFile(path.join(root, "start_jetson.sh"), "utf8");
+  const macos = await readFile(path.join(root, "start_macos.sh"), "utf8");
+  const windows = await readFile(path.join(root, "start_windows.ps1"), "utf8");
+  assert.match(jetson, /setup_jetson\.sh/);
+  assert.match(jetson, /Initial setup is still running/);
+  assert.match(jetson, /systemctl restart wardy-pose-fall\.service wardy-edge\.service/);
+  assert.match(macos, /npm run serve/);
+  assert.match(macos, /search|\?jetson=/);
+  assert.match(windows, /npm run serve/);
+  for (const source of [jetson, macos, windows]) {
+    assert.match(source, /\[실패\]/);
+    assert.match(source, /다음 명령/);
+  }
 });
 
 test("설치형 웹앱 shell과 새 이벤트 브라우저 알림을 제공한다", async () => {

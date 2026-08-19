@@ -106,6 +106,10 @@ h2 { font-size: 1.15rem; letter-spacing: -.02em; }
 
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(310px, .7fr); gap: 18px; }
 .card { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+.fall-incident { margin-bottom: 18px; border-color: color-mix(in srgb, var(--emergency) 35%, var(--line)); }
+.fall-incident.is-active { background: color-mix(in srgb, var(--emergency) 8%, var(--surface)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--emergency) 18%, transparent); }
+.fall-incident.is-active h2 { color: var(--emergency); }
+.fall-incident [hidden] { display: none; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 17px; }
 .camera-stage { position: relative; display: grid; place-items: center; min-height: 470px; overflow: hidden; border-radius: 14px; background: #101813; }
 .camera-stage video { display: block; width: 100%; min-height: 470px; height: 100%; max-height: 620px; border: 0; background: #101813; object-fit: contain; }

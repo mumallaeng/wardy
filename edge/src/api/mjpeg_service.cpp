@@ -745,20 +745,11 @@ void apply_tracking_results(
   }
   const std::set<std::int64_t> retained(
       response.active_track_ids.begin(), response.active_track_ids.end());
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> expired_falls;
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
     for (auto iterator = state->active_fall_tracks.begin();
          iterator != state->active_fall_tracks.end();) {
       if (retained.count(*iterator) == 0) {
-        const auto identity = state->active_fall_identities.find(*iterator);
-        expired_falls.emplace_back(
-            *iterator,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.first,
-            identity == state->active_fall_identities.end()
-                ? std::nullopt : identity->second.second);
         state->active_fall_identities.erase(*iterator);
         iterator = state->active_fall_tracks.erase(iterator);
       } else {
@@ -766,11 +757,9 @@ void apply_tracking_results(
       }
     }
   }
-  for (const auto& [track_id, subject_id, subject_name] : expired_falls) {
-    apply_fall_observation(state, track_id, false, std::nullopt,
-                           "Tracked person expired; fall alert released",
-                           subject_id, subject_name);
-  }
+  // A fall is an incident, not a frame-level status. Losing the track must not
+  // clear an alert before a caregiver has reviewed it. The runtime event stays
+  // active until the user explicitly releases or dismisses it.
 
   for (const auto& person : response.persons) {
     if (!person.fall_suspected) continue;
@@ -795,13 +784,11 @@ void apply_tracking_results(
         }
       }
     }
-    if (apply) {
+    if (apply && *person.fall_suspected) {
       apply_fall_observation(
-          state, person.track_id, *person.fall_suspected,
+          state, person.track_id, true,
           person.fall_confidence,
-          *person.fall_suspected
-              ? "M-04 temporal pose sequence exceeded the fall threshold"
-              : "M-04 temporal pose sequence returned below the fall threshold",
+          "M-04 temporal pose sequence exceeded the fall threshold",
           event_subject_id, event_subject_name);
     }
   }
@@ -890,27 +877,11 @@ void apply_tracking_results(
   state->inference->apply(output);
 }
 
-void release_all_fall_tracks(const std::shared_ptr<StreamState>& state,
-                             const std::string& reason) {
-  std::vector<std::tuple<std::int64_t, std::optional<std::string>,
-                         std::optional<std::string>>> active_tracks;
+void clear_all_fall_tracks(const std::shared_ptr<StreamState>& state) {
   {
     std::lock_guard lock(state->active_fall_tracks_mutex);
-    for (const auto track_id : state->active_fall_tracks) {
-      const auto identity = state->active_fall_identities.find(track_id);
-      active_tracks.emplace_back(
-          track_id,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.first,
-          identity == state->active_fall_identities.end()
-              ? std::nullopt : identity->second.second);
-    }
     state->active_fall_tracks.clear();
     state->active_fall_identities.clear();
-  }
-  for (const auto& [track_id, subject_id, subject_name] : active_tracks) {
-    apply_fall_observation(state, track_id, false, std::nullopt, reason,
-                           subject_id, subject_name);
   }
 }
 #endif
@@ -1966,8 +1937,7 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
             bool reset_tracking) {
           if (const auto locked = weak_state.lock()) {
             if (reset_tracking) {
-              release_all_fall_tracks(
-                  locked, "Camera stream reset; anonymous fall track released");
+              clear_all_fall_tracks(locked);
             }
             const auto response = pose_fall_client->infer_frame(
                 frame, frame_id, timestamp_ms, detections, reset_tracking);
@@ -1988,9 +1958,12 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
               }
             } else {
               locked->detection_running_reported = false;
-              save_detection_state(locked, "fault", message);
+              std::cerr << "Inference pipeline error: " << message << '\n';
+              const std::string public_message =
+                  "AI 안전 감지를 일시적으로 사용할 수 없습니다.";
+              save_detection_state(locked, "fault", public_message);
               if (!locked->detection_fault_active.exchange(true)) {
-                apply_detection_fault(locked, true, message);
+                apply_detection_fault(locked, true, public_message);
               }
             }
           }
