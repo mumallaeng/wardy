@@ -137,8 +137,11 @@ require_matching_key_pair() {
   local certificate="$1"
   local private_key="$2"
   local pair_name="$3"
-  if [[ "$(certificate_public_key_digest "${certificate}")" !=
-        "$(private_key_public_digest "${private_key}")" ]]; then
+  local certificate_digest
+  local private_key_digest
+  certificate_digest="$(certificate_public_key_digest "${certificate}")"
+  private_key_digest="$(private_key_public_digest "${private_key}")"
+  if [[ "${certificate_digest}" != "${private_key_digest}" ]]; then
     echo "${pair_name} certificate and private key do not match; refusing to replace them" >&2
     exit 1
   fi

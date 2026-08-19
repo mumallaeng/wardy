@@ -86,6 +86,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
     "gstreamer1.0-plugins-bad",
     "gstreamer1.0-tools",
     "gstreamer1.0-plugins-ugly",
+    "gstreamer1.0-rtsp",
     "v4l-utils",
   ]) {
     assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
@@ -98,6 +99,10 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(installer, /nvidia-l4t-core/);
   assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
   assert.match(installer, /l4t_gstreamer_version.*!=.*l4t_core_version/s);
+  assert.match(
+    installer,
+    /apt-get install -y --allow-downgrades[\s\S]{0,160}"nvidia-l4t-gstreamer=\$\{l4t_core_version\}"/,
+  );
   assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);
@@ -119,6 +124,8 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(setup, /openssl rand -hex 32/);
   assert.match(setup, /certificate_public_key_digest/);
   assert.match(setup, /private_key_public_digest/);
+  assert.match(setup, /certificate_digest=.*certificate_public_key_digest/);
+  assert.match(setup, /private_key_digest=.*private_key_public_digest/);
   assert.match(setup, /wardy-ca\.crt.*wardy-ca\.key/s);
   assert.match(setup, /jetson\.crt.*jetson\.key/s);
   assert.match(setup, /replace-with-\*/);
