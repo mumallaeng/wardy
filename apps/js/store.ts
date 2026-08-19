@@ -1,4 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
+import { randomUuid } from "./id.ts";
 import type { CareStatus, DatasetSample, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, Zone, ZoneRect } from "./types.ts";
 
 interface StorageLike {
@@ -418,7 +419,7 @@ export class WardyStore {
 
   addManagedItem(label: string, policy: ManagedItemPolicy): WardyState {
     return this.#commit((state) => {
-      state.managedItems.push({ id: `item-${crypto.randomUUID()}`, label, policy, sampleCount: 0 });
+      state.managedItems.push({ id: `item-${randomUuid()}`, label, policy, sampleCount: 0 });
     });
   }
 
@@ -435,7 +436,7 @@ export class WardyStore {
   }
 
   addZone(zone: ZoneRect): WardyState {
-    return this.#commit((state) => { state.zones.push({ id: `zone-${crypto.randomUUID()}`, ...zone }); });
+    return this.#commit((state) => { state.zones.push({ id: `zone-${randomUuid()}`, ...zone }); });
   }
 
   removeZone(zoneId: string): WardyState {
@@ -444,7 +445,7 @@ export class WardyStore {
 
   addSubject(name: string, role: string): WardyState {
     return this.#commit((state) => {
-      state.subjects.push({ id: `subject-${crypto.randomUUID()}`, name, role, createdAt: new Date().toISOString(), referenceSampleCount: 0 });
+      state.subjects.push({ id: `subject-${randomUuid()}`, name, role, createdAt: new Date().toISOString(), referenceSampleCount: 0 });
     });
   }
 
@@ -460,7 +461,7 @@ export class WardyStore {
     return this.#commit((state) => {
       state.identityReviews.unshift({
         ...review,
-        id: `review-${crypto.randomUUID()}`,
+        id: `review-${randomUuid()}`,
         mediaResource: "",
         decision: "pending",
         subjectId: null,

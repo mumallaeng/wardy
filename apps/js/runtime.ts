@@ -1,4 +1,5 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
+import { randomUuid } from "./id.ts";
 import type { DailySummaryResult, DataCollectionSettings, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
 
 export interface RuntimeSnapshot {
@@ -217,7 +218,7 @@ export class WardyRuntimeClient {
                       name: string, role: string): Promise<Subject[]> {
     const body = await this.request<{ subjects: Subject[] }>(baseUrl, accessToken, fallbackOrigin,
       "/api/subjects", { method: "POST", headers: encodedHeaders({
-        "X-Wardy-Subject-Id": `subject-${crypto.randomUUID()}`,
+        "X-Wardy-Subject-Id": `subject-${randomUuid()}`,
         "X-Wardy-Subject-Name": name,
         "X-Wardy-Subject-Role": role,
       }) });
@@ -235,7 +236,7 @@ export class WardyRuntimeClient {
                           label: string, policy: ManagedItemPolicy): Promise<ManagedItem[]> {
     const body = await this.request<{ managedItems: ManagedItem[] }>(baseUrl, accessToken, fallbackOrigin,
       "/api/managed-items", { method: "POST", headers: encodedHeaders({
-        "X-Wardy-Item-Id": `item-${crypto.randomUUID()}`,
+        "X-Wardy-Item-Id": `item-${randomUuid()}`,
         "X-Wardy-Item-Label": label,
         "X-Wardy-Item-Policy": policy,
       }) });
@@ -255,7 +256,7 @@ export class WardyRuntimeClient {
       baseUrl, accessToken, fallbackOrigin, "/api/zones", {
         method: "POST",
         headers: encodedHeaders({
-          "X-Wardy-Zone-Id": `zone-${crypto.randomUUID()}`,
+          "X-Wardy-Zone-Id": `zone-${randomUuid()}`,
           "X-Wardy-Zone-Name": zone.name,
           "X-Wardy-Zone-X": String(zone.x),
           "X-Wardy-Zone-Y": String(zone.y),

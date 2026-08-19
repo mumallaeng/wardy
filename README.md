@@ -13,7 +13,7 @@ USB webcam
       ├─ SQLite 이벤트/상태/검토 자료
       ├─ HTTPS API :8443
       └─ WebRTC :8189
-  → Windows 또는 macOS의 http://localhost:8000
+  → Windows 또는 macOS의 https://MAC_WIFI_IP:8000
 ```
 
 ## 빠른 시작
@@ -43,7 +43,7 @@ Jetson IP는 기본 네트워크 경로에서 자동으로 찾습니다. 다른 
 갱신 후 Mac의 `./start_macos.sh`가 출력하는 `휴대전화 Wardy 주소`만 폰에서 엽니다. 폰에 Jetson 인증 확인 기록이 없으면 Wardy가 인증 화면으로 자동 이동하고, 확인 후 원래 화면으로 돌아와 카메라 연결을 시작합니다.
 
 ```text
-휴대전화 Wardy 주소: http://MAC_WIFI_IP:8000/
+휴대전화 Wardy 주소: https://MAC_WIFI_IP:8000/
 ```
 
 브라우저나 운영체제가 인증서 확인을 요구하면 폰에서 최초 한 번 승인해야 합니다. 웹앱은 보안 경고를 임의로 우회하지 않습니다. 이 갱신은 CA를 교체하지 않으므로 기존 PC의 신뢰 설정과 유선 주소 접속은 유지됩니다.
@@ -69,6 +69,8 @@ cd ~/git/wardy
 ```
 
 최초 인증서 설치 때 macOS 관리자 암호와 Jetson SSH 암호를 요청할 수 있습니다.
+Mac UI는 `start_macos.sh`가 생성한 로컬 Wardy UI 인증서로 HTTPS를 사용합니다.
+Mac에서는 스크립트가 여는 `https://MAC_WIFI_IP:8000` 주소를 사용합니다.
 
 ### Windows
 

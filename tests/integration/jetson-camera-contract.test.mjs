@@ -369,9 +369,10 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /@browser_bootstrap path \/connect/);
   assert.match(caddy, /jetson_tls=ready/);
   assert.match(caddy, /respond @unexpected_browser_origin "Forbidden" 403/);
-  const privateLanOrigin = /^http:\/\/172\.16\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$/;
-  assert.ok(caddy.includes('.matches("^http://172\\\\.16\\\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$")'));
+  const privateLanOrigin = /^https?:\/\/172\.16\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$/;
+  assert.match(caddy, /\.matches\("\^https\?\:\/\/172/);
   assert.match("http://172.16.1.165:8000", privateLanOrigin);
+  assert.match("https://172.16.1.165:8000", privateLanOrigin);
   assert.match("http://localhost:8000", /^http:\/\/localhost:8000$/);
   assert.match("http://127.0.0.1:8000", /^http:\/\/127\.0\.0\.1:8000$/);
   assert.doesNotMatch("http://172.16.1.165:8001", privateLanOrigin);
@@ -381,6 +382,8 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /header_up X-Wardy-Access-Token \{\$WARDY_ACCESS_TOKEN\}/);
   assert.match(caddy, /header_up Sec-WebSocket-Protocol "wardy-events, \{\$WARDY_ACCESS_TOKEN\}"/);
   assert.ok(caddy.includes('{http.request.header.Origin} != "http://localhost:8000"'));
+  assert.ok(caddy.includes('{http.request.header.Origin} != "https://localhost:8000"'));
+  assert.match(caddy, /\^https\?:\/\/172/);
   assert.ok(caddy.includes('{http.request.header.Origin} != "http://127.0.0.1:8000"'));
   const websocketProxy = caddy.match(/@edge_websocket path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
   const apiProxy = caddy.match(/@edge_api path[\s\S]*?\n\t\t\}/)?.[0] ?? "";

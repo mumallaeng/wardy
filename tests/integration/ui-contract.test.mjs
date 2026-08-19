@@ -85,6 +85,10 @@ test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공�
   assert.match(macos, /npm run serve/);
   assert.match(macos, /search|\?jetson=/);
   assert.match(macos, /VITE_WARDY_JETSON_URL/);
+  assert.match(macos, /mac_origin="https:\/\/\$\{ui_host\}:8000"/);
+  assert.match(macos, /WARDY_UI_TLS_CERTIFICATE/);
+  assert.match(macos, /Wardy Local UI CA/);
+  assert.match(macos, /jetson_tls=ready/);
   assert.match(macos, /휴대전화 Wardy 주소/);
   assert.match(macos, /ssh -N -o ExitOnForwardFailure=yes/);
   assert.match(macos, /WARDY_SSH_ALIAS:-wardy-jetson-macos/);

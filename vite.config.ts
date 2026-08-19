@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
+
+const tlsCertificate = String(process.env.WARDY_UI_TLS_CERTIFICATE ?? "").trim();
+const tlsPrivateKey = String(process.env.WARDY_UI_TLS_PRIVATE_KEY ?? "").trim();
 
 export default defineConfig({
   define: {
@@ -18,4 +22,12 @@ export default defineConfig({
       },
     },
   },
+  server: tlsCertificate && tlsPrivateKey
+    ? {
+        https: {
+          cert: readFileSync(tlsCertificate),
+          key: readFileSync(tlsPrivateKey),
+        },
+      }
+    : undefined,
 });
