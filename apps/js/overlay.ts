@@ -17,6 +17,12 @@ interface ContentRect {
   height: number;
 }
 
+const COCO_SKELETON: readonly (readonly [number, number])[] = [
+  [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
+  [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+];
+const KEYPOINT_THRESHOLD = 0.3;
+
 export class OverlayController {
   private readonly canvas: HTMLCanvasElement;
   private readonly container: HTMLElement;
@@ -159,17 +165,62 @@ export class OverlayController {
     this.context.strokeStyle = detection.color;
     this.context.lineWidth = 3 * dpr;
     this.context.strokeRect(x, y, width, height);
+    this.#drawSkeleton(detection, dpr, content);
+    if (detection.fallDiagnostics) {
+      const diagnostic = detection.fallDiagnostics;
+      labels.length = 0;
+      labels.push(`[M-01] person ${Math.round(diagnostic.detectorConfidence * 100)}%`);
+      labels.push(`[M-02] track #${diagnostic.trackId}`);
+      labels.push(`[M-03] pose ${diagnostic.poseQuality === null ? "--" : `${Math.round(diagnostic.poseQuality * 100)}%`}`);
+      labels.push(diagnostic.fallConfidence === null
+        ? `[M-04] collecting ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
+        : `[M-04] fall ${Math.round(diagnostic.fallConfidence * 100)}% / threshold ${Math.round(diagnostic.fallThreshold * 100)}%`);
+    }
     if (labels.length) {
-      const text = labels.join(" · ");
       this.context.font = `700 ${13 * dpr}px system-ui`;
       const padding = 6 * dpr;
-      const textWidth = this.context.measureText(text).width;
-      const labelY = Math.max(0, y - 27 * dpr);
+      const lineHeight = 18 * dpr;
+      const textWidth = Math.max(...labels.map((label) => this.context.measureText(label).width));
+      const labelHeight = labels.length * lineHeight + padding;
+      const labelY = Math.max(0, y - labelHeight - 3 * dpr);
       this.context.fillStyle = detection.color;
-      this.context.fillRect(x, labelY, textWidth + padding * 2, 24 * dpr);
+      this.context.fillRect(x, labelY, textWidth + padding * 2, labelHeight);
       this.context.fillStyle = "#101813";
-      this.context.fillText(text, x + padding, labelY + 17 * dpr);
+      labels.forEach((label, index) => {
+        this.context.fillText(label, x + padding, labelY + (index + 1) * lineHeight);
+      });
     }
     this.context.restore();
+  }
+
+  #drawSkeleton(detection: Detection, dpr: number, content: ContentRect): void {
+    const keypoints = detection.fallDiagnostics?.keypoints;
+    if (!keypoints || keypoints.length !== 17) return;
+    const point = (index: number): Point => {
+      const [normalizedX, normalizedY] = keypoints[index]!;
+      return {
+        x: (content.x + (this.mirrored ? 1 - normalizedX : normalizedX) * content.width) * dpr,
+        y: (content.y + normalizedY * content.height) * dpr,
+      };
+    };
+    this.context.strokeStyle = "rgba(255,255,255,.9)";
+    this.context.lineWidth = 2 * dpr;
+    for (const [start, end] of COCO_SKELETON) {
+      if (keypoints[start]![2] < KEYPOINT_THRESHOLD || keypoints[end]![2] < KEYPOINT_THRESHOLD) continue;
+      const first = point(start);
+      const second = point(end);
+      this.context.beginPath();
+      this.context.moveTo(first.x, first.y);
+      this.context.lineTo(second.x, second.y);
+      this.context.stroke();
+    }
+    this.context.fillStyle = detection.color;
+    keypoints.forEach((keypoint, index) => {
+      if (keypoint[2] < KEYPOINT_THRESHOLD) return;
+      const current = point(index);
+      this.context.beginPath();
+      this.context.arc(current.x, current.y, 3 * dpr, 0, Math.PI * 2);
+      this.context.fill();
+    });
   }
 }

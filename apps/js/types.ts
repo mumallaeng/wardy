@@ -164,6 +164,18 @@ export interface Detection {
   confidence: number;
   color: string;
   subjectId?: string | null;
+  fallDiagnostics?: FallDiagnostics | null;
+}
+
+export interface FallDiagnostics {
+  trackId: number;
+  detectorConfidence: number;
+  poseQuality: number | null;
+  keypoints: readonly (readonly [number, number, number])[];
+  historyFrames: number;
+  windowFrames: number;
+  fallConfidence: number | null;
+  fallThreshold: number;
 }
 
 export interface InferenceSnapshot {

@@ -34,6 +34,10 @@ struct TrackedFallResult {
   std::array<float, 4> bbox_xyxy{};
   float detection_confidence{};
   std::optional<double> pose_quality;
+  std::vector<std::array<double, 3>> keypoints_xyc;
+  int history_frames{};
+  int window_frames{};
+  double fall_threshold{};
   std::optional<bool> fall_suspected;
   std::optional<double> fall_confidence;
   std::optional<std::string> subject_id;

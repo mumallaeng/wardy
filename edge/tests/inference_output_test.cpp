@@ -79,6 +79,7 @@ int main() {
 
   const std::string json = wardy::inference::inference_json(snapshot);
   assert(json.find("\"source\":\"temporary\"") != std::string::npos);
+  assert(json.find("\"fallDiagnostics\":null") != std::string::npos);
   assert(wardy::inference::inference_message_json(snapshot).find(
       "\"type\":\"inference\"") != std::string::npos);
 

@@ -30,6 +30,7 @@ class FakePose:
 class FakeFall:
     window_frames = 3
     target_fps = 10.0
+    threshold = 0.5
 
     def predict(
         self, features: np.ndarray, track_id: int, timestamp_ms: int
@@ -85,7 +86,12 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertTrue(process(1000).accepted)
         skipped = process(1050)
         self.assertFalse(skipped.accepted)
-        self.assertEqual(skipped.to_dict(), {"accepted": False})
+        self.assertEqual(skipped.to_dict(), {
+            "accepted": False,
+            "history_frames": 1,
+            "window_frames": 3,
+            "fall_threshold": 0.5,
+        })
         self.assertTrue(process(1100).accepted)
         completed = process(1200)
         self.assertIsNotNone(completed.fall)
