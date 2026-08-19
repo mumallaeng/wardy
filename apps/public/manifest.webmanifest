@@ -2,13 +2,14 @@
   "name": "Wardy 가정 안전 확인 보조",
   "short_name": "Wardy",
   "description": "Jetson과 연결하는 일반 가정용 안전 확인 보조 플랫폼",
+  "id": "/",
   "start_url": "/#dashboard",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f3f0e8",
   "theme_color": "#18352a",
   "icons": [
-    { "src": "/icons/wardy-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icons/wardy-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icons/wardy-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/wardy-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

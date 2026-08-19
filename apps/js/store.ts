@@ -216,8 +216,7 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showPosture !== "boolean"
     || !isRecord(settings.camera)
     || typeof settings.camera.mirrored !== "boolean"
-    || !isRecord(settings.notifications)
-    || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
+    || !isNotificationSettings(settings.notifications)
     || !isRecord(settings.jetson)
     || typeof settings.jetson.baseUrl !== "string"
     || !isRecord(settings.dataWorkspace)
@@ -225,16 +224,9 @@ function isWardyState(value: unknown): value is WardyState {
     || !isNonBlankString(settings.dataWorkspace.datasetVersion)) return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
-    && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
-      && typeof item.id === "string" && typeof item.label === "string"
-      && ["included", "excluded"].includes(String(item.policy)) && isOptionalCount(item.sampleCount))
-    && Array.isArray(value.zones) && value.zones.every((zone) => isRecord(zone)
-      && typeof zone.id === "string" && typeof zone.name === "string"
-      && [zone.x, zone.y, zone.width, zone.height].every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)))
-    && Array.isArray(value.subjects) && value.subjects.every((subject) => isRecord(subject)
-      && typeof subject.id === "string" && typeof subject.name === "string"
-      && typeof subject.role === "string" && typeof subject.createdAt === "string"
-      && isOptionalCount(subject.referenceSampleCount))
+    && Array.isArray(value.managedItems) && value.managedItems.every(isManagedItem)
+    && Array.isArray(value.zones) && value.zones.every(isZone)
+    && Array.isArray(value.subjects) && value.subjects.every(isSubject)
     && Array.isArray(value.identityReviews) && value.identityReviews.every(isIdentityReview)
     && Array.isArray(value.datasetSamples) && value.datasetSamples.every(isDatasetSample);
 }

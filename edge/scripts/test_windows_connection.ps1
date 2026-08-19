@@ -52,6 +52,7 @@ try {
     Write-Host "Jetson runtime API ready: ${endpoint}"
   }
 } finally {
+  $apiHeaders = $null
   $plainAccessToken = $null
 }
 

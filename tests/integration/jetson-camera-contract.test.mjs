@@ -200,7 +200,12 @@ test("Jetson 비AI runtime 점검은 운영 데이터를 변경하지 않고 인
   assert.match(script, /X-Wardy-Access-Token/);
   assert.match(script, /notification-settings/);
   assert.match(script, /identity-reviews/);
-  assert.doesNotMatch(script, /--request\s+(?:POST|PUT|PATCH|DELETE)/);
+  assert.doesNotMatch(script,
+    /--request(?:\s+|=)(?:POST|PUT|PATCH|DELETE)\b/i);
+  assert.doesNotMatch(script,
+    /(?:^|\s)-X\s*(?:POST|PUT|PATCH|DELETE)\b/im);
+  assert.doesNotMatch(script,
+    /--(?:data(?:-[a-z]+)?|form|upload-file)\b|(?:^|\s)-(?:d|F|T)(?:\s|$)/m);
 });
 
 test("Jetson 실행은 격리된 검증용 저장 경로를 허용한다", async () => {
