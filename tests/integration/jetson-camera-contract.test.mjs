@@ -57,10 +57,12 @@ test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있
 
 test("Jetson MediaMTX 설치는 고정 ARM64 release checksum을 검증한다", async () => {
   const installer = await readFile(path.join(root, "edge/scripts/install_mediamtx.sh"), "utf8");
+  const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
   assert.match(installer, /WARDY_MEDIAMTX_VERSION/);
   assert.match(installer, /linux_arm64/);
-  assert.match(installer, /checksums\.sha256/);
+  assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
   assert.match(installer, /sha256sum --check --status/);
+  assert.doesNotMatch(installer, /checksums\.sha256/);
 });
 
 test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립트를 제공한다", async () => {
@@ -85,6 +87,7 @@ test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립�
   assert.match(versions, /^WARDY_CADDY_VERSION=\d+\.\d+\.\d+$/m);
   assert.match(versions, /^WARDY_CADDY_SHA512=[a-f0-9]{128}$/m);
   assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
   assert.match(installer, /apt-get install/);
   assert.match(installer, /install_caddy\.sh/);
   assert.match(installer, /install_mediamtx\.sh/);

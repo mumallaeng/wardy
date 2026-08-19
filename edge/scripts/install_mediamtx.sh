@@ -5,9 +5,24 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 edge_dir="$(cd "${script_dir}/.." && pwd)"
 versions_file="${edge_dir}/config/jetson-tool-versions.env"
 declared_version="$(sed -n 's/^WARDY_MEDIAMTX_VERSION=//p' "${versions_file}")"
-version="${WARDY_MEDIAMTX_VERSION:-${declared_version:-1.18.2}}"
+declared_sha256="$(sed -n 's/^WARDY_MEDIAMTX_SHA256=//p' "${versions_file}")"
+if [[ -n "${WARDY_MEDIAMTX_VERSION:-}" ]]; then
+  version="${WARDY_MEDIAMTX_VERSION}"
+  expected_sha256="${WARDY_MEDIAMTX_SHA256:-}"
+  if [[ -z "${expected_sha256}" ]]; then
+    echo "WARDY_MEDIAMTX_SHA256 is required when WARDY_MEDIAMTX_VERSION is overridden" >&2
+    exit 1
+  fi
+else
+  version="${declared_version:-1.18.2}"
+  expected_sha256="${declared_sha256}"
+fi
 if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "invalid MediaMTX version: ${version}" >&2
+  exit 1
+fi
+if [[ ! "${expected_sha256}" =~ ^[A-Fa-f0-9]{64}$ ]]; then
+  echo "invalid MediaMTX SHA-256 digest" >&2
   exit 1
 fi
 archive="mediamtx_v${version}_linux_arm64.tar.gz"
@@ -29,15 +44,8 @@ done
 
 curl --fail --location --proto '=https' --tlsv1.2 \
   --output "${temporary_dir}/${archive}" "${base_url}/${archive}"
-curl --fail --location --proto '=https' --tlsv1.2 \
-  --output "${temporary_dir}/checksums.sha256" "${base_url}/checksums.sha256"
-
-expected_line="$(grep "  ${archive}$" "${temporary_dir}/checksums.sha256" || true)"
-if [[ -z "${expected_line}" ]]; then
-  echo "checksum entry not found for ${archive}" >&2
-  exit 1
-fi
-printf '%s\n' "${expected_line}" | (cd "${temporary_dir}" && sha256sum --check --status)
+printf '%s  %s\n' "${expected_sha256}" "${archive}" |
+  (cd "${temporary_dir}" && sha256sum --check --status)
 
 tar -xzf "${temporary_dir}/${archive}" -C "${temporary_dir}"
 mkdir -p "${target_dir}"
