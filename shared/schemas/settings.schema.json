@@ -3,7 +3,7 @@
   "$id": "https://wardy.local/schemas/settings.schema.json",
   "title": "Wardy Local Settings",
   "type": "object",
-  "required": ["overlay", "notifications", "managed_items", "zones"],
+  "required": ["overlay", "notifications", "camera", "jetson", "managed_items", "zones"],
   "properties": {
     "overlay": {
       "type": "object",
@@ -23,6 +23,22 @@
         "zone_dwell": { "enum": ["off", "on"] },
         "camera_fault": { "enum": ["off", "on"] },
         "detection_fault": { "enum": ["off", "on"] }
+      },
+      "additionalProperties": false
+    },
+    "camera": {
+      "type": "object",
+      "required": ["mirrored"],
+      "properties": { "mirrored": { "type": "boolean" } },
+      "additionalProperties": false
+    },
+    "jetson": {
+      "type": "object",
+      "required": ["baseUrl", "accessToken", "viewerToken"],
+      "properties": {
+        "baseUrl": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "viewerToken": { "type": "string" }
       },
       "additionalProperties": false
     },

@@ -44,7 +44,16 @@ function migratePersistedState(value: unknown): void {
     );
   }
   const settings = value.settings;
-  if (!isRecord(settings) || !isRecord(settings.notifications)) return;
+  if (!isRecord(settings)) return;
+  if (!isRecord(settings.camera)) settings.camera = { mirrored: false };
+  if (isRecord(settings.jetson)) {
+    if (typeof settings.jetson.accessToken !== "string") settings.jetson.accessToken = "";
+    if (typeof settings.jetson.viewerToken !== "string") settings.jetson.viewerToken = "";
+    if (typeof settings.jetson.baseUrl === "string") {
+      settings.jetson.baseUrl = settings.jetson.baseUrl.replace(/:8189\/?$/, ":8443");
+    }
+  }
+  if (!isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
   delete notifications.managed_item_moved;
   Object.entries(notifications).forEach(([eventType, level]) => {
@@ -93,10 +102,14 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showRole !== "boolean"
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
+    || !isRecord(settings.camera)
+    || typeof settings.camera.mirrored !== "boolean"
     || !isRecord(settings.notifications)
     || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
     || !isRecord(settings.jetson)
-    || typeof settings.jetson.baseUrl !== "string") return false;
+    || typeof settings.jetson.baseUrl !== "string"
+    || typeof settings.jetson.accessToken !== "string"
+    || typeof settings.jetson.viewerToken !== "string") return false;
 
   return Array.isArray(value.events) && value.events.every(isWardyEvent)
     && Array.isArray(value.managedItems) && value.managedItems.every((item) => isRecord(item)
@@ -178,8 +191,18 @@ export class WardyStore {
     return this.#commit((state) => { state.settings.notifications[eventType] = value; });
   }
 
-  setJetsonBaseUrl(baseUrl: string): WardyState {
-    return this.#commit((state) => { state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() }; });
+  setCameraMirrored(mirrored: boolean): WardyState {
+    return this.#commit((state) => { state.settings.camera.mirrored = Boolean(mirrored); });
+  }
+
+  setJetsonConnection(baseUrl: string, accessToken: string, viewerToken: string): WardyState {
+    return this.#commit((state) => {
+      state.settings.jetson = {
+        baseUrl: String(baseUrl ?? "").trim(),
+        accessToken: String(accessToken ?? ""),
+        viewerToken: String(viewerToken ?? ""),
+      };
+    });
   }
 
   addEvent(event: WardyEvent): WardyState {
