@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-if (( $# != 1 )); then
-  echo "usage: $0 <Jetson DNS name or IPv4 address>" >&2
+if (( $# < 1 )); then
+  echo "usage: $0 <primary Jetson DNS name or IPv4 address> [additional DNS name or IPv4 address ...]" >&2
   exit 1
 fi
 if ! command -v openssl >/dev/null 2>&1; then
@@ -20,6 +20,7 @@ if ! command -v sudo >/dev/null 2>&1; then
 fi
 
 jetson_host="$1"
+jetson_hosts=("$@")
 service_user="$(id -un)"
 service_group="$(id -gn)"
 tls_dir="${WARDY_TLS_DIR:-/etc/wardy/tls}"
@@ -62,36 +63,50 @@ for tls_artifact in "${tls_artifacts[@]}"; do
   fi
 done
 
-if [[ "${jetson_host}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-  IFS='.' read -r -a address_parts <<< "${jetson_host}"
-  for address_part in "${address_parts[@]}"; do
-    if (( 10#${address_part} > 255 )); then
-      echo "invalid IPv4 address: ${jetson_host}" >&2
-      exit 1
-    fi
-  done
-  subject_alt_name="IP:${jetson_host}"
-else
-  valid_dns_name=true
-  if (( ${#jetson_host} == 0 || ${#jetson_host} > 253 )) ||
-     [[ "${jetson_host}" == .* || "${jetson_host}" == *. || "${jetson_host}" == *..* ]]; then
-    valid_dns_name=false
-  else
-    IFS='.' read -r -a dns_labels <<< "${jetson_host}"
-    for dns_label in "${dns_labels[@]}"; do
-      if (( ${#dns_label} == 0 || ${#dns_label} > 63 )) ||
-         [[ ! "${dns_label}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]]; then
-        valid_dns_name=false
-        break
+host_subject_alt_name() {
+  local host="$1"
+  local address_part dns_label
+  local -a address_parts dns_labels
+
+  if [[ "${host}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    IFS='.' read -r -a address_parts <<< "${host}"
+    for address_part in "${address_parts[@]}"; do
+      if (( 10#${address_part} > 255 )); then
+        return 1
       fi
     done
+    printf 'IP:%s\n' "${host}"
+    return
   fi
-  if [[ "${valid_dns_name}" != true ]]; then
-    echo "invalid Jetson DNS name or IPv4 address: ${jetson_host}" >&2
+
+  if (( ${#host} == 0 || ${#host} > 253 )) ||
+     [[ "${host}" == .* || "${host}" == *. || "${host}" == *..* ]]; then
+    return 1
+  fi
+  IFS='.' read -r -a dns_labels <<< "${host}"
+  for dns_label in "${dns_labels[@]}"; do
+    if (( ${#dns_label} == 0 || ${#dns_label} > 63 )) ||
+       [[ ! "${dns_label}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]]; then
+      return 1
+    fi
+  done
+  printf 'DNS:%s\n' "${host}"
+}
+
+subject_alt_names=()
+declare -A seen_hosts=()
+for host in "${jetson_hosts[@]}"; do
+  if ! subject_alt_name="$(host_subject_alt_name "${host}")"; then
+    echo "invalid Jetson DNS name or IPv4 address: ${host}" >&2
     exit 1
   fi
-  subject_alt_name="DNS:${jetson_host}"
-fi
+  if [[ -n "${seen_hosts[${host}]:-}" ]]; then
+    continue
+  fi
+  seen_hosts["${host}"]=1
+  subject_alt_names+=("${subject_alt_name}")
+done
+subject_alt_name="$(IFS=,; printf '%s' "${subject_alt_names[*]}")"
 
 cat > "${temporary_dir}/server.ext" <<EOF
 basicConstraints=critical,CA:FALSE

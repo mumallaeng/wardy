@@ -7,9 +7,9 @@
   "properties": {
     "overlay": {
       "type": "object",
-      "required": ["showClass", "showRole", "showName", "showPosture"],
+      "required": ["showClass", "showRole", "showName", "showPosture", "showFall"],
       "properties": {
-        "showClass": { "type": "boolean" }, "showRole": { "type": "boolean" }, "showName": { "type": "boolean" }, "showPosture": { "type": "boolean" }
+        "showClass": { "type": "boolean" }, "showRole": { "type": "boolean" }, "showName": { "type": "boolean" }, "showPosture": { "type": "boolean" }, "showFall": { "type": "boolean" }
       }
     },
     "notifications": {
