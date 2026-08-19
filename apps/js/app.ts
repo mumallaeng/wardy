@@ -3,7 +3,6 @@ import { JetsonCameraController } from "./camera.ts";
 import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import {
   JetsonConnection,
-  jetsonBrowserBootstrapUrl,
   normalizeJetsonBaseUrl,
 } from "./jetson.ts";
 import {
@@ -85,37 +84,25 @@ const IDENTITY_PREVIEW_LIMIT = 8;
 type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
 const EDGE_GATEWAY_CREDENTIAL = "caddy-managed";
 const DEFAULT_JETSON_BASE_URL = String(import.meta.env.VITE_WARDY_JETSON_URL ?? "").trim();
-const JETSON_TLS_BOOTSTRAP_PREFIX = "wardy-jetson-tls-bootstrap:";
 
-function jetsonTlsBootstrapKey(baseUrl: string): string {
-  return `${JETSON_TLS_BOOTSTRAP_PREFIX}${baseUrl}`;
-}
-
-function applyLaunchConfiguration(): boolean {
+function applyLaunchConfiguration(): void {
   const url = new URL(window.location.href);
   const requestedJetson = url.searchParams.get("jetson");
-  const bootstrapCompleted = url.searchParams.get("jetson_tls") === "ready";
   const currentJetson = store.getState().settings.jetson.baseUrl;
   const selectedJetson = requestedJetson || currentJetson || DEFAULT_JETSON_BASE_URL;
-  if (!selectedJetson) return false;
+  if (!selectedJetson) return;
 
   const baseUrl = normalizeJetsonBaseUrl(selectedJetson);
   store.setJetsonBaseUrl(baseUrl);
-  if (bootstrapCompleted) {
-    window.localStorage.setItem(jetsonTlsBootstrapKey(baseUrl), "ready");
-  }
   url.searchParams.delete("jetson");
+  // Remove the legacy TLS bootstrap marker without navigating away from the
+  // dashboard. Connection errors are rendered in place by the normal health
+  // check instead of sending the browser through a redirect round trip.
   url.searchParams.delete("jetson_tls");
   window.history.replaceState({}, "", url);
-
-  if (!bootstrapCompleted && window.localStorage.getItem(jetsonTlsBootstrapKey(baseUrl)) !== "ready") {
-    window.location.assign(jetsonBrowserBootstrapUrl(baseUrl));
-    return true;
-  }
-  return false;
 }
 
-const jetsonTlsRedirecting = applyLaunchConfiguration();
+applyLaunchConfiguration();
 
 interface SystemGuidance {
   tone: SystemGuidanceTone;
@@ -1287,4 +1274,4 @@ window.addEventListener("online", () => { void connectConfiguredJetson(true).cat
 
 setJetsonStatus(jetsonStatus);
 void registerWardyServiceWorker();
-if (!jetsonTlsRedirecting) void connectConfiguredJetson(true).catch(() => undefined);
+void connectConfiguredJetson(true).catch(() => undefined);

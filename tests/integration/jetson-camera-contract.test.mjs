@@ -384,8 +384,8 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /"https:\/\/" \+ \{http\.request\.hostport\}/);
   assert.match(caddy, /respond @outside_private_network "Forbidden" 403/);
   assert.match(caddy, /Certificate-free access is intentionally limited/);
-  assert.match(caddy, /@browser_bootstrap path \/connect/);
-  assert.match(caddy, /jetson_tls=ready/);
+  assert.doesNotMatch(caddy, /\b(?:redir|redirect)\b/);
+  assert.doesNotMatch(caddy, /jetson_tls=ready/);
   assert.match(caddy, /respond @unexpected_browser_origin "Forbidden" 403/);
   const privateLanOrigin = /^https?:\/\/172\.16\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]):8000$/;
   assert.match(caddy, /\.matches\("\^https\?\:\/\/172/);

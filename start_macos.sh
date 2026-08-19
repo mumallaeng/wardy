@@ -173,7 +173,7 @@ mac_origin="https://${ui_host}:8000"
 export VITE_WARDY_JETSON_URL="https://${jetson_host}:8443"
 export WARDY_UI_TLS_CERTIFICATE="${ui_certificate}"
 export WARDY_UI_TLS_PRIVATE_KEY="${ui_private_key}"
-url="${mac_origin}/?jetson=https%3A%2F%2F${jetson_host}%3A8443&jetson_tls=ready"
+url="${mac_origin}/?jetson=https%3A%2F%2F${jetson_host}%3A8443"
 step="브라우저 열기"
 (sleep 2; open "${url}") &
 trap - ERR

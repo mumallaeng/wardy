@@ -45,8 +45,9 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
   assert.match(appSource, /searchParams\.get\("jetson"\)/);
   assert.match(appSource, /applyLaunchConfiguration/);
   assert.match(appSource, /VITE_WARDY_JETSON_URL/);
-  assert.match(appSource, /jetsonBrowserBootstrapUrl/);
-  assert.match(appSource, /searchParams\.get\("jetson_tls"\) === "ready"/);
+  assert.doesNotMatch(appSource, /jetsonBrowserBootstrapUrl/);
+  assert.doesNotMatch(appSource, /window\.location\.(?:assign|replace)/);
+  assert.match(appSource, /searchParams\.delete\("jetson_tls"\)/);
   assert.match(appSource, /IDENTITY_PREVIEW_LIMIT = 8/);
   assert.match(appSource, /renderFallIncident/);
   assert.match(appSource, /추후 모델 학습용 판정 자료로 저장됩니다/);
@@ -88,7 +89,7 @@ test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공�
   assert.match(macos, /mac_origin="https:\/\/\$\{ui_host\}:8000"/);
   assert.match(macos, /WARDY_UI_TLS_CERTIFICATE/);
   assert.match(macos, /Wardy Local UI CA/);
-  assert.match(macos, /jetson_tls=ready/);
+  assert.doesNotMatch(macos, /jetson_tls=ready/);
   assert.match(macos, /휴대전화 Wardy 주소/);
   assert.match(macos, /ssh -N -o ExitOnForwardFailure=yes/);
   assert.match(macos, /WARDY_SSH_ALIAS:-wardy-jetson-macos/);

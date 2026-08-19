@@ -64,16 +64,6 @@ export function jetsonHealthUrl(value: string, fallbackOrigin = ""): string {
   return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/health`;
 }
 
-/**
- * Builds the top-level browser route used to confirm the Jetson TLS certificate.
- *
- * The route returns to the configured Wardy UI after the browser has accepted
- * the Jetson certificate, so mobile users do not need to type API URLs.
- */
-export function jetsonBrowserBootstrapUrl(value: string, fallbackOrigin = ""): string {
-  return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/connect`;
-}
-
 export class JetsonConnection {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
