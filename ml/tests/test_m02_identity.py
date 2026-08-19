@@ -106,12 +106,14 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         self.assertIsNotNone(face)
         self.assertEqual(self.runtime.detector.input_size, (320, 320))
         self.assertEqual(self.runtime.detector.image_shape, (320, 320, 3))
-        scale = 320 / 61
+        x_scale = 247 / 47
+        y_scale = 320 / 61
         expected = np.array(
             [2, 2, 12, 12, 3, 5, 10, 5, 6, 9, 4, 12, 10, 12, 0.99],
             dtype=np.float64,
         )
-        expected[:14] /= scale
+        expected[[0, 2, 4, 6, 8, 10, 12]] /= x_scale
+        expected[[1, 3, 5, 7, 9, 11, 13]] /= y_scale
         np.testing.assert_allclose(
             face,
             expected,

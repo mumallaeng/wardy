@@ -6,6 +6,12 @@
 https://{$WARDY_JETSON_HOST}:8443 {
 	tls {$WARDY_TLS_CERTIFICATE} {$WARDY_TLS_PRIVATE_KEY}
 
+	@outside_private_network not remote_ip private_ranges
+	respond @outside_private_network "Forbidden" 403
+
+	@unexpected_browser_origin not header Origin {$WARDY_UI_ORIGIN}
+	respond @unexpected_browser_origin "Forbidden" 403
+
 	@edge_websocket path /api/ws
 	reverse_proxy @edge_websocket 127.0.0.1:8787 {
 		header_up Sec-WebSocket-Protocol "wardy-events, {$WARDY_ACCESS_TOKEN}"
