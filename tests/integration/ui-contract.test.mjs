@@ -32,10 +32,27 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /\/api\/health/);
   assert.match(html, /:8443\/wardy\/whep/);
   assert.match(html, /<video id="camera"/);
+  assert.match(html, /id="mirror-camera"/);
+  assert.match(html, /id="start-camera"[^>]*>Jetson 카메라 연결<\/button><button[^>]*id="stop-camera"[^>]*>카메라 연결 중지<\/button>/);
   assert.match(html, /WebRTC\/UDP/);
   assert.match(html, /event·state 동기화<\/dt><dd>WebSocket 후속 통합/);
   assert.match(html, /\/dev\/video0/);
   assert.match(html, /V4L2/);
+});
+
+test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 전환된다", async () => {
+  const css = await readFile(path.join(root, "apps/css/app.css"), "utf8");
+  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  const overlay = await readFile(path.join(root, "apps/js/overlay.ts"), "utf8");
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  assert.match(css, /\.camera-stage\.is-mirrored video/);
+  assert.match(app, /camera-empty.*hidden = status === "connected"/);
+  assert.match(app, /setCameraMirrored/);
+  assert.match(app, /connectConfiguredJetson/);
+  assert.match(app, /status === "fault".*reconnectTimer/s);
+  assert.match(app, /JetsonCredentialStore\(window\.sessionStorage\)/);
+  assert.match(overlay, /setMirrored/);
+  assert.match(overlay, /1 - zone\.x - zone\.width/);
 });
 
 test("카메라 화면은 브라우저 장치 대신 Jetson WebRTC stream만 사용한다", async () => {

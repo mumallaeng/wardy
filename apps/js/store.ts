@@ -35,6 +35,18 @@ function isIdentityReview(value: unknown): boolean {
     && isStringOrNull(value.subjectId);
 }
 
+function migrateJetsonBaseUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.port !== "8189") return value;
+    url.port = "8443";
+    const migrated = url.toString();
+    return url.pathname === "/" && !url.search && !url.hash ? migrated.replace(/\/$/, "") : migrated;
+  } catch {
+    return value;
+  }
+}
+
 function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
@@ -44,7 +56,17 @@ function migratePersistedState(value: unknown): void {
     );
   }
   const settings = value.settings;
-  if (!isRecord(settings) || !isRecord(settings.notifications)) return;
+  if (!isRecord(settings)) return;
+  if (!isRecord(settings.camera)) settings.camera = {};
+  const camera = settings.camera as Record<string, unknown>;
+  if (typeof camera.mirrored !== "boolean") camera.mirrored = false;
+  if (!isRecord(settings.jetson)) settings.jetson = {};
+  const jetson = settings.jetson as Record<string, unknown>;
+  const baseUrl = typeof jetson.baseUrl === "string" ? jetson.baseUrl : "";
+  jetson.baseUrl = migrateJetsonBaseUrl(baseUrl);
+  delete jetson.accessToken;
+  delete jetson.viewerToken;
+  if (!isRecord(settings.notifications)) return;
   const notifications = settings.notifications;
   delete notifications.managed_item_moved;
   Object.entries(notifications).forEach(([eventType, level]) => {
@@ -93,6 +115,8 @@ function isWardyState(value: unknown): value is WardyState {
     || typeof settings.overlay.showRole !== "boolean"
     || typeof settings.overlay.showName !== "boolean"
     || typeof settings.overlay.showPosture !== "boolean"
+    || !isRecord(settings.camera)
+    || typeof settings.camera.mirrored !== "boolean"
     || !isRecord(settings.notifications)
     || !Object.entries(settings.notifications).every(([key, level]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(level)))
     || !isRecord(settings.jetson)
@@ -138,7 +162,12 @@ export class WardyStore {
       if (!stored) return createInitialState();
       const parsed: unknown = JSON.parse(stored);
       migratePersistedState(parsed);
-      if (!isWardyState(parsed)) return createInitialState();
+      if (!isWardyState(parsed)) {
+        const initial = createInitialState();
+        try { this.storage?.setItem(this.key, JSON.stringify(initial)); } catch { /* In-memory defaults remain usable. */ }
+        return initial;
+      }
+      try { this.storage?.setItem(this.key, JSON.stringify(parsed)); } catch { /* Valid in-memory state remains usable. */ }
       return parsed;
     } catch {
       return createInitialState();
@@ -178,8 +207,14 @@ export class WardyStore {
     return this.#commit((state) => { state.settings.notifications[eventType] = value; });
   }
 
+  setCameraMirrored(mirrored: boolean): WardyState {
+    return this.#commit((state) => { state.settings.camera.mirrored = Boolean(mirrored); });
+  }
+
   setJetsonBaseUrl(baseUrl: string): WardyState {
-    return this.#commit((state) => { state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() }; });
+    return this.#commit((state) => {
+      state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() };
+    });
   }
 
   addEvent(event: WardyEvent): WardyState {
