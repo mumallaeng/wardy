@@ -102,7 +102,14 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
 
     if (!observation.active) {
       if (found == active_events_.end()) {
-        throw std::invalid_argument("cannot release an event that is not active");
+        return transition;
+      }
+      // Safety incidents are acknowledged and closed by an operator. A model
+      // miss or a person leaving the frame must not make the visible alert
+      // disappear. System faults remain self-clearing when the runtime recovers.
+      if (found->second.event_type == "fall_suspected") {
+        transition.event = found->second;
+        return transition;
       }
       found->second.last_seen_at = observation.observed_at;
       found->second.event_status = "released";
@@ -204,6 +211,7 @@ std::optional<std::string> EventRuntime::current_care_status() const {
   bool system_fault = false;
   for (const auto& [key, event] : active_events_) {
     (void)key;
+    if (event.event_status == "confirmed") continue;
     if (!event.care_status) system_fault = true;
     if (care_rank(event.care_status) > care_rank(current)) current = event.care_status;
   }
@@ -216,6 +224,7 @@ std::string EventRuntime::current_reason() const {
   const storage::EventRecord* current = nullptr;
   for (const auto& [key, event] : active_events_) {
     (void)key;
+    if (event.event_status == "confirmed") continue;
     if (!event.care_status) return event.reason;
     if (!current || care_rank(event.care_status) > care_rank(current->care_status)) {
       current = &event;

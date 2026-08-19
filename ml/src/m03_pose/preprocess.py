@@ -82,7 +82,10 @@ def decode_simcc(
     locations = np.stack(
         (np.argmax(simcc_x, axis=-1), np.argmax(simcc_y, axis=-1)), axis=-1
     ).astype(np.float32)
-    scores = np.minimum(np.max(simcc_x, axis=-1), np.max(simcc_y, axis=-1))
+    raw_scores = np.minimum(np.max(simcc_x, axis=-1), np.max(simcc_y, axis=-1))
+    # RTMPose exports SimCC logits, not bounded probabilities. Convert the
+    # joint score to a stable [0, 1] confidence before enforcing the contract.
+    scores = 1.0 / (1.0 + np.exp(-np.clip(raw_scores, -30.0, 30.0)))
     model_xy = locations / SIMCC_SPLIT_RATIO
     frame_xy = model_xy / MODEL_INPUT_SIZE * scale + center - scale * 0.5
     return np.concatenate((frame_xy, scores[..., None]), axis=-1).astype(np.float32)

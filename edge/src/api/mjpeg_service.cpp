@@ -670,7 +670,12 @@ std::string mock_event(const std::string& request,
       .value_or("모델 연결 전 event runtime 검증 입력");
   observation.source_results_json =
       R"([{"source":"mock_contract","note":"AI model is not connected"}])";
-  return event_json(state->events->apply(observation).event);
+  const auto transition = state->events->apply(observation);
+  if (!transition.created && !transition.released &&
+      transition.event.event_id.empty()) {
+    throw std::invalid_argument("event observation did not change runtime state");
+  }
+  return event_json(transition.event);
 }
 
 void apply_camera_fault(const std::shared_ptr<StreamState>& state, bool active,

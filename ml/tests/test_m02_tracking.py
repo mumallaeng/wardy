@@ -52,6 +52,9 @@ class _FakePoseFallRuntime:
     def reset_all(self) -> None:
         self.reset_count += 1
 
+    def reset_track(self, _track_id: int) -> None:
+        pass
+
 
 class _FakeHazard:
     def to_dict(self) -> dict:
@@ -272,6 +275,28 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
         )
         self.assertTrue(result["persons"][0]["accepted"])
         self.assertNotIn("identity", result["persons"][0])
+
+    def test_pose_failure_skips_only_the_affected_person(self) -> None:
+        class FailingPoseFall(_FakePoseFallRuntime):
+            def process(self, _frame: np.ndarray, person) -> _FakeRuntimeResult:
+                if person.track_id == 1:
+                    raise ValueError("invalid pose confidence")
+                return super().process(_frame, person)
+
+        runtime = TrackingPoseFallRuntime(
+            M02TrackingAdapter(), FailingPoseFall()  # type: ignore[arg-type]
+        )
+        result = runtime.process_frame(
+            self.frame,
+            frame_id="frame-pose-failure",
+            timestamp_ms=0,
+            person_detections=[
+                {"bbox_xyxy": [10, 10, 50, 110], "confidence": 0.95},
+                {"bbox_xyxy": [100, 10, 150, 110], "confidence": 0.94},
+            ],
+        )
+        self.assertFalse(result["persons"][0]["accepted"])
+        self.assertTrue(result["persons"][1]["accepted"])
 
     def test_worker_detection_request_runs_tracking_path(self) -> None:
         encoded, jpeg = cv2.imencode(".jpg", self.frame)

@@ -463,9 +463,14 @@ function renderFallIncident(events: readonly WardyEvent[]): void {
   if (!active) return;
   $("#fall-incident-time").textContent = formatDateTime(active.occurred_at);
   $("#fall-incident-target").textContent = active.subject_name || active.subject_id || "대상 확인 필요";
-  $("#fall-incident-reason").textContent = "모델 값이 다시 낮아져도 자동 해제되지 않습니다. 직접 확인 후 처리해 주세요.";
+  const confirmed = active.event_status === "confirmed";
+  $("#fall-incident-reason").textContent = confirmed
+    ? "긴급상황으로 기록했습니다. 안전을 확인한 뒤 사건을 해제해 주세요."
+    : "판정할 때까지 긴급 상태가 유지됩니다. 선택 결과는 추후 모델 학습용 판정 자료로 저장됩니다.";
   $$<HTMLButtonElement>("[data-fall-action]").forEach((button) => {
     button.dataset.eventId = active.event_id;
+    const action = button.dataset.fallAction;
+    button.hidden = confirmed ? action !== "release" : action === "release";
   });
 }
 
