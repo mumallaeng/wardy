@@ -23,10 +23,20 @@ class TrackingPoseFallRuntime:
     ) -> None:
         self.tracking = tracking
         self.pose_fall = pose_fall
+        self._request_mode: str | None = None
 
     def reset(self) -> None:
         self.tracking.reset()
         self.pose_fall.reset_all()
+
+    def process_tracked_person(
+        self,
+        frame_bgr: np.ndarray,
+        person: PersonInput,
+    ) -> Any:
+        """Run the transitional legacy contract in an isolated ID namespace."""
+        self._select_request_mode("legacy")
+        return self.pose_fall.process(frame_bgr, person)
 
     def process_frame(
         self,
@@ -36,6 +46,7 @@ class TrackingPoseFallRuntime:
         timestamp_ms: int,
         person_detections: Iterable[Mapping[str, Any]],
     ) -> dict[str, Any]:
+        self._select_request_mode("tracking")
         if frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3:
             raise ValueError("tracking runtime requires one HWC BGR frame")
         frame_height, frame_width = frame_bgr.shape[:2]
@@ -67,3 +78,13 @@ class TrackingPoseFallRuntime:
             "active_track_ids": sorted(self.tracking.tracker.active_track_ids),
             "persons": persons,
         }
+
+    def _select_request_mode(self, request_mode: str) -> None:
+        if self._request_mode is None:
+            self._request_mode = request_mode
+            return
+        if self._request_mode != request_mode:
+            raise ValueError(
+                "tracked requests and person_detections requests cannot share "
+                "one runtime"
+            )
