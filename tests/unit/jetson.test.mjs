@@ -10,6 +10,7 @@ test("Jetson 주소를 정규화하고 health endpoint를 만든다", () => {
   assert.throws(() => normalizeJetsonBaseUrl("ws://jetson.local"), /HTTPS/);
   assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8787"), /HTTPS/);
   assert.throws(() => normalizeJetsonBaseUrl("https://user:secret@jetson.local"), /계정 정보/);
+  assert.throws(() => normalizeJetsonBaseUrl("https://jetson.local:443"), /port는 8443/);
   assert.throws(() => normalizeJetsonBaseUrl("https://jetson.local:8189"), /8189는 WebRTC 전송 전용/);
 });
 
