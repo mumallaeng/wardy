@@ -3,10 +3,7 @@ param(
   [string]$JetsonHost,
   [Parameter(Mandatory = $true)]
   [string]$UiOrigin,
-  [Parameter(Mandatory = $true)]
-  [SecureString]$ViewerToken,
-  [Parameter(Mandatory = $true)]
-  [SecureString]$AccessToken
+  [switch]$SkipRuntimeApi
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,20 +20,8 @@ if ($health.service -ne "wardy-edge" -or $health.camera -ne "connected") {
   throw "Jetson health response is not ready: $($health | ConvertTo-Json -Compress)"
 }
 
-$plainToken = [Net.NetworkCredential]::new("", $ViewerToken).Password
-try {
-  $credentialBytes = [Text.Encoding]::UTF8.GetBytes("wardy-viewer:${plainToken}")
-  $authorization = "Basic $([Convert]::ToBase64String($credentialBytes))"
-} finally {
-  $plainToken = $null
-}
-
-$plainAccessToken = [Net.NetworkCredential]::new("", $AccessToken).Password
-try {
-  $apiHeaders = @{
-    Origin = $UiOrigin
-    "X-Wardy-Access-Token" = $plainAccessToken
-  }
+if (-not $SkipRuntimeApi) {
+  $apiHeaders = @{ Origin = $UiOrigin }
   $runtimeEndpoints = @(
     "/api/state",
     "/api/events",
@@ -51,9 +36,6 @@ try {
       -Headers $apiHeaders -TimeoutSec 5 | Out-Null
     Write-Host "Jetson runtime API ready: ${endpoint}"
   }
-} finally {
-  $apiHeaders = $null
-  $plainAccessToken = $null
 }
 
 $offer = @"
@@ -72,9 +54,10 @@ a=ice-pwd:wardytestpassword123456
 a=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
 a=setup:actpass
 a=rtpmap:96 H264/90000
-"@ -replace "`n", "`r`n"
+"@
+$offer = ($offer -replace "`r?`n", "`r`n").TrimEnd("`r", "`n") + "`r`n"
 
-$headers = @{ Authorization = $authorization; Origin = $UiOrigin }
+$headers = @{ Origin = $UiOrigin }
 try {
   $whep = Invoke-WebRequest -Uri $whepUrl -Method Post -Headers $headers `
     -ContentType "application/sdp" -Body $offer -TimeoutSec 5 -UseBasicParsing

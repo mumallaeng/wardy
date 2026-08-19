@@ -143,7 +143,7 @@ test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 �
   assert.match(gateway, /webrtcLocalTCPAddress: ""/);
   assert.doesNotMatch(gateway, /webrtcAllowOrigins: \["\*"\]/);
   assert.match(gateway, /user: wardy-publisher/);
-  assert.match(gateway, /user: wardy-viewer/);
+  assert.match(gateway, /user: any[\s\S]*action: read[\s\S]*path: wardy/);
 });
 
 test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있다", async () => {
@@ -280,8 +280,10 @@ test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한
   assert.match(checker, /:8443/);
   assert.match(checker, /\/api\/health/);
   assert.match(checker, /\/wardy\/whep/);
-  assert.match(checker, /SecureString/);
-  assert.match(checker, /SecureString\]\$AccessToken/);
+  assert.doesNotMatch(checker, /SecureString|ViewerToken|AccessToken/);
+  assert.match(checker, /SkipRuntimeApi/);
+  assert.match(checker, /-replace "`r\?`n", "`r`n"/);
+  assert.match(checker, /TrimEnd\("`r", "`n"\) \+ "`r`n"/);
   assert.match(checker, /\/api\/identity-reviews/);
   assert.match(checker, /Origin/);
   assert.match(checker, /catch/);
@@ -319,9 +321,11 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
   assert.match(caddy, /127\.0\.0\.1:8889/);
+  assert.match(caddy, /header_up X-Wardy-Access-Token \{\$WARDY_ACCESS_TOKEN\}/);
+  assert.match(caddy, /header_up Sec-WebSocket-Protocol "wardy-events, \{\$WARDY_ACCESS_TOKEN\}"/);
   assert.match(launcher, /chmod 0600/);
   assert.match(example, /WARDY_ACCESS_TOKEN=/);
-  assert.match(example, /WARDY_VIEWER_TOKEN=/);
+  assert.doesNotMatch(example, /WARDY_VIEWER_TOKEN=/);
   assert.match(example, /WARDY_PUBLISH_TOKEN=/);
   assert.match(example, /^WARDY_UI_ORIGIN=http:\/\/localhost:8000$/m);
   assert.doesNotMatch(example, /WINDOWS_PC_LAN_IP/);

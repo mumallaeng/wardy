@@ -23,7 +23,6 @@ webrtc_bitrate="${WARDY_WEBRTC_BITRATE:-2000000}"
 keyframe_interval="${WARDY_WEBRTC_KEYFRAME_INTERVAL:-15}"
 ui_origin="${WARDY_UI_ORIGIN:-}"
 access_token="${WARDY_ACCESS_TOKEN:-}"
-viewer_token="${WARDY_VIEWER_TOKEN:-}"
 publish_token="${WARDY_PUBLISH_TOKEN:-}"
 jetson_host="${WARDY_JETSON_HOST:-}"
 tls_certificate="${WARDY_TLS_CERTIFICATE:-}"
@@ -47,14 +46,13 @@ database_path="${WARDY_DATABASE_PATH:-${edge_dir}/db/wardy.sqlite}"
 training_data_path="${WARDY_TRAINING_DATA_PATH:-${edge_dir}/data/training}"
 event_media_path="${WARDY_EVENT_MEDIA_PATH:-${edge_dir}/data/events}"
 
-if [[ -z "${ui_origin}" || -z "${access_token}" || -z "${viewer_token}" ||
+if [[ -z "${ui_origin}" || -z "${access_token}" ||
       -z "${publish_token}" || -z "${jetson_host}" || -z "${tls_certificate}" ||
       -z "${tls_private_key}" ]]; then
-  echo "Wardy UI origin, three tokens, Jetson host, and TLS certificate paths are required" >&2
+  echo "Wardy UI origin, internal API/publish tokens, Jetson host, and TLS certificate paths are required" >&2
   exit 1
 fi
 if [[ ! "${access_token}" =~ ^[A-Za-z0-9._~-]+$ ||
-      ! "${viewer_token}" =~ ^[A-Za-z0-9._~-]+$ ||
       ! "${publish_token}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
   echo "Wardy tokens may contain only URL-safe unreserved characters" >&2
   exit 1
@@ -125,8 +123,6 @@ ensure_private_directory "${event_media_path}"
 export MTX_WEBRTCALLOWORIGINS="${ui_origin}"
 export MTX_WEBRTCLOCALTCPADDRESS="${MTX_WEBRTCLOCALTCPADDRESS:-:8189}"
 export MTX_AUTHINTERNALUSERS_0_PASS="${publish_token}"
-export MTX_AUTHINTERNALUSERS_1_PASS="${viewer_token}"
-export MTX_AUTHINTERNALUSERS_1_IPS="127.0.0.1,::1"
 export WARDY_JETSON_HOST="${jetson_host}"
 export WARDY_TLS_CERTIFICATE="${tls_certificate}"
 export WARDY_TLS_PRIVATE_KEY="${tls_private_key}"

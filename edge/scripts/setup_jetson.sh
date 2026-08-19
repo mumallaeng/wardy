@@ -122,7 +122,6 @@ set_env_default \
   "edge/models/m05_hazard/hazard-objects-v2-finetune-v3/model.onnx" \
   "ml/src/export/hazard_objects_v1_full_v1/weights/best.onnx"
 ensure_token WARDY_ACCESS_TOKEN
-ensure_token WARDY_VIEWER_TOKEN
 ensure_token WARDY_PUBLISH_TOKEN
 chmod 0600 "${env_file}"
 

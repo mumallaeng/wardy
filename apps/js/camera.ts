@@ -39,7 +39,6 @@ export class JetsonCameraController {
   private readonly onStatusChange: ((status: CameraStatus) => void) | undefined;
   private peer: RTCPeerConnection | null = null;
   private resourceUrl: string | null = null;
-  private authorization = "";
   private abortController: AbortController | null = null;
   private generation = 0;
 
@@ -48,9 +47,8 @@ export class JetsonCameraController {
     this.onStatusChange = onStatusChange;
   }
 
-  async start(baseUrl: string, viewerToken: string,
+  async start(baseUrl: string,
               fallbackOrigin = globalThis.location?.origin ?? ""): Promise<string> {
-    if (!viewerToken.trim()) throw new Error("Jetson 카메라 토큰을 입력해 주세요.");
     this.stop("connecting");
     const generation = this.generation;
     let endpoint: string;
@@ -59,7 +57,6 @@ export class JetsonCameraController {
       if (new URL(endpoint).protocol !== "https:") {
         throw new Error("인증된 카메라 연결에는 https가 필요합니다.");
       }
-      this.authorization = `Basic ${btoa(`wardy-viewer:${viewerToken}`)}`;
     } catch (error) {
       this.stop("fault");
       throw error;
@@ -110,7 +107,7 @@ export class JetsonCameraController {
       await waitForIceGathering(peer);
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { Authorization: this.authorization, "Content-Type": "application/sdp" },
+        headers: { "Content-Type": "application/sdp" },
         body: peer.localDescription?.sdp ?? "",
         signal: abortController.signal,
       });
@@ -139,13 +136,11 @@ export class JetsonCameraController {
   stop(status: CameraStatus = "idle"): void {
     this.generation += 1;
     const resourceUrl = this.resourceUrl;
-    const authorization = this.authorization;
     this.resourceUrl = null;
-    this.authorization = "";
     if (resourceUrl) {
       void fetch(resourceUrl, {
         method: "DELETE",
-        headers: { Authorization: authorization, "If-Match": "*" },
+        headers: { "If-Match": "*" },
       }).catch(() => undefined);
     }
     this.abortController?.abort();

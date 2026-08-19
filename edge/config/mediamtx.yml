@@ -8,16 +8,14 @@ authInternalUsers:
     permissions:
       - action: publish
         path: wardy
-  - user: wardy-viewer
-    pass: change-me-viewer
-    ips: ["127.0.0.1", "::1"]
-    permissions:
-      - action: read
-        path: wardy
+  # Browser requests arrive only through the loopback Caddy gateway. The
+  # viewer secret therefore never has to leave the Jetson or enter the UI.
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
     permissions:
+      - action: read
+        path: wardy
       - action: api
       - action: metrics
       - action: pprof
