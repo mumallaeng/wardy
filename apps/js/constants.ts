@@ -1,18 +1,20 @@
-export const CARE_STATUS = Object.freeze({
+import type { CareStatus, Detection, EventStatus, EventType, OverlaySettingKey, WardyEvent, WardyState } from "./types.ts";
+
+export const CARE_STATUS: Readonly<Record<CareStatus, { label: string; reason: string; rank: number }>> = Object.freeze({
   normal: { label: "기본", reason: "활성화된 안전 이벤트가 없습니다.", rank: 0 },
   caution: { label: "주의", reason: "사용자가 상황을 확인할 필요가 있습니다.", rank: 1 },
   warning: { label: "경고", reason: "빠른 확인이 필요한 상태입니다.", rank: 2 },
   emergency: { label: "긴급", reason: "즉시 확인이 필요한 의심 상황입니다.", rank: 3 },
 });
 
-export const EVENT_STATUS = Object.freeze({
+export const EVENT_STATUS: Readonly<Record<EventStatus, string>> = Object.freeze({
   new: "신규",
   confirmed: "확인",
   released: "해제",
   false_detection: "오탐",
 });
 
-export const EVENT_TYPES = Object.freeze({
+export const EVENT_TYPES: Readonly<Record<EventType, string>> = Object.freeze({
   fall_suspected: "낙상 의심",
   inactivity: "장시간 정지",
   hazard_detected: "위험물 탐지",
@@ -24,23 +26,23 @@ export const EVENT_TYPES = Object.freeze({
   detection_fault: "안전 감지 기능 이상",
 });
 
-export const OVERLAY_FIELDS = Object.freeze([
+export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: string; description: string }> = Object.freeze([
   { key: "showClass", label: "탐지 class", description: "사람·물건 class 표시" },
   { key: "showRole", label: "돌봄 역할", description: "돌봄 대상·일반 인물 역할 표시" },
   { key: "showName", label: "식별 이름", description: "등록 대상의 이름 표시" },
   { key: "showPosture", label: "자세·행동", description: "서 있음·앉음 등 상태 표시" },
 ]);
 
-export const DEMO_DETECTIONS = Object.freeze([
+export const DEMO_DETECTIONS: ReadonlyArray<Detection> = Object.freeze([
   { id: "person-demo-01", box: [0.18, 0.16, 0.27, 0.64], className: "사람", role: "돌봄 대상", name: "조정민", posture: "서 있음", color: "#f4c85b" },
   { id: "object-demo-01", box: [0.66, 0.57, 0.16, 0.18], className: "가위", role: "관리 위험물", name: "", posture: "", color: "#ef6b61" },
 ]);
 
-function isoMinutesAgo(minutes) {
+function isoMinutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
-export function createDemoEvents() {
+export function createDemoEvents(): WardyEvent[] {
   return [
     {
       event_id: "EVT-DEMO-003",
@@ -117,7 +119,7 @@ export function createDemoEvents() {
   ];
 }
 
-export function createInitialState() {
+export function createInitialState(): WardyState {
   return {
     version: 1,
     careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
@@ -137,7 +139,7 @@ export function createInitialState() {
   };
 }
 
-export function createDemoEvent(sequence) {
+export function createDemoEvent(sequence: number): WardyEvent {
   const now = new Date().toISOString();
   return {
     event_id: `EVT-DEMO-${String(sequence).padStart(3, "0")}`,

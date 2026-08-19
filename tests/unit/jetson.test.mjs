@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { JetsonConnection, jetsonHealthUrl, normalizeJetsonBaseUrl } from "../../apps/js/jetson.js";
+import { JetsonConnection, jetsonHealthUrl, normalizeJetsonBaseUrl } from "../../apps/js/jetson.ts";
 
 test("Jetson 주소를 정규화하고 health endpoint를 만든다", () => {
   assert.equal(normalizeJetsonBaseUrl(" http://jetson.local:8787/ "), "http://jetson.local:8787");

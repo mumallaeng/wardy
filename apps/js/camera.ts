@@ -1,11 +1,17 @@
+import type { CameraStatus } from "./types.ts";
+
 export class CameraController {
-  constructor(video, onStatusChange) {
+  private readonly video: HTMLVideoElement;
+  private readonly onStatusChange: ((status: CameraStatus) => void) | undefined;
+  private stream: MediaStream | null = null;
+
+  constructor(video: HTMLVideoElement, onStatusChange?: (status: CameraStatus) => void) {
     this.video = video;
     this.onStatusChange = onStatusChange;
     this.stream = null;
   }
 
-  async start() {
+  async start(): Promise<MediaStream> {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("이 브라우저는 카메라 입력을 지원하지 않습니다.");
     this.onStatusChange?.("connecting");
     try {
@@ -21,7 +27,7 @@ export class CameraController {
     }
   }
 
-  stop(status = "idle") {
+  stop(status: CameraStatus = "idle"): void {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.video.srcObject = null;

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { filterEvents, sortEvents, summarizeEvents } from "../../apps/js/events.js";
+import { filterEvents, sortEvents, summarizeEvents } from "../../apps/js/events.ts";
 
 const events = [
   { event_id: "normal", care_status: "normal", event_status: "new", event_type: "EVT-001", occurred_at: "2026-08-05T10:00:00+09:00", reason: "일상", subject_name: "김연우" },

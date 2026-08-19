@@ -1,39 +1,59 @@
-import { CARE_STATUS, createInitialState } from "./constants.js";
+import { CARE_STATUS, createInitialState } from "./constants.ts";
+import type { CareStatus, EventType, ManagedItemPolicy, NotificationLevel, OverlaySettingKey, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
-const clone = (value) => structuredClone(value);
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
 
-export class MemoryStorage {
-  constructor() { this.data = new Map(); }
-  getItem(key) { return this.data.has(key) ? this.data.get(key) : null; }
-  setItem(key, value) { this.data.set(key, String(value)); }
-  removeItem(key) { this.data.delete(key); }
+type StoreListener = (state: WardyState) => void;
+
+const clone = <T>(value: T): T => structuredClone(value);
+
+function isWardyState(value: unknown): value is WardyState {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<WardyState>;
+  return candidate.version === 1 && Array.isArray(candidate.events) && Boolean(candidate.settings);
+}
+
+export class MemoryStorage implements StorageLike {
+  private readonly data = new Map<string, string>();
+
+  getItem(key: string): string | null { return this.data.get(key) ?? null; }
+  setItem(key: string, value: string): void { this.data.set(key, String(value)); }
+  removeItem(key: string): void { this.data.delete(key); }
 }
 
 export class WardyStore {
-  constructor(storage, key = "wardy-ui-state-v1") {
+  private readonly storage: StorageLike | null;
+  private readonly key: string;
+  private readonly listeners = new Set<StoreListener>();
+  private state: WardyState;
+
+  constructor(storage: StorageLike | null, key = "wardy-ui-state-v1") {
     this.storage = storage;
     this.key = key;
-    this.listeners = new Set();
     this.state = this.#load();
   }
 
-  #load() {
+  #load(): WardyState {
     try {
       const stored = this.storage?.getItem(this.key);
       if (!stored) return createInitialState();
       const parsed = JSON.parse(stored);
-      if (parsed?.version !== 1 || !Array.isArray(parsed.events)) return createInitialState();
+      if (!isWardyState(parsed)) return createInitialState();
       return parsed;
     } catch {
       return createInitialState();
     }
   }
 
-  #persist() {
+  #persist(): void {
     try { this.storage?.setItem(this.key, JSON.stringify(this.state)); } catch { /* UI remains usable without persistence. */ }
   }
 
-  #commit(mutator) {
+  #commit(mutator: (state: WardyState) => void): WardyState {
     const next = clone(this.state);
     mutator(next);
     this.state = next;
@@ -43,31 +63,34 @@ export class WardyStore {
     return snapshot;
   }
 
-  getState() { return clone(this.state); }
-  subscribe(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  getState(): WardyState { return clone(this.state); }
+  subscribe(listener: StoreListener): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
 
-  setCareState(status, reason = CARE_STATUS[status]?.reason) {
+  setCareState(status: CareStatus, reason = CARE_STATUS[status].reason): WardyState {
     if (!CARE_STATUS[status]) throw new Error(`Unsupported care status: ${status}`);
     return this.#commit((state) => { state.careState = { status, reason, updatedAt: new Date().toISOString(), source: "manual_ui" }; });
   }
 
-  setOverlaySetting(key, value) {
+  setOverlaySetting(key: OverlaySettingKey, value: boolean): WardyState {
     return this.#commit((state) => { state.settings.overlay[key] = Boolean(value); });
   }
 
-  setNotificationSetting(eventType, value) {
+  setNotificationSetting(eventType: EventType, value: NotificationLevel): WardyState {
     return this.#commit((state) => { state.settings.notifications[eventType] = value; });
   }
 
-  setJetsonBaseUrl(baseUrl) {
+  setJetsonBaseUrl(baseUrl: string): WardyState {
     return this.#commit((state) => { state.settings.jetson = { baseUrl: String(baseUrl ?? "").trim() }; });
   }
 
-  addEvent(event) {
+  addEvent(event: WardyEvent): WardyState {
     return this.#commit((state) => { state.events.unshift(clone(event)); });
   }
 
-  confirmEvent(eventId, at = new Date().toISOString()) {
+  confirmEvent(eventId: string, at = new Date().toISOString()): WardyState {
     return this.#commit((state) => {
       const event = state.events.find((candidate) => candidate.event_id === eventId);
       if (!event) throw new Error(`Unknown event: ${eventId}`);
@@ -77,7 +100,7 @@ export class WardyStore {
     });
   }
 
-  markFalseDetection(eventId, at = new Date().toISOString()) {
+  markFalseDetection(eventId: string, at = new Date().toISOString()): WardyState {
     return this.#commit((state) => {
       const event = state.events.find((candidate) => candidate.event_id === eventId);
       if (!event) throw new Error(`Unknown event: ${eventId}`);
@@ -86,7 +109,7 @@ export class WardyStore {
     });
   }
 
-  removeEventMedia(eventId) {
+  removeEventMedia(eventId: string): WardyState {
     return this.#commit((state) => {
       const event = state.events.find((candidate) => candidate.event_id === eventId);
       if (!event) throw new Error(`Unknown event: ${eventId}`);
@@ -97,35 +120,35 @@ export class WardyStore {
     });
   }
 
-  addManagedItem(label, policy) {
+  addManagedItem(label: string, policy: ManagedItemPolicy): WardyState {
     return this.#commit((state) => {
       state.managedItems.push({ id: `item-${crypto.randomUUID()}`, label, policy });
     });
   }
 
-  removeManagedItem(itemId) {
+  removeManagedItem(itemId: string): WardyState {
     return this.#commit((state) => { state.managedItems = state.managedItems.filter((item) => item.id !== itemId); });
   }
 
-  addZone(zone) {
+  addZone(zone: ZoneRect): WardyState {
     return this.#commit((state) => { state.zones.push({ id: `zone-${crypto.randomUUID()}`, ...zone }); });
   }
 
-  removeZone(zoneId) {
+  removeZone(zoneId: string): WardyState {
     return this.#commit((state) => { state.zones = state.zones.filter((zone) => zone.id !== zoneId); });
   }
 
-  addSubject(name, role) {
+  addSubject(name: string, role: string): WardyState {
     return this.#commit((state) => {
       state.subjects.push({ id: `subject-${crypto.randomUUID()}`, name, role, createdAt: new Date().toISOString() });
     });
   }
 
-  removeSubject(subjectId) {
+  removeSubject(subjectId: string): WardyState {
     return this.#commit((state) => { state.subjects = state.subjects.filter((subject) => subject.id !== subjectId); });
   }
 
-  reset() {
+  reset(): WardyState {
     this.state = createInitialState();
     this.#persist();
     const snapshot = this.getState();

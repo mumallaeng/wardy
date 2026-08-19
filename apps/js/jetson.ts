@@ -1,4 +1,18 @@
-export function normalizeJetsonBaseUrl(value, fallbackOrigin = "") {
+import type { JetsonHealthResult, JetsonStatus, JetsonStatusDetail } from "./types.ts";
+
+type JetsonStatusHandler = (status: JetsonStatus, detail?: JetsonStatusDetail) => void;
+
+interface JetsonConnectionOptions {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  onStatus?: JetsonStatusHandler;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): string {
   const candidate = String(value ?? "").trim() || String(fallbackOrigin ?? "").trim();
   if (!candidate) throw new Error("Jetson 서비스 주소를 입력해 주세요.");
   const url = new URL(candidate);
@@ -10,18 +24,22 @@ export function normalizeJetsonBaseUrl(value, fallbackOrigin = "") {
   return url.toString().replace(/\/$/, "");
 }
 
-export function jetsonHealthUrl(value, fallbackOrigin = "") {
+export function jetsonHealthUrl(value: string, fallbackOrigin = ""): string {
   return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/health`;
 }
 
 export class JetsonConnection {
-  constructor({ fetchImpl = (...args) => globalThis.fetch(...args), timeoutMs = 3500, onStatus } = {}) {
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly onStatus: JetsonStatusHandler | undefined;
+
+  constructor({ fetchImpl = (...args: Parameters<typeof fetch>) => globalThis.fetch(...args), timeoutMs = 3500, onStatus }: JetsonConnectionOptions = {}) {
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.onStatus = onStatus;
   }
 
-  async check(baseUrl, fallbackOrigin = globalThis.location?.origin ?? "") {
+  async check(baseUrl: string, fallbackOrigin = globalThis.location?.origin ?? ""): Promise<JetsonHealthResult> {
     const endpoint = jetsonHealthUrl(baseUrl, fallbackOrigin);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -35,12 +53,15 @@ export class JetsonConnection {
       });
       if (!response.ok) throw new Error(`Jetson 서비스가 HTTP ${response.status}로 응답했습니다.`);
       const contentType = response.headers?.get?.("content-type") ?? "";
-      const body = contentType.includes("application/json") ? await response.json() : {};
-      const result = { endpoint, service: body.service ?? "wardy-edge", version: body.version ?? null };
+      const rawBody: unknown = contentType.includes("application/json") ? await response.json() : {};
+      const body = rawBody && typeof rawBody === "object" ? rawBody as Record<string, unknown> : {};
+      const service = typeof body.service === "string" ? body.service : "wardy-edge";
+      const version = typeof body.version === "string" ? body.version : null;
+      const result: JetsonHealthResult = { endpoint, service, version };
       this.onStatus?.("connected", result);
       return result;
     } catch (error) {
-      const message = error.name === "AbortError" ? "Jetson 연결 확인 시간이 초과되었습니다." : error.message;
+      const message = error instanceof DOMException && error.name === "AbortError" ? "Jetson 연결 확인 시간이 초과되었습니다." : errorMessage(error);
       this.onStatus?.("fault", { endpoint, message });
       throw new Error(message);
     } finally {
