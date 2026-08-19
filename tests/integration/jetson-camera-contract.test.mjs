@@ -375,6 +375,7 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /auto_https disable_redirects/);
   assert.match(caddy, /default_sni \{\$WARDY_JETSON_HOST\}/);
   assert.match(caddy, /https:\/\/:8443/);
+  assert.match(caddy, /http:\/\/:8080/);
   assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
   assert.match(caddy, /127\.0\.0\.1:8787/);
   assert.match(caddy, /127\.0\.0\.1:8889/);
@@ -382,6 +383,7 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.match(caddy, /http\.request\.header\.Origin/);
   assert.match(caddy, /"https:\/\/" \+ \{http\.request\.hostport\}/);
   assert.match(caddy, /respond @outside_private_network "Forbidden" 403/);
+  assert.match(caddy, /Certificate-free access is intentionally limited/);
   assert.match(caddy, /@browser_bootstrap path \/connect/);
   assert.match(caddy, /jetson_tls=ready/);
   assert.match(caddy, /respond @unexpected_browser_origin "Forbidden" 403/);
@@ -401,9 +403,9 @@ test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", asyn
   assert.ok(caddy.includes('{http.request.header.Origin} != "https://localhost:8000"'));
   assert.match(caddy, /\^https\?:\/\/172/);
   assert.ok(caddy.includes('{http.request.header.Origin} != "http://127.0.0.1:8000"'));
-  const websocketProxy = caddy.match(/@edge_websocket path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
-  const apiProxy = caddy.match(/@edge_api path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
-  const webrtcProxy = caddy.match(/@webrtc path[\s\S]*?\n\t\t\}/)?.[0] ?? "";
+  const websocketProxy = caddy.match(/@edge_websocket path[\s\S]*?\n\t+\}/)?.[0] ?? "";
+  const apiProxy = caddy.match(/@edge_api path[\s\S]*?\n\t+\}/)?.[0] ?? "";
+  const webrtcProxy = caddy.match(/@webrtc path[\s\S]*?\n\t+\}/)?.[0] ?? "";
   for (const proxy of [websocketProxy, apiProxy, webrtcProxy]) {
     assert.match(proxy, /header_down Access-Control-Allow-Origin \{http.request.header.Origin\}/);
   }
