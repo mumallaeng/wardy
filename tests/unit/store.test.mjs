@@ -11,6 +11,7 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
   store.setOverlaySetting("showName", false);
   store.setCameraMirrored(true);
   store.setJetsonBaseUrl("https://jetson.local:8443");
+  store.setDataWorkspace("session-0811-pm", "wardy-0811-v2");
 
   const restored = new WardyStore(storage, "test-state").getState();
   assert.equal(restored.careState.status, "warning");
@@ -18,6 +19,58 @@ test("상태와 설정을 로컬 저장소에 보존한다", () => {
   assert.equal(restored.settings.overlay.showName, false);
   assert.equal(restored.settings.camera.mirrored, true);
   assert.deepEqual(restored.settings.jetson, { baseUrl: "https://jetson.local:8443" });
+  assert.deepEqual(restored.settings.dataWorkspace, {
+    captureSession: "session-0811-pm", datasetVersion: "wardy-0811-v2",
+  });
+});
+
+test("Jetson 데이터 sample 목록은 계약에 맞는 항목만 보존한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "dataset-samples");
+  store.replaceDatasetSamples([{
+    id: "sample-1", modelId: "M-01", requirementId: "DS-001", label: "person",
+    reviewStatus: "approved", captureSession: "session-0811-am", source: "local_file",
+    imagePath: "datasets/M-01/DS-001/sample-1.jpg",
+    mediaResource: "/api/data-samples/sample-1/media", originalFilename: "person.jpg",
+    capturedAt: "2026-08-11T01:00:00Z", width: 640, height: 480,
+  }, { id: "invalid" }]);
+  const restored = new WardyStore(storage, "dataset-samples").getState();
+  assert.deepEqual(restored.datasetSamples.map((sample) => sample.id), ["sample-1"]);
+});
+
+test("legacy dataset sample은 edge route에서 사용할 수 있는 ID만 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  const sample = {
+    id: "legacy_id-1", modelId: "M-01", requirementId: "DS-001", label: "person",
+    reviewStatus: "pending", captureSession: "session-0811-am", source: "local_file",
+    imagePath: "datasets/M-01/legacy.jpg", originalFilename: "legacy.jpg",
+    capturedAt: "2026-08-11T01:00:00Z", width: 640, height: 480,
+  };
+  initial.datasetSamples = [
+    sample,
+    ...["legacy/id", "legacy id", "legacy.id"].map((id) => ({ ...sample, id })),
+  ];
+  storage.setItem("legacy-dataset-ids", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-dataset-ids").getState();
+  assert.deepEqual(restored.datasetSamples.map((candidate) => candidate.id), ["legacy_id-1"]);
+  assert.equal(restored.datasetSamples[0].mediaResource,
+    "/api/data-samples/legacy_id-1/media");
+});
+
+test("빈 data workspace 설정은 저장하지 않고 기존 빈 값은 기본값으로 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.settings.dataWorkspace = { captureSession: "   ", datasetVersion: "" };
+  storage.setItem("blank-data-workspace", JSON.stringify(initial));
+
+  const store = new WardyStore(storage, "blank-data-workspace");
+  const restored = store.getState();
+  assert.match(restored.settings.dataWorkspace.captureSession, /^session-\d{8}$/);
+  assert.match(restored.settings.dataWorkspace.datasetVersion, /^wardy-\d{8}-v1$/);
+  assert.throws(() => store.setDataWorkspace(" ", "wardy-v2"), /모두 입력/);
+  assert.deepEqual(store.getState().settings.dataWorkspace, restored.settings.dataWorkspace);
 });
 
 test("Jetson system fault에서는 돌봄 상태를 확인 불가로 보존한다", () => {

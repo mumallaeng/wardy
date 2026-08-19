@@ -22,6 +22,18 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /카메라 촬영/);
   assert.match(html, /실제 모델 학습은 Notebook 단계/);
   assert.match(html, /데이터 작업실/);
+  for (const id of ["dataset-sample-form", "dataset-file-input", "dataset-sample-list", "dataset-version", "export-dataset-manifest"]) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  assert.match(html, /id="dataset-preview-dialog"/);
+  const dataWorkspace = await readFile(path.join(root, "apps/js/data-workspace.ts"), "utf8");
+  assert.match(dataWorkspace, /sample\.reviewStatus === status && label\.value\.trim\(\) === sample\.label/);
+  const appSource = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  assert.match(appSource, /generation !== datasetPreviewGeneration/);
+  assert.match(appSource, /if \(!dialog\.open\) dialog\.showModal\(\)/);
+  assert.match(html, /Jetson camera 촬영/);
+  assert.match(html, /Dataset manifest 내보내기/);
+  assert.match(html, /원본을 덮어쓰지 않고/);
   assert.match(html, /식별 검토 갤러리/);
   assert.match(html, /기준 사진 촬영/);
   assert.match(html, /현재 실행 중인 모델은 바뀌지 않습니다/);
