@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <string>
 
 namespace wardy::input {
 
@@ -10,7 +11,14 @@ struct CameraConfig {
   int height = 480;
   int buffer_size = 1;
   double requested_fps = 0.0;
+  std::string gstreamer_pipeline;
 
+  /**
+   * @brief Validates the camera configuration.
+   *
+   * @throws std::invalid_argument If the device index is negative, the dimensions
+   *         or buffer size are non-positive, or the requested frame rate is negative.
+   */
   void validate() const {
     if (device_index < 0) {
       throw std::invalid_argument("camera device index must be zero or greater");

@@ -24,3 +24,172 @@ test("카메라 입력 모듈은 AI 추론 구현을 포함하지 않는다", as
     assert.doesNotMatch(source, /TensorRT|onnx|inference|detect|model/i, file);
   }
 });
+
+test("Jetson preview JPEG 인코딩은 stream client가 있을 때만 수행한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /stream_clients == 0/);
+  assert.match(source, /milliseconds\(100\)/);
+  assert.match(source, /cv::imencode/);
+  assert.ok(source.indexOf("stream_clients == 0") < source.indexOf("cv::imencode"));
+});
+
+test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
+  assert.match(launcher, /x264enc tune=zerolatency speed-preset=ultrafast/);
+  assert.match(launcher, /threads=2 sliced-threads=true sync-lookahead=0 rc-lookahead=0/);
+  assert.match(launcher, /software_bitrate_kbps/);
+  assert.match(launcher, /webrtc_bitrate % 1000 != 0/);
+  assert.doesNotMatch(launcher, /nvv4l2h264enc/);
+  assert.match(launcher, /video\/x-h264,profile=baseline/);
+  assert.match(launcher, /rtsp:\/\/wardy-publisher:\$\{publish_token\}@127\.0\.0\.1:8554\/wardy/);
+  assert.match(launcher, /appsink drop=true max-buffers=1 sync=false/);
+  assert.match(gateway, /webrtcAddress: 127\.0\.0\.1:8889/);
+  assert.match(gateway, /webrtcLocalUDPAddress: :8189/);
+  assert.match(gateway, /webrtcLocalTCPAddress: ""/);
+  assert.doesNotMatch(gateway, /webrtcAllowOrigins: \["\*"\]/);
+  assert.match(gateway, /user: wardy-publisher/);
+  assert.match(gateway, /user: wardy-viewer/);
+});
+
+test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있다", async () => {
+  const capture = await readFile(path.join(root, "edge/src/input/camera_capture.cpp"), "utf8");
+  const service = await readFile(path.join(root, "edge/src/api/wardy_edge_service.cpp"), "utf8");
+  assert.match(capture, /CAP_GSTREAMER/);
+  assert.match(service, /WARDY_CAMERA_PIPELINE/);
+});
+
+test("Jetson MediaMTX 설치는 고정 ARM64 release checksum을 검증한다", async () => {
+  const installer = await readFile(path.join(root, "edge/scripts/install_mediamtx.sh"), "utf8");
+  const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
+  assert.match(installer, /WARDY_MEDIAMTX_VERSION/);
+  assert.match(installer, /linux_arm64/);
+  assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
+  assert.match(installer, /sha256sum --check --status/);
+  assert.doesNotMatch(installer, /checksums\.sha256/);
+});
+
+test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립트를 제공한다", async () => {
+  const packages = await readFile(path.join(root, "edge/config/jetson-apt-packages.txt"), "utf8");
+  const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
+  const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
+  const setup = await readFile(path.join(root, "edge/scripts/setup_jetson.sh"), "utf8");
+  const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
+  const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
+  const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
+
+  for (const packageName of [
+    "build-essential",
+    "cmake",
+    "libopencv-dev",
+    "libsqlite3-dev",
+    "gstreamer1.0-plugins-bad",
+    "gstreamer1.0-tools",
+    "gstreamer1.0-plugins-ugly",
+    "gstreamer1.0-rtsp",
+    "v4l-utils",
+  ]) {
+    assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
+  }
+  assert.match(versions, /^WARDY_CADDY_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(versions, /^WARDY_CADDY_SHA512=[a-f0-9]{128}$/m);
+  assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(versions, /^WARDY_MEDIAMTX_SHA256=[a-f0-9]{64}$/m);
+  assert.match(installer, /apt-get install/);
+  assert.match(installer, /nvidia-l4t-core/);
+  assert.match(installer, /nvidia-l4t-gstreamer=\$\{l4t_core_version\}/);
+  assert.match(installer, /l4t_gstreamer_version.*!=.*l4t_core_version/s);
+  assert.match(
+    installer,
+    /apt-get install -y --allow-downgrades[\s\S]{0,160}"nvidia-l4t-gstreamer=\$\{l4t_core_version\}"/,
+  );
+  assert.doesNotMatch(packages, /^nvidia-l4t-gstreamer$/m);
+  assert.match(installer, /install_caddy\.sh/);
+  assert.match(installer, /install_mediamtx\.sh/);
+  assert.match(installer, /check_jetson_dependencies\.sh/);
+  assert.match(caddyInstaller, /linux_arm64/);
+  assert.match(caddyInstaller, /sha512sum --check --status/);
+  assert.doesNotMatch(caddyInstaller, /checksums\.txt/);
+  assert.match(checker, /nvvidconv/);
+  assert.match(checker, /x264enc/);
+  assert.doesNotMatch(checker, /nvv4l2h264enc/);
+  assert.match(tlsCreator, /subjectAltName=/);
+  assert.match(tlsCreator, /WARDY_TLS_DIR:-\/etc\/wardy\/tls/);
+  assert.match(tlsCreator, /flock -n 9/);
+  assert.match(tlsCreator, /installed_artifacts/);
+  assert.match(tlsCreator, /wardy-ca\.key/);
+  assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
+  assert.match(setup, /install_jetson_dependencies\.sh/);
+  assert.match(setup, /create_jetson_tls\.sh/);
+  assert.match(setup, /openssl rand -hex 32/);
+  assert.match(setup, /certificate_public_key_digest/);
+  assert.match(setup, /private_key_public_digest/);
+  assert.match(setup, /certificate_digest=.*certificate_public_key_digest/);
+  assert.match(setup, /private_key_digest=.*private_key_public_digest/);
+  assert.match(setup, /wardy-ca\.crt.*wardy-ca\.key/s);
+  assert.match(setup, /jetson\.crt.*jetson\.key/s);
+  assert.match(setup, /replace-with-\*/);
+  assert.match(setup, /chmod 0600/);
+  assert.match(setup, /cmake --build/);
+  assert.match(setup, /check_jetson_dependencies\.sh/);
+  assert.match(setup, /--no-start/);
+  assert.match(setup, /exec .*start_jetson_webrtc\.sh/);
+});
+
+test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {
+  const checker = await readFile(path.join(root, "edge/scripts/test_windows_connection.ps1"), "utf8");
+  assert.match(checker, /:8443/);
+  assert.match(checker, /\/api\/health/);
+  assert.match(checker, /\/wardy\/whep/);
+  assert.match(checker, /SecureString/);
+  assert.match(checker, /Origin/);
+  assert.match(checker, /catch/);
+  assert.match(checker, /UDP media on port 8189/);
+  assert.doesNotMatch(checker, /SSH|macOS/);
+});
+
+test("Jetson 외부 credential 경로는 Caddy TLS 하나로 통합한다", async () => {
+  const caddy = await readFile(path.join(root, "edge/config/Caddyfile"), "utf8");
+  const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
+  const example = await readFile(path.join(root, "edge/config/jetson.env.example"), "utf8");
+  assert.match(caddy, /auto_https disable_redirects/);
+  assert.match(caddy, /default_sni \{\$WARDY_JETSON_HOST\}/);
+  assert.match(caddy, /https:\/\/\{\$WARDY_JETSON_HOST\}:8443/);
+  assert.match(caddy, /tls \{\$WARDY_TLS_CERTIFICATE\} \{\$WARDY_TLS_PRIVATE_KEY\}/);
+  assert.match(caddy, /127\.0\.0\.1:8787/);
+  assert.match(caddy, /127\.0\.0\.1:8889/);
+  assert.match(launcher, /chmod 0600/);
+  assert.match(example, /WARDY_ACCESS_TOKEN=/);
+  assert.match(example, /WARDY_VIEWER_TOKEN=/);
+  assert.match(example, /WARDY_PUBLISH_TOKEN=/);
+});
+
+test("Jetson camera 상태는 변화 시에만 SQLite에 기록한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /SqliteStore/);
+  assert.match(source, /save_camera_state\(state, "connecting"/);
+  assert.match(source, /save_camera_state\(state, "connected"/);
+  assert.match(source, /save_camera_state\(state, "fault"/);
+  assert.match(source, /connected_reported/);
+  assert.match(source, /if \(!connected_reported\)/);
+  assert.match(source, /retry_delay = std::chrono::seconds\(1\)/);
+  assert.match(source, /std::min\(retry_delay \* 2, maximum_retry_delay\)/);
+});
+
+test("관리 물품 sample은 요청 시에만 Jetson camera frame으로 저장한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /POST \/api\/training\/items\/sample/);
+  assert.match(source, /sample_capture_requests/);
+  assert.match(source, /add_training_sample/);
+  assert.match(source, /std::filesystem::path\("items"\)/);
+  assert.doesNotMatch(source, /TensorRT|onnx|train\(|fit\(/i);
+  assert.match(source, /x-wardy-access-token/);
+  assert.match(source, /origin_allowed/);
+});
+
+test("돌봄 대상자 식별 기준 사진은 Jetson 로컬에 저장한다", async () => {
+  const source = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+  assert.match(source, /POST \/api\/training\/subjects\/reference/);
+  assert.match(source, /add_subject_reference_sample/);
+  assert.match(source, /std::filesystem::path\("subjects"\)/);
+});

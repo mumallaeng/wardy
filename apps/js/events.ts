@@ -1,6 +1,12 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES } from "./constants.ts";
 import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
 
+/**
+ * Sorts events by care-status priority and occurrence time.
+ *
+ * @param events - The events to sort.
+ * @returns A new array ordered by descending care-status rank, then by descending occurrence time. Unknown care statuses are placed last.
+ */
 export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
   return [...events].sort((a, b) => {
     const statusDelta = (CARE_STATUS[b.care_status]?.rank ?? -1) - (CARE_STATUS[a.care_status]?.rank ?? -1);
@@ -8,6 +14,12 @@ export function sortEvents(events: readonly WardyEvent[]): WardyEvent[] {
   });
 }
 
+/**
+ * Filters events by status and a Korean-locale, case-insensitive text query.
+ *
+ * @param filters - Optional event-status, care-status, and text-search criteria.
+ * @returns Events matching the filters, sorted by care-status rank and occurrence time.
+ */
 export function filterEvents(events: readonly WardyEvent[], filters: EventFilters = {}): WardyEvent[] {
   const query = (filters.query ?? "").trim().toLocaleLowerCase("ko");
   return sortEvents(events).filter((event) => {
@@ -19,6 +31,12 @@ export function filterEvents(events: readonly WardyEvent[], filters: EventFilter
   });
 }
 
+/**
+ * Summarizes events that occurred on the same local calendar day as the reference time.
+ *
+ * @param now - The reference time used to determine the calendar day.
+ * @returns Counts for total events, each care status, and events with a `"new"` status.
+ */
 export function summarizeEvents(events: readonly WardyEvent[], now = new Date()): EventSummary {
   const dayKey = (date: Date): string => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   const today = events.filter((event) => dayKey(new Date(event.occurred_at)) === dayKey(now));
@@ -30,11 +48,24 @@ export function summarizeEvents(events: readonly WardyEvent[], now = new Date())
   return result;
 }
 
+/**
+ * Formats a timestamp for display using Korean locale and 24-hour time.
+ *
+ * @param value - The timestamp to format; missing values produce an em dash
+ * @returns The formatted date and time, or `"—"` when `value` is missing
+ */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 }
 
+/**
+ * Creates a status chip element with the specified text and style class.
+ *
+ * @param text - The text displayed in the chip
+ * @param className - The status class appended to the chip's `is-` class prefix
+ * @returns The created status chip element
+ */
 function chip(text: string, className: string): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = `status-chip is-${className}`;
@@ -42,6 +73,14 @@ function chip(text: string, className: string): HTMLSpanElement {
   return span;
 }
 
+/**
+ * Creates a button configured with an action and event identifier.
+ *
+ * @param text - The text displayed on the button
+ * @param action - The action associated with the button
+ * @param eventId - The identifier of the event associated with the button
+ * @returns A configured button element
+ */
 function actionButton(text: string, action: string, eventId: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
@@ -51,6 +90,12 @@ function actionButton(text: string, action: string, eventId: string): HTMLButton
   return button;
 }
 
+/**
+ * Renders event rows in a table body.
+ *
+ * @param tbody - The table body to replace
+ * @param events - The events to render
+ */
 export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly WardyEvent[]): void {
   tbody.replaceChildren();
   events.forEach((event) => {
@@ -89,7 +134,7 @@ export function renderEventRows(tbody: HTMLTableSectionElement, events: readonly
     actionGroup.className = "table-action-group";
     if (event.event_status === "new") actionGroup.append(actionButton("확인", "confirm", event.event_id));
     if (!["released", "false_detection"].includes(event.event_status)) actionGroup.append(actionButton("오탐", "false", event.event_id));
-    if (event.media_type !== "none") actionGroup.append(actionButton("자료 삭제", "delete-media", event.event_id));
+    if (event.media_type !== "none" && event.media_path) actionGroup.append(actionButton("자료 삭제", "delete-media", event.event_id));
     if (actionGroup.childElementCount) actions.append(actionGroup);
     else actions.textContent = "—";
 
