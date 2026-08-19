@@ -63,7 +63,7 @@ export function renderDatasetSamples(
 ): void {
   container.replaceChildren();
   [...samples]
-    .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
+    .sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt))
     .forEach((sample) => {
       const row = document.createElement("tr");
 

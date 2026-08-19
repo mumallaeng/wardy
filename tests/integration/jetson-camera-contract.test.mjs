@@ -76,12 +76,14 @@ test("M-01과 M-05 배포 artifact 및 M-05 dataset은 고정된 Hugging Face re
     "utf8",
   );
 
-  const m01 = models.models.m01_person.versions["v1.0.1"];
+  const m01Model = models.models.m01_person;
+  const m01 = m01Model.versions[m01Model.default_version];
   assert.equal(m01.repo_id, "jjm15955/wardy-m1-person-detector");
   assert.equal(m01.revision, "v1.0.1");
   assert.match(m01.files["model.pt"], /^[a-f0-9]{64}$/);
 
-  const m05 = models.models.m05_hazard.versions["hazard-objects-v2-finetune-v3"];
+  const m05Model = models.models.m05_hazard;
+  const m05 = m05Model.versions[m05Model.default_version];
   assert.equal(m05.repo_id, "chocochip119/wardy-m05-hazard-detector");
   assert.equal(m05.revision, "hazard-objects-v2-finetune-v3");
   assert.match(m05.files["model.pt"], /^[a-f0-9]{64}$/);
@@ -95,8 +97,14 @@ test("M-01과 M-05 배포 artifact 및 M-05 dataset은 고정된 Hugging Face re
   assert.match(prepare, /install_model m01_person/);
   assert.match(prepare, /install_model m05_hazard/);
   assert.match(prepare, /ultralytics\/ultralytics@sha256:[a-f0-9]{64}/);
-  assert.match(setup, /set_env_default[\s\S]*WARDY_PERSON_ENGINE/);
-  assert.match(setup, /set_env_default[\s\S]*WARDY_HAZARD_MODEL/);
+  assert.match(
+    setup,
+    /set_env_default \\\n\s+WARDY_PERSON_ENGINE \\\n\s+"edge\/models\/m01_person\/v1\.0\.1\/model\.engine"/,
+  );
+  assert.match(
+    setup,
+    /set_env_default \\\n\s+WARDY_HAZARD_MODEL \\\n\s+"edge\/models\/m05_hazard\/hazard-objects-v2-finetune-v3\/model\.onnx"/,
+  );
   assert.doesNotMatch(setup, /set_env_value WARDY_(PERSON_ENGINE|HAZARD_MODEL)/);
 });
 
