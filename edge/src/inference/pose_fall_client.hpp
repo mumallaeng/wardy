@@ -36,11 +36,9 @@ struct TrackedFallResult {
   std::optional<double> pose_quality;
   std::optional<bool> fall_suspected;
   std::optional<double> fall_confidence;
-  std::string identity_status;
   std::optional<std::string> subject_id;
   std::optional<std::string> subject_name;
   std::optional<std::string> subject_role;
-  std::optional<double> identity_confidence;
 };
 
 struct HazardDetectionResult {

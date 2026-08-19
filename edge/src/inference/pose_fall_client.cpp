@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -196,7 +197,12 @@ void parse_identity_result(const cv::FileNode& container,
   if (!status.isString()) {
     throw std::runtime_error("tracking response identity is missing status");
   }
-  person.identity_status = static_cast<std::string>(status);
+  const std::string identity_status = static_cast<std::string>(status);
+  static const std::set<std::string> allowed_statuses = {
+      "registered", "uncertain", "unknown", "no_face"};
+  if (!allowed_statuses.count(identity_status)) {
+    throw std::runtime_error("tracking response identity contains invalid status");
+  }
   person.subject_id = optional_string(identity, "subject_id");
   person.subject_name = optional_string(identity, "subject_name");
   person.subject_role = optional_string(identity, "subject_role");
@@ -209,11 +215,14 @@ void parse_identity_result(const cv::FileNode& container,
     if (!std::isfinite(parsed) || parsed < -1.0 || parsed > 1.0) {
       throw std::runtime_error("tracking response identity confidence is outside [-1,1]");
     }
-    person.identity_confidence = parsed;
   }
-  if (person.identity_status == "registered" &&
+  if (identity_status == "registered" &&
       (!person.subject_id || !person.subject_name || !person.subject_role)) {
     throw std::runtime_error("registered identity is missing subject metadata");
+  }
+  if (identity_status != "registered" &&
+      (person.subject_id || person.subject_name || person.subject_role)) {
+    throw std::runtime_error("unregistered identity contains subject metadata");
   }
 }
 
