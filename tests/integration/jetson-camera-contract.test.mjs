@@ -132,6 +132,22 @@ test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시�
   assert.match(api, /std::string\{"앉아 있음"\}/);
   assert.match(api, /std::string\{"누워 있음"\}/);
   assert.match(api, /active_fall_tracks\.insert\(person\.track_id\)\.second/);
+  assert.match(
+    api,
+    /const bool fall_active = person\.fall_suspected\.value_or\(false\);/,
+  );
+  assert.match(
+    api,
+    /!fall_active && person\.fall_suspected\.has_value\(\)/,
+  );
+  assert.match(
+    api,
+    /const bool displayed_fall = person\.fall_suspected\.value_or\(false\);/,
+  );
+  assert.doesNotMatch(
+    api,
+    /fall_suspected\.value_or\(false\)\s*&&\s*person\.posture/,
+  );
   assert.doesNotMatch(api, /if \(apply \|\| \*person\.fall_suspected\)/);
   assert.match(api, /if \(apply\) \{\s+apply_fall_observation\(/);
   assert.doesNotMatch(api, /Tracked person expired; fall alert released/);

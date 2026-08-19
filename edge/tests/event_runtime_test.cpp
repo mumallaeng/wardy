@@ -58,11 +58,28 @@ int main() {
                                "2026-08-10T10:00:04Z"));
   assert(runtime.current_care_status() == "caution");
 
+  // An explicit M-04 recovery is self-releasing. Missing pose/track data stays
+  // latched, but a real false result must clear the incident without an
+  // operator action so repeated fall trials can be collected safely.
+  wardy::rules::EventObservation self_releasing_fall{
+      "fall_suspected", true, "2026-08-10T10:00:04Z", "subject-2", "돌봄 대상",
+      "거실", std::nullopt, std::nullopt, std::nullopt, "낙상 의심", "[]"};
+  const auto self_releasing_created = runtime.apply(self_releasing_fall);
+  assert(self_releasing_created.created);
+  assert(runtime.current_care_status() == "emergency");
+  self_releasing_fall.active = false;
+  self_releasing_fall.release_latched_fall = true;
+  self_releasing_fall.observed_at = "2026-08-10T10:00:05Z";
+  const auto self_released = runtime.apply(self_releasing_fall);
+  assert(self_released.released);
+  assert(self_released.event.event_status == "released");
+  assert(runtime.current_care_status() == "caution");
+
   assert(runtime.update_status(created.event.event_id, "confirmed",
-                               "2026-08-10T10:00:04Z"));
+                               "2026-08-10T10:00:06Z"));
   assert(changed_events.back() == created.event.event_id);
   assert(runtime.update_status(created.event.event_id, "false_detection",
-                               "2026-08-10T10:00:05Z"));
+                               "2026-08-10T10:00:07Z"));
   assert(changed_events.back() == created.event.event_id);
   bool rejected_terminal_change = false;
   try {
