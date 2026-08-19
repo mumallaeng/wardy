@@ -260,7 +260,6 @@ class RegisteredSubjectIdentifier:
         previous = self._last_review_by_track.get(track_id)
         if previous is not None and now - previous < self.review_cooldown_seconds:
             return None
-        self._prune_pending_reviews(self.max_pending_reviews - 1)
         crop, _offset = self._person_crop(frame, bbox_xyxy)
         review_id = f"identity-{uuid.uuid4().hex}"
         relative_path = Path("identity") / "reviews" / f"{review_id}.jpg"
@@ -268,6 +267,7 @@ class RegisteredSubjectIdentifier:
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(absolute_path), crop, [cv2.IMWRITE_JPEG_QUALITY, 90]):
             raise RuntimeError("unable to save identity review image")
+        pruned_rows: list[tuple[str, str]] = []
         try:
             with self._connection:
                 self._connection.execute(
@@ -286,33 +286,39 @@ class RegisteredSubjectIdentifier:
                         captured_at,
                     ),
                 )
+                pruned_rows = [
+                    (str(stored_review_id), str(stored_image_path))
+                    for stored_review_id, stored_image_path
+                    in self._connection.execute(
+                        """
+                        SELECT review_id,image_path FROM identity_reviews
+                        WHERE decision='pending'
+                        ORDER BY julianday(captured_at) DESC,captured_at DESC,
+                                 review_id DESC
+                        LIMIT -1 OFFSET ?
+                        """,
+                        (self.max_pending_reviews,),
+                    ).fetchall()
+                ]
+                self._connection.executemany(
+                    "DELETE FROM identity_reviews WHERE review_id=?",
+                    ((stored_review_id,) for stored_review_id, _path in pruned_rows),
+                )
         except Exception:
             absolute_path.unlink(missing_ok=True)
             raise
+        for _stored_review_id, stored_image_path in pruned_rows:
+            self._delete_stored_image(stored_image_path)
+        if any(stored_review_id == review_id for stored_review_id, _path in pruned_rows):
+            return None
         self._last_review_by_track[track_id] = now
         return review_id
 
-    def _prune_pending_reviews(self, keep: int) -> None:
-        rows = self._connection.execute(
-            """
-            SELECT review_id,image_path FROM identity_reviews
-            WHERE decision='pending'
-            ORDER BY julianday(captured_at) DESC,captured_at DESC,review_id DESC
-            LIMIT -1 OFFSET ?
-            """,
-            (keep,),
-        ).fetchall()
-        if not rows:
+    def _delete_stored_image(self, relative_path: str) -> None:
+        image_path = self._stored_path(relative_path)
+        if image_path is None:
             return
-        with self._connection:
-            self._connection.executemany(
-                "DELETE FROM identity_reviews WHERE review_id=?",
-                ((str(review_id),) for review_id, _image_path in rows),
-            )
-        for _review_id, relative_path in rows:
-            image_path = self._stored_path(str(relative_path))
-            if image_path is not None:
-                try:
-                    image_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+        try:
+            image_path.unlink(missing_ok=True)
+        except OSError:
+            pass

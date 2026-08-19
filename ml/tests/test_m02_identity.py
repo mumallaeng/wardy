@@ -114,6 +114,16 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
 
     def test_failed_review_write_does_not_start_cooldown(self) -> None:
         frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        self.runtime.max_pending_reviews = 1
+        first = self.runtime.identify(
+            frame,
+            [{"track_id": 8, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:00Z",
+        )
+        first_path = self.runtime._connection.execute(
+            "SELECT image_path FROM identity_reviews WHERE review_id=?",
+            (first[8]["review_id"],),
+        ).fetchone()[0]
         with patch.object(cv2, "imwrite", return_value=False):
             with self.assertRaisesRegex(RuntimeError, "unable to save"):
                 self.runtime.identify(
@@ -122,6 +132,13 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
                     captured_at="2026-08-12T00:00:00Z",
                 )
         self.assertNotIn(9, self.runtime._last_review_by_track)
+        self.assertEqual(
+            self.runtime._connection.execute(
+                "SELECT COUNT(*) FROM identity_reviews"
+            ).fetchone()[0],
+            1,
+        )
+        self.assertTrue((self.training / first_path).is_file())
 
     def test_uncertain_face_review_keeps_predicted_name(self) -> None:
         candidate = _GalleryFeature(
@@ -212,6 +229,27 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
             2,
         )
         self.assertFalse((self.training / first_path).exists())
+
+    def test_stale_new_review_can_prune_itself(self) -> None:
+        self.runtime.max_pending_reviews = 1
+        self.runtime.review_cooldown_seconds = 0.0
+        frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        recent = self.runtime.identify(
+            frame,
+            [{"track_id": 30, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:02Z",
+        )
+        stale = self.runtime.identify(
+            frame,
+            [{"track_id": 31, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:01Z",
+        )
+        self.assertIsNone(stale[31]["review_id"])
+        rows = self.runtime._connection.execute(
+            "SELECT review_id FROM identity_reviews"
+        ).fetchall()
+        self.assertEqual(rows, [(recent[30]["review_id"],)])
+        self.assertNotIn(31, self.runtime._last_review_by_track)
 
 
 if __name__ == "__main__":
