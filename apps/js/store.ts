@@ -65,8 +65,8 @@ function isDatasetSample(value: unknown): value is DatasetSample {
 function migrateJetsonBaseUrl(value: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.port !== "8189") return value;
-    url.port = "8443";
+    if (!["http:", "https:"].includes(url.protocol) || url.port !== "8189") return value;
+    url.port = url.protocol === "https:" ? "8443" : "8080";
     const migrated = url.toString();
     return url.pathname === "/" && !url.search && !url.hash ? migrated.replace(/\/$/, "") : migrated;
   } catch {

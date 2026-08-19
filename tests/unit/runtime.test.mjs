@@ -241,6 +241,11 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
   client.stop();
   assert.deepEqual(cancelled, [scheduled[0]]);
   assert.equal(client.isConnected(), false);
+
+  client.connect("http://172.16.1.252:8080", "http://172.16.1.95:8000",
+    () => {}, () => {});
+  assert.equal(opened[1].url, "ws://172.16.1.252:8080/api/ws");
+  client.stop();
 });
 
 test("이벤트 자료 조회와 삭제는 인증된 Jetson API를 사용한다", async () => {

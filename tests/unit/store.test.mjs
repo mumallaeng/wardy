@@ -211,6 +211,16 @@ test("경로와 query가 있는 기존 WebRTC port 주소를 서비스 port로 �
   assert.equal(restored.settings.jetson.baseUrl, "https://jetson.local:8443/camera?source=saved");
 });
 
+test("기존 HTTP WebRTC port 주소를 LAN gateway port로 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.settings.jetson.baseUrl = "http://172.16.1.252:8189";
+  storage.setItem("legacy-http-jetson", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-http-jetson").getState();
+  assert.equal(restored.settings.jetson.baseUrl, "http://172.16.1.252:8080");
+});
+
 test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
   const storage = new MemoryStorage();
   storage.setItem("broken-state", JSON.stringify({
