@@ -79,6 +79,8 @@ export interface TrainingSampleResult {
 }
 
 export type IdentityReviewDecision = "pending" | "subject" | "unknown" | "excluded";
+export type DatasetReviewStatus = "pending" | "approved" | "rejected";
+export type DatasetSampleSource = "jetson_camera" | "local_file";
 
 export interface IdentityReview {
   id: string;
@@ -88,6 +90,29 @@ export interface IdentityReview {
   confidence: number | null;
   decision: IdentityReviewDecision;
   subjectId: string | null;
+}
+
+export interface DatasetSample {
+  id: string;
+  modelId: string;
+  requirementId: string;
+  label: string;
+  reviewStatus: DatasetReviewStatus;
+  captureSession: string;
+  source: DatasetSampleSource;
+  imagePath: string;
+  mediaResource: string;
+  originalFilename: string | null;
+  capturedAt: string;
+  width: number;
+  height: number;
+}
+
+export interface DatasetSampleMetadata {
+  modelId: string;
+  requirementId: string;
+  label: string;
+  captureSession: string;
 }
 
 export interface ZoneRect {
@@ -119,11 +144,13 @@ export interface WardyState {
     notifications: NotificationSettings;
     camera: { mirrored: boolean };
     jetson: { baseUrl: string };
+    dataWorkspace: { captureSession: string; datasetVersion: string };
   };
   managedItems: ManagedItem[];
   zones: Zone[];
   subjects: Subject[];
   identityReviews: IdentityReview[];
+  datasetSamples: DatasetSample[];
 }
 
 export interface Detection {
@@ -145,6 +172,17 @@ export interface EventFilters {
 export interface EventSummary extends Record<CareStatus, number> {
   total: number;
   unconfirmed: number;
+}
+
+export interface DailySummaryResult {
+  summary: string;
+  model: string;
+  fallback: boolean;
+  filtered: boolean;
+  fallback_reason: "" | "disabled" | "no_events" | "unavailable" | "invalid_output";
+  event_count: number;
+  unconfirmed_count: number;
+  duration_ms: number;
 }
 
 export interface JetsonStatusDetail {

@@ -10,7 +10,7 @@ tls_dir="${WARDY_TLS_DIR:-/etc/wardy/tls}"
 start_service=true
 
 usage() {
-  echo "usage: $0 <Jetson DNS name or IPv4 address> <UI origin> [--no-start]" >&2
+  echo "usage: $0 <Jetson DNS name or IPv4 address> <browser UI origin, usually http://localhost:8000> [--no-start]" >&2
 }
 
 if (( $# < 2 || $# > 3 )); then

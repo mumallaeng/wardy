@@ -2,8 +2,10 @@
 
 #include "api/http_response.hpp"
 #include "api/json_serialization.hpp"
+#include "api/request_security.hpp"
 #include "api/websocket.hpp"
 #include "input/camera_capture.hpp"
+#include "llm/daily_summary.hpp"
 #include "media/event_media.hpp"
 #include "rules/event_runtime.hpp"
 #include "storage/sqlite_store.hpp"
@@ -56,6 +58,8 @@ struct StreamState {
   std::shared_ptr<storage::SqliteStore> database;
   std::shared_ptr<rules::EventRuntime> events;
   std::shared_ptr<media::EventMediaRecorder> event_media;
+  std::shared_ptr<llm::DailySummaryService> daily_summary;
+  std::mutex daily_summary_mutex;
   std::filesystem::path training_data_path;
   std::mutex websocket_mutex;
   std::mutex websocket_send_mutex;
@@ -139,6 +143,35 @@ bool safe_item_id(const std::string& value) {
          });
 }
 
+bool valid_summary_date(const std::string& value) {
+  if (value.size() != 10 || value[4] != '-' || value[7] != '-') return false;
+  for (std::size_t index = 0; index < value.size(); ++index) {
+    if (index == 4 || index == 7) continue;
+    if (!std::isdigit(static_cast<unsigned char>(value[index]))) return false;
+  }
+  const int year = std::stoi(value.substr(0, 4));
+  const int month = std::stoi(value.substr(5, 2));
+  const int day = std::stoi(value.substr(8, 2));
+  if (month < 1 || month > 12) return false;
+  constexpr int days_by_month[] = {0, 31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+  int maximum_day = days_by_month[month];
+  const bool leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+  if (month == 2 && leap_year) maximum_day = 29;
+  return day >= 1 && day <= maximum_day;
+}
+
+std::string daily_summary_json(const llm::DailySummaryResult& result) {
+  return "{\"summary\":" + json_string(result.summary) +
+      ",\"model\":" + json_string(result.model) +
+      ",\"fallback\":" + (result.fallback ? "true" : "false") +
+      ",\"filtered\":" + (result.filtered ? "true" : "false") +
+      ",\"fallback_reason\":" + json_string(result.fallback_reason) +
+      ",\"event_count\":" + std::to_string(result.event_count) +
+      ",\"unconfirmed_count\":" + std::to_string(result.unconfirmed_count) +
+      ",\"duration_ms\":" + std::to_string(result.duration_ms) + "}";
+}
+
 std::string utc_now() {
   const std::time_t now = std::time(nullptr);
   std::tm value{};
@@ -149,6 +182,19 @@ std::string utc_now() {
 #endif
   std::ostringstream stream;
   stream << std::put_time(&value, "%Y-%m-%dT%H:%M:%SZ");
+  return stream.str();
+}
+
+std::string kst_date_now() {
+  const std::time_t now = std::time(nullptr) + 9 * 60 * 60;
+  std::tm value{};
+#if defined(_WIN32)
+  gmtime_s(&value, &now);
+#else
+  gmtime_r(&now, &value);
+#endif
+  std::ostringstream stream;
+  stream << std::put_time(&value, "%Y-%m-%d");
   return stream.str();
 }
 
@@ -273,10 +319,6 @@ bool origin_allowed(const std::string& request, const std::string& allowed_origi
   return !origin || *origin == allowed_origin;
 }
 
-bool authorized(const std::string& request, const std::string& access_token) {
-  return request_header(request, "x-wardy-access-token").value_or("") == access_token;
-}
-
 bool websocket_authorized(const std::string& request,
                           const std::string& access_token) {
   const std::string protocols = request_header(request, "sec-websocket-protocol")
@@ -298,13 +340,53 @@ bool websocket_authorized(const std::string& request,
 
 std::string read_request(int socket_fd) {
   std::string request;
-  char buffer[1024];
-  while (request.size() < 8192 && request.find("\r\n\r\n") == std::string::npos) {
+  char buffer[4096];
+  constexpr std::size_t maximum_header_size = 16 * 1024;
+  constexpr std::size_t maximum_body_size = 8 * 1024 * 1024;
+  while (request.size() < maximum_header_size &&
+         request.find("\r\n\r\n") == std::string::npos) {
     const auto count = ::recv(socket_fd, buffer, sizeof(buffer), 0);
     if (count <= 0) break;
     request.append(buffer, static_cast<std::size_t>(count));
   }
+  const std::size_t header_end = request.find("\r\n\r\n");
+  if (header_end == std::string::npos) return request;
+  const auto raw_length = request_header(request, "content-length");
+  if (!raw_length) return request;
+  std::size_t body_size = 0;
+  try {
+    std::size_t parsed = 0;
+    body_size = std::stoull(*raw_length, &parsed);
+    if (parsed != raw_length->size() || body_size > maximum_body_size) return request;
+  } catch (...) {
+    return request;
+  }
+  const std::size_t expected_size = header_end + 4 + body_size;
+  while (request.size() < expected_size) {
+    const std::size_t remaining = expected_size - request.size();
+    const auto count = ::recv(socket_fd, buffer, std::min(sizeof(buffer), remaining), 0);
+    if (count <= 0) break;
+    request.append(buffer, static_cast<std::size_t>(count));
+  }
   return request;
+}
+
+std::string request_body(const std::string& request) {
+  constexpr std::size_t maximum_body_size = 8 * 1024 * 1024;
+  const std::size_t header_end = request.find("\r\n\r\n");
+  if (header_end == std::string::npos) throw std::invalid_argument("missing request headers");
+  const auto raw_length = request_header(request, "content-length");
+  if (!raw_length) throw std::invalid_argument("missing content length");
+  std::size_t parsed = 0;
+  const std::size_t body_size = std::stoull(*raw_length, &parsed);
+  if (parsed != raw_length->size() || body_size == 0 || body_size > maximum_body_size) {
+    throw std::invalid_argument("invalid image body size");
+  }
+  const std::size_t body_start = header_end + 4;
+  if (request.size() < body_start + body_size) {
+    throw std::invalid_argument("incomplete image body");
+  }
+  return request.substr(body_start, body_size);
 }
 
 std::pair<std::string, std::string> request_method_path(const std::string& request) {
@@ -343,6 +425,18 @@ std::optional<std::string> event_media_path(const std::string& path) {
   return action->first;
 }
 
+std::optional<std::string> dataset_sample_media_path(const std::string& path) {
+  constexpr const char* prefix = "/api/data-samples/";
+  if (path.rfind(prefix, 0) != 0) return std::nullopt;
+  const std::string remainder = path.substr(std::strlen(prefix));
+  const std::size_t separator = remainder.find('/');
+  if (separator == std::string::npos || remainder.substr(separator + 1) != "media") {
+    return std::nullopt;
+  }
+  const std::string sample_id = remainder.substr(0, separator);
+  return safe_item_id(sample_id) ? std::optional<std::string>{sample_id} : std::nullopt;
+}
+
 std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& state,
                                         const storage::EventRecord& event) {
   if (!event.media_path) throw std::invalid_argument("event media is not ready");
@@ -351,6 +445,33 @@ std::filesystem::path stored_media_file(const std::shared_ptr<StreamState>& stat
     throw std::runtime_error("invalid event media path in SQLite");
   }
   return state->event_media->root_path() / relative;
+}
+
+std::filesystem::path stored_dataset_file(
+    const std::shared_ptr<StreamState>& state,
+    const storage::DatasetSampleRecord& sample) {
+  const std::filesystem::path relative(sample.image_path);
+  if (relative.empty() || relative.is_absolute()) {
+    throw std::runtime_error("invalid dataset image path in SQLite");
+  }
+  const std::filesystem::path root =
+      std::filesystem::weakly_canonical(state->training_data_path);
+  const std::filesystem::path candidate =
+      std::filesystem::weakly_canonical(root / relative);
+  const auto [root_end, candidate_end] = std::mismatch(
+      root.begin(), root.end(), candidate.begin(), candidate.end());
+  if (root_end != root.end()) {
+    throw std::runtime_error("dataset image path escapes storage root");
+  }
+  return candidate;
+}
+
+std::string dataset_image_content_type(const std::filesystem::path& path) {
+  const std::string extension = lowercase(path.extension().string());
+  if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
+  if (extension == ".png") return "image/png";
+  if (extension == ".webp") return "image/webp";
+  throw std::runtime_error("unsupported stored dataset image type");
 }
 
 std::optional<std::string> decoded_optional_header(const std::string& request,
@@ -606,6 +727,132 @@ std::string capture_subject_reference(const std::string& request,
 
 }
 
+struct DatasetSampleMetadata {
+  std::string model_id;
+  std::string requirement_id;
+  std::string label;
+  std::string capture_session;
+};
+
+DatasetSampleMetadata dataset_sample_metadata(const std::string& request) {
+  DatasetSampleMetadata metadata{
+      request_header(request, "x-wardy-model-id").value_or(""),
+      request_header(request, "x-wardy-requirement-id").value_or(""),
+      percent_decode(request_header(request, "x-wardy-label").value_or("")),
+      percent_decode(request_header(request, "x-wardy-capture-session").value_or("")),
+  };
+  if (!safe_item_id(metadata.model_id) || !safe_item_id(metadata.requirement_id) ||
+      metadata.label.empty() || metadata.label.size() > 120 ||
+      metadata.capture_session.empty() || metadata.capture_session.size() > 120) {
+    throw std::invalid_argument("invalid dataset sample metadata");
+  }
+  return metadata;
+}
+
+std::string store_dataset_sample(
+    const DatasetSampleMetadata& metadata, const std::string& source,
+    const std::optional<std::string>& original_filename, const std::string& extension,
+    const std::vector<unsigned char>& bytes, int width, int height,
+    const std::shared_ptr<StreamState>& state) {
+  const std::string captured_at = utc_now();
+  const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+  const std::string sample_id = "dataset-sample-" + std::to_string(timestamp) + "-" +
+                                std::to_string(++state->sample_counter);
+  const std::filesystem::path relative_path = std::filesystem::path("datasets") /
+      metadata.model_id / metadata.requirement_id / (sample_id + extension);
+  const std::filesystem::path absolute_path = state->training_data_path / relative_path;
+  std::filesystem::create_directories(absolute_path.parent_path());
+  {
+    std::ofstream output(absolute_path, std::ios::binary);
+    if (!output) throw std::runtime_error("failed to create dataset sample file");
+    output.write(reinterpret_cast<const char*>(bytes.data()),
+                 static_cast<std::streamsize>(bytes.size()));
+    if (!output) throw std::runtime_error("failed to write dataset sample file");
+  }
+  try {
+    state->database->add_dataset_sample({
+        sample_id, metadata.model_id, metadata.requirement_id, metadata.label,
+        "pending", metadata.capture_session, source, relative_path.generic_string(),
+        original_filename, captured_at, width, height,
+    });
+    return dataset_samples_json(state->database->list_dataset_samples());
+  } catch (...) {
+    std::error_code remove_error;
+    std::filesystem::remove(absolute_path, remove_error);
+    throw;
+  }
+}
+
+std::string capture_dataset_sample(const std::string& request,
+                                   const std::shared_ptr<StreamState>& state) {
+  const auto metadata = dataset_sample_metadata(request);
+  if (!state->camera_connected) throw std::runtime_error("Jetson camera is unavailable");
+  std::vector<unsigned char> jpeg;
+  std::size_t previous_sequence = 0;
+  {
+    std::lock_guard lock(state->mutex);
+    previous_sequence = state->sequence;
+  }
+  ++state->sample_capture_requests;
+  {
+    std::unique_lock lock(state->mutex);
+    const bool captured = state->frame_ready.wait_for(lock, std::chrono::seconds(3), [&] {
+      return !state->running || state->sequence != previous_sequence ||
+             !state->camera_error.empty();
+    });
+    if (!state->camera_error.empty()) {
+      throw std::runtime_error("Jetson camera fault: " + state->camera_error);
+    }
+    if (!captured || state->sequence == previous_sequence || state->jpeg.empty()) {
+      throw std::runtime_error("camera dataset sample capture timed out");
+    }
+    jpeg = state->jpeg;
+  }
+  return store_dataset_sample(metadata, "jetson_camera", std::nullopt, ".jpg", jpeg,
+                              state->frame_width, state->frame_height, state);
+}
+
+std::string upload_dataset_sample(const std::string& request,
+                                  const std::shared_ptr<StreamState>& state) {
+  const auto metadata = dataset_sample_metadata(request);
+  const std::string content_type = lowercase(
+      request_header(request, "content-type").value_or(""));
+  const std::string extension = content_type == "image/jpeg" ? ".jpg" :
+      content_type == "image/png" ? ".png" :
+      content_type == "image/webp" ? ".webp" : "";
+  if (extension.empty()) throw std::invalid_argument("unsupported dataset image type");
+  const std::string body = request_body(request);
+  const std::vector<unsigned char> bytes(body.begin(), body.end());
+  const cv::Mat decoded = cv::imdecode(bytes, cv::IMREAD_COLOR);
+  if (decoded.empty()) throw std::invalid_argument("invalid dataset image file");
+  const std::string filename = percent_decode(
+      request_header(request, "x-wardy-original-filename").value_or(""));
+  if (filename.empty() || filename.size() > 255) {
+    throw std::invalid_argument("invalid original filename");
+  }
+  return store_dataset_sample(metadata, "local_file", filename, extension, bytes,
+                              decoded.cols, decoded.rows, state);
+}
+
+std::string update_dataset_sample(const std::string& request,
+                                  const std::string& sample_id,
+                                  const std::shared_ptr<StreamState>& state) {
+  const std::string label = percent_decode(
+      request_header(request, "x-wardy-label").value_or(""));
+  const std::string review_status =
+      request_header(request, "x-wardy-review-status").value_or("");
+  if (label.empty() || label.size() > 120 ||
+      (review_status != "pending" && review_status != "approved" &&
+       review_status != "rejected")) {
+    throw std::invalid_argument("invalid dataset sample review");
+  }
+  if (!state->database->update_dataset_sample(sample_id, label, review_status)) {
+    throw std::out_of_range("dataset sample not found");
+  }
+  return dataset_samples_json(state->database->list_dataset_samples());
+}
+
 void serve_stream(int socket_fd, const std::shared_ptr<StreamState>& state,
                   const std::string& allowed_origin) {
   const StreamClientRegistration registration(state);
@@ -720,12 +967,13 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   const std::string request = read_request(socket_fd);
   const auto [method, path] = request_method_path(request);
   const auto media_event_id = event_media_path(path);
+  const auto dataset_sample_media_id = dataset_sample_media_path(path);
   const auto event_action = event_action_path(path);
   const auto subject_id_path = resource_id_path(path, "/api/subjects/");
   const auto managed_item_id_path = resource_id_path(path, "/api/managed-items/");
+  const auto dataset_sample_id_path = resource_id_path(path, "/api/data-samples/");
   try {
-  const bool protected_api = path.rfind("/api/", 0) == 0 &&
-      path != "/api/health" && path != "/api/ws";
+  const bool protected_api = protected_api_path(path);
   if (method == "OPTIONS") {
     if (origin_allowed(request, config.allowed_origin)) {
       send_text(socket_fd, options_response(config.allowed_origin));
@@ -735,7 +983,7 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
     }
   } else if (protected_api &&
              (!origin_allowed(request, config.allowed_origin) ||
-              !authorized(request, config.access_token))) {
+              !access_token_authorized(request, config.access_token))) {
     send_text(socket_fd, json_response(403, "Forbidden", "{\"error\":\"Access denied\"}",
                                        config.allowed_origin));
   } else if (method == "GET" && path == "/api/health") {
@@ -747,6 +995,25 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
   } else if (method == "GET" && path == "/api/events") {
     send_text(socket_fd, json_response(200, "OK",
         events_json(state->database->list_events()), config.allowed_origin));
+  } else if (method == "POST" && path == "/api/llm/daily-summary") {
+    const std::string date = request_header(request, "X-Wardy-Summary-Date")
+        .value_or(kst_date_now());
+    if (!valid_summary_date(date)) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"Summary date must use YYYY-MM-DD\"}", config.allowed_origin));
+    } else {
+      const auto daily_events = state->database->list_events_for_kst_date(date);
+      std::unique_lock lock(state->daily_summary_mutex, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        send_text(socket_fd, json_response(429, "Too Many Requests",
+            "{\"error\":\"Daily summary generation is already running\"}",
+            config.allowed_origin));
+      } else {
+        const auto summary = state->daily_summary->summarize(date, daily_events);
+        send_text(socket_fd, json_response(200, "OK", daily_summary_json(summary),
+                                           config.allowed_origin));
+      }
+    }
   } else if (method == "GET" && path == "/api/state") {
     const auto current = state->database->load_system_state();
     if (!current) {
@@ -880,6 +1147,72 @@ void handle_client(int socket_fd, const std::shared_ptr<StreamState>& state,
                                          "{\"error\":\"" + json_escape(error.what()) + "\"}",
                                          config.allowed_origin));
     }
+  } else if (method == "GET" && path == "/api/data-samples") {
+    send_text(socket_fd, json_response(200, "OK",
+        dataset_samples_json(state->database->list_dataset_samples()),
+        config.allowed_origin));
+  } else if (method == "GET" && dataset_sample_media_id) {
+    const auto sample = state->database->get_dataset_sample(*dataset_sample_media_id);
+    if (!sample) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"Dataset sample not found\"}", config.allowed_origin));
+    } else {
+      const std::filesystem::path image_file = stored_dataset_file(state, *sample);
+      std::ifstream input(image_file, std::ios::binary);
+      if (!input) {
+        send_text(socket_fd, json_response(404, "Not Found",
+            "{\"error\":\"Dataset sample image not found\"}", config.allowed_origin));
+      } else {
+        const std::vector<unsigned char> image{
+            std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        send_binary_response(socket_fd, image, dataset_image_content_type(image_file),
+                             config.allowed_origin);
+      }
+    }
+  } else if (method == "POST" && path == "/api/data-samples/camera") {
+    try {
+      send_text(socket_fd, json_response(201, "Created",
+          capture_dataset_sample(request, state), config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    } catch (const std::exception& error) {
+      send_text(socket_fd, json_response(503, "Service Unavailable",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "POST" && path == "/api/data-samples/upload") {
+    try {
+      send_text(socket_fd, json_response(201, "Created",
+          upload_dataset_sample(request, state), config.allowed_origin));
+    } catch (const std::invalid_argument& error) {
+      send_text(socket_fd, json_response(400, "Bad Request",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "POST" && dataset_sample_id_path) {
+    try {
+      send_text(socket_fd, json_response(200, "OK",
+          update_dataset_sample(request, *dataset_sample_id_path, state),
+          config.allowed_origin));
+    } catch (const std::out_of_range& error) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"" + json_escape(error.what()) + "\"}", config.allowed_origin));
+    }
+  } else if (method == "DELETE" && dataset_sample_id_path) {
+    const auto sample = state->database->get_dataset_sample(*dataset_sample_id_path);
+    if (!sample) {
+      send_text(socket_fd, json_response(404, "Not Found",
+          "{\"error\":\"Dataset sample not found\"}", config.allowed_origin));
+    } else {
+      std::error_code error;
+      std::filesystem::remove(stored_dataset_file(state, *sample), error);
+      if (error) throw std::runtime_error("failed to delete dataset sample file");
+      if (!state->database->delete_dataset_sample(*dataset_sample_id_path)) {
+        throw std::runtime_error("failed to delete dataset sample record");
+      }
+      send_text(socket_fd, json_response(200, "OK",
+          dataset_samples_json(state->database->list_dataset_samples()),
+          config.allowed_origin));
+    }
   } else {
     send_text(socket_fd, json_response(404, "Not Found", "{\"error\":\"Not found\"}",
                                        config.allowed_origin));
@@ -1012,6 +1345,11 @@ void MjpegServiceConfig::validate() const {
     throw std::invalid_argument("allowed UI origin must be an HTTP(S) origin");
   }
   if (access_token.empty()) throw std::invalid_argument("WARDY_ACCESS_TOKEN must not be empty");
+  llm::DailySummaryConfig llm_config;
+  llm_config.enabled = llm_enabled;
+  llm_config.model = llm_model;
+  llm_config.timeout = std::chrono::seconds{llm_timeout_seconds};
+  llm_config.validate();
 }
 
 MjpegService::MjpegService(MjpegServiceConfig config) : config_(std::move(config)) {
@@ -1022,6 +1360,11 @@ int MjpegService::run(const std::atomic_bool& stop_requested) {
   const auto state = std::make_shared<StreamState>();
   state->database = std::make_shared<storage::SqliteStore>(config_.database_path);
   state->database->initialize();
+  llm::DailySummaryConfig llm_config;
+  llm_config.enabled = config_.llm_enabled;
+  llm_config.model = config_.llm_model;
+  llm_config.timeout = std::chrono::seconds{config_.llm_timeout_seconds};
+  state->daily_summary = std::make_shared<llm::DailySummaryService>(llm_config);
   state->training_data_path = config_.training_data_path;
   const std::weak_ptr<StreamState> weak_state = state;
   state->event_media = std::make_shared<media::EventMediaRecorder>(

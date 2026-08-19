@@ -43,4 +43,5 @@ fi
 
 "${script_dir}/install_caddy.sh"
 "${script_dir}/install_mediamtx.sh"
+"${script_dir}/install_ollama.sh"
 "${script_dir}/check_jetson_dependencies.sh"

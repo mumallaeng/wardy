@@ -1,6 +1,7 @@
 #include "storage/sqlite_store.hpp"
 
 #undef NDEBUG
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <sqlite3.h>
@@ -71,7 +72,7 @@ int main() {
   wardy::storage::SqliteStore store(":memory:");
   store.initialize();
   assert(store.journal_mode() == "memory");
-  assert(store.schema_version() == "3");
+  assert(store.schema_version() == "4");
 
   wardy::storage::EventRecord event;
   event.event_id = "EVT-TEST-001";
@@ -100,6 +101,33 @@ int main() {
   assert(stored_event.has_value());
   assert(stored_event->reason == event.reason);
   assert(!store.get_event("missing").has_value());
+
+  wardy::storage::SqliteStore boundary_store(":memory:");
+  boundary_store.initialize();
+  auto boundary_event = event;
+  boundary_event.event_id = event.event_id;
+  boundary_store.upsert_event(boundary_event);
+  boundary_event.event_id = "EVT-KST-START";
+  boundary_event.occurred_at = "2026-08-05T15:00:00Z";
+  boundary_event.first_seen_at = boundary_event.occurred_at;
+  boundary_event.last_seen_at = boundary_event.occurred_at;
+  boundary_store.upsert_event(boundary_event);
+  boundary_event.event_id = "EVT-KST-END";
+  boundary_event.occurred_at = "2026-08-06T15:00:00Z";
+  boundary_event.first_seen_at = boundary_event.occurred_at;
+  boundary_event.last_seen_at = boundary_event.occurred_at;
+  boundary_store.upsert_event(boundary_event);
+  const auto kst_events = boundary_store.list_events_for_kst_date("2026-08-06");
+  assert(kst_events.size() == 2);
+  assert(std::any_of(kst_events.begin(), kst_events.end(), [&](const auto& candidate) {
+    return candidate.event_id == event.event_id;
+  }));
+  assert(std::any_of(kst_events.begin(), kst_events.end(), [](const auto& candidate) {
+    return candidate.event_id == "EVT-KST-START";
+  }));
+  assert(std::none_of(kst_events.begin(), kst_events.end(), [](const auto& candidate) {
+    return candidate.event_id == "EVT-KST-END";
+  }));
 
   assert(store.update_event_status(event.event_id, "confirmed",
                                    "2026-08-06T12:01:00+09:00"));
@@ -178,6 +206,57 @@ int main() {
   assert(subjects.size() == 1);
   assert(subjects[0].reference_sample_count == 1);
 
+  store.add_dataset_sample({
+      "dataset-sample-001",
+      "M-01",
+      "DS-001",
+      "person",
+      "pending",
+      "session-0811-am",
+      "jetson_camera",
+      "datasets/M-01/session-0811-am/dataset-sample-001.jpg",
+      std::nullopt,
+      "2026-08-11T00:00:00Z",
+      640,
+      480,
+  });
+  auto dataset_samples = store.list_dataset_samples();
+  assert(dataset_samples.size() == 1);
+  assert(dataset_samples[0].model_id == "M-01");
+  assert(dataset_samples[0].review_status == "pending");
+  const auto stored_dataset_sample = store.get_dataset_sample("dataset-sample-001");
+  assert(stored_dataset_sample.has_value());
+  assert(stored_dataset_sample->image_path ==
+         "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
+  assert(!store.get_dataset_sample("missing").has_value());
+  assert(store.update_dataset_sample("dataset-sample-001", "care-person", "approved"));
+  bool rejected_blank_approved_label = false;
+  try {
+    store.update_dataset_sample("dataset-sample-001", "   ", "approved");
+  } catch (const std::invalid_argument&) {
+    rejected_blank_approved_label = true;
+  }
+  assert(rejected_blank_approved_label);
+  dataset_samples = store.list_dataset_samples();
+  assert(dataset_samples[0].label == "care-person");
+  assert(dataset_samples[0].review_status == "approved");
+  bool rejected_blank_approved_insert = false;
+  try {
+    store.add_dataset_sample({
+        "dataset-sample-blank", "M-01", "DS-001", " ", "approved",
+        "session-0811-am", "jetson_camera",
+        "datasets/M-01/session-0811-am/dataset-sample-blank.jpg", std::nullopt,
+        "2026-08-11T00:01:00Z", 640, 480,
+    });
+  } catch (const std::invalid_argument&) {
+    rejected_blank_approved_insert = true;
+  }
+  assert(rejected_blank_approved_insert);
+  assert(store.delete_dataset_sample("dataset-sample-001") ==
+         "datasets/M-01/session-0811-am/dataset-sample-001.jpg");
+  assert(store.list_dataset_samples().empty());
+  assert(!store.delete_dataset_sample("missing").has_value());
+
   const auto removed_media = store.clear_event_media(event.event_id);
   assert(removed_media == "events/EVT-TEST-001.mp4");
   assert(store.get_event(event.event_id)->media_type == "none");
@@ -199,7 +278,7 @@ int main() {
     {
       wardy::storage::SqliteStore migrated(path.string());
       migrated.initialize();
-      assert(migrated.schema_version() == "3");
+      assert(migrated.schema_version() == "4");
       const auto legacy_events = migrated.list_events();
       assert(legacy_events.size() == 1);
       assert(legacy_events[0].event_id == "EVT-LEGACY");
@@ -246,7 +325,7 @@ int main() {
   const auto retry_path =
       std::filesystem::temp_directory_path() / "wardy-schema-retry.sqlite";
   std::filesystem::remove(retry_path);
-  create_version_database(retry_path, 4);
+  create_version_database(retry_path, 5);
   {
     wardy::storage::SqliteStore retry_store(retry_path.string());
     bool rejected = false;
@@ -265,7 +344,7 @@ int main() {
             nullptr, nullptr, nullptr) == SQLITE_OK);
     assert(sqlite3_close(database) == SQLITE_OK);
     retry_store.initialize();
-    assert(retry_store.schema_version() == "3");
+    assert(retry_store.schema_version() == "4");
   }
   std::filesystem::remove(retry_path);
   return 0;

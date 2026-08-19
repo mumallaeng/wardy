@@ -1,15 +1,20 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { JetsonCredentialStore } from "./credentials.ts";
-import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
+import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
-import { identityFeedbackManifest, renderIdentityReviews } from "./data-workspace.ts";
+import {
+  datasetManifest,
+  identityFeedbackManifest,
+  renderDatasetSamples,
+  renderIdentityReviews,
+} from "./data-workspace.ts";
 import { OverlayController } from "./overlay.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
+import type { CameraStatus, CareStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -57,6 +62,18 @@ let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
+let datasetPreviewUrl: string | null = null;
+let datasetPreviewGeneration = 0;
+
+type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
+
+interface SystemGuidance {
+  tone: SystemGuidanceTone;
+  label: string;
+  title: string;
+  message: string;
+  actionLabel?: string;
+}
 
 function runtimeConnection(): { baseUrl: string; accessToken: string; origin: string } {
   return {
@@ -75,9 +92,113 @@ function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent
 function renderSystemState(): void {
   const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
   const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
-  $("#detection-status").textContent = runtimeState ? detectionLabels[runtimeState.detection_state] : "AI 미연결";
+  const detectionState = runtimeState?.detection_state ?? "disconnected";
+  $("#detection-status").textContent = detectionLabels[detectionState];
+  $("#detection-dot").className = `status-dot${["ready", "running"].includes(detectionState) ? " is-ok" : detectionState === "fault" ? " is-fault" : " is-muted"}`;
   $("#event-runtime-status").textContent = runtimeState ? eventLabels[runtimeState.event_state] : "연결 대기";
   $("#event-runtime-dot").className = `status-dot${runtimeState?.event_state === "ready" ? " is-ok" : runtimeState?.event_state === "fault" ? " is-fault" : ""}`;
+  renderSystemGuidance();
+}
+
+function currentSystemGuidance(): SystemGuidance {
+  const hasBaseUrl = Boolean(store.getState().settings.jetson.baseUrl);
+  const credentials = credentialStore.get();
+  if (!hasBaseUrl) {
+    return {
+      tone: "setup", label: "연결 준비", title: "Jetson 연결을 설정해 주세요",
+      message: "서비스 주소와 토큰을 최초 1회 저장하면 이후 접속부터 자동으로 다시 연결합니다.",
+      actionLabel: "연결 설정 열기",
+    };
+  }
+  if (jetsonStatus === "connecting" || cameraStatus === "connecting") {
+    return {
+      tone: "checking", label: "자동 연결 중", title: "Jetson 상태를 확인하고 있습니다",
+      message: "연결이 끊겨도 Wardy가 자동으로 다시 시도합니다. 잠시 후에도 계속되면 Jetson 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (jetsonStatus === "fault") {
+    return {
+      tone: "fault", label: "서비스 이상", title: "Jetson 서비스에 연결할 수 없습니다",
+      message: "Jetson 전원과 Wardy 서비스, 같은 network 연결 및 TLS 인증서 신뢰 상태를 확인해 주세요. 연결 전에는 안전 확인이 중단됩니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (!credentials.accessToken && jetsonStatus === "connected") {
+    const hasViewerToken = Boolean(credentials.viewerToken.trim());
+    return {
+      tone: "limited", label: "기능 제한", title: "이벤트·상태 동기화 토큰이 없습니다",
+      message: hasViewerToken
+        ? "카메라 영상만 연결할 수 있으며 이벤트와 돌봄 상태는 갱신되지 않습니다. 데이터 API 토큰을 저장해 주세요."
+        : "카메라 미리보기와 이벤트·상태 동기화를 사용할 수 없습니다. 데이터 API 토큰과 카메라 읽기 토큰을 저장해 주세요.",
+      actionLabel: "토큰 입력하기",
+    };
+  }
+  if (!credentials.viewerToken.trim() && jetsonStatus === "connected") {
+    return {
+      tone: "limited", label: "기능 제한", title: "카메라 읽기 토큰이 없습니다",
+      message: "이벤트와 돌봄 상태는 동기화할 수 있지만 카메라 미리보기는 시작할 수 없습니다. 카메라 읽기 토큰을 저장해 주세요.",
+      actionLabel: "토큰 입력하기",
+    };
+  }
+  if (credentials.accessToken && jetsonStatus === "connected" && !runtimeState) {
+    return {
+      tone: "limited", label: "동기화 확인 필요", title: "이벤트·상태 정보를 아직 받지 못했습니다",
+      message: "Jetson 서비스는 연결됐지만 runtime 상태가 확인되지 않았습니다. 자동 재연결 뒤에도 계속되면 데이터 API 토큰과 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.event_state === "fault") {
+    return {
+      tone: "fault", label: "이벤트 처리 이상", title: "이벤트 기록 처리가 중단되었습니다",
+      message: "현재 판단 결과가 저장되거나 갱신되지 않을 수 있습니다. Jetson 서비스를 다시 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.detection_state === "fault") {
+    return {
+      tone: "fault", label: "안전 감지 이상", title: "안전 감지 기능이 중단되었습니다",
+      message: "카메라 영상이 보여도 의심 상황을 판단하지 못합니다. 감지 기능을 복구한 뒤 상태가 '실행 중'인지 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (cameraStatus === "fault") {
+    return {
+      tone: "fault", label: "카메라 이상", title: "Jetson 카메라 연결이 끊겼습니다",
+      message: "Wardy가 5초 간격으로 자동 재연결합니다. 계속 실패하면 camera 연결과 Jetson 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.detection_state === "disconnected") {
+    return {
+      tone: "limited", label: "안전 감지 미연결", title: "현재는 카메라와 이벤트 UI만 사용할 수 있습니다",
+      message: "안전 감지가 연결되기 전에는 의심 상황을 판단하지 않습니다. 연결 후에도 감지 결과에는 오탐·미탐 가능성이 있습니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (cameraStatus === "idle") {
+    return {
+      tone: "limited", label: "카메라 중지", title: "카메라 미리보기가 중지되어 있습니다",
+      message: "카메라를 다시 연결해야 현재 영상과 안전 확인 상태를 볼 수 있습니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  return {
+    tone: "ok", label: "시스템 정상", title: "카메라와 안전 확인 기능이 작동 중입니다",
+    message: "감지 결과는 확인을 돕는 정보이며 오탐·미탐 가능성이 있습니다. 긴급 상황은 사용자가 직접 확인해 주세요.",
+  };
+}
+
+function renderSystemGuidance(): void {
+  const guidance = currentSystemGuidance();
+  const container = $("#system-guidance");
+  container.className = `system-guidance is-${guidance.tone}`;
+  $("#system-guidance-label").textContent = guidance.label;
+  $("#system-guidance-title").textContent = guidance.title;
+  $("#system-guidance-message").textContent = guidance.message;
+  const action = $<HTMLButtonElement>("#system-guidance-action");
+  action.hidden = !guidance.actionLabel;
+  action.textContent = guidance.actionLabel ?? "";
 }
 
 /**
@@ -126,6 +247,7 @@ function setCameraStatus(status: CameraStatus): void {
   if (status === "fault" && credentialStore.get().viewerToken && reconnectTimer === null) {
     reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true).catch(() => undefined); }, 5000);
   }
+  renderSystemGuidance();
 }
 
 const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
@@ -148,6 +270,7 @@ function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}):
   $("#jetson-result").textContent = connected
     ? `${detail.service ?? "wardy-edge"}${detail.version ? ` ${detail.version}` : ""} · ${detail.endpoint ?? ""}`
     : detail.message ?? (status === "connecting" ? `${detail.endpoint ?? "Jetson endpoint"} 확인 중` : "연결 확인을 실행해 주세요.");
+  renderSystemGuidance();
 }
 
 const jetson = new JetsonConnection({ onStatus: setJetsonStatus });
@@ -166,13 +289,17 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
   try {
     await jetson.check(configured.baseUrl, window.location.origin);
     if (credentials.accessToken) {
-      const [snapshot, collections] = await Promise.all([
+      const [snapshot, collections, datasetSamples] = await Promise.all([
         runtime.loadSnapshot(configured.baseUrl, credentials.accessToken, window.location.origin),
         runtime.loadCollections(configured.baseUrl, credentials.accessToken, window.location.origin),
+        trainingSamples.listDatasetSamples(
+          configured.baseUrl, credentials.accessToken, window.location.origin,
+        ),
       ]);
       applyRuntimeSnapshot(snapshot);
       store.replaceSubjects(collections.subjects);
       store.replaceManagedItems(collections.managedItems);
+      store.replaceDatasetSamples(datasetSamples);
       runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
     } else {
       runtime.stop();
@@ -333,6 +460,117 @@ async function captureSubjectReference(subjectId: string): Promise<void> {
   }
 }
 
+function datasetSampleMetadata(): DatasetSampleMetadata {
+  const metadata = {
+    modelId: $<HTMLSelectElement>("#dataset-model").value,
+    requirementId: $<HTMLSelectElement>("#dataset-requirement").value,
+    label: $<HTMLInputElement>("#dataset-label").value.trim(),
+    captureSession: $<HTMLInputElement>("#dataset-session").value.trim(),
+  };
+  if (!metadata.label) throw new Error("sample label을 입력해 주세요.");
+  if (!metadata.captureSession) throw new Error("촬영 session을 입력해 주세요.");
+  return metadata;
+}
+
+async function captureDatasetSample(): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const samples = await trainingSamples.captureDatasetSample(
+      datasetSampleMetadata(), connection.baseUrl, connection.accessToken, connection.origin,
+    );
+    store.replaceDatasetSamples(samples);
+    toast("Jetson camera 원본 sample을 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function uploadDatasetSamples(files: readonly File[]): Promise<void> {
+  if (!files.length) return;
+  try {
+    const connection = runtimeConnection();
+    const metadata = datasetSampleMetadata();
+    let samples = store.getState().datasetSamples;
+    for (const file of files) {
+      samples = await trainingSamples.uploadDatasetSample(
+        file, metadata, connection.baseUrl, connection.accessToken, connection.origin,
+      );
+      store.replaceDatasetSamples(samples);
+    }
+    toast(`로컬 이미지 ${files.length}개를 Jetson에 저장했습니다.`);
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function reviewDatasetSample(
+  sampleId: string, label: string, reviewStatus: DatasetReviewStatus,
+): Promise<void> {
+  if (!label) { toast("검수 전에 label을 입력해 주세요."); return; }
+  try {
+    const connection = runtimeConnection();
+    const samples = await trainingSamples.updateDatasetSample(
+      sampleId, label, reviewStatus,
+      connection.baseUrl, connection.accessToken, connection.origin,
+    );
+    store.replaceDatasetSamples(samples);
+    toast("sample 검수 상태를 저장했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+function closeDatasetPreview(): void {
+  datasetPreviewGeneration += 1;
+  const dialog = $<HTMLDialogElement>("#dataset-preview-dialog");
+  if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
+  datasetPreviewUrl = null;
+  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
+  if (dialog.open) dialog.close();
+}
+
+async function previewDatasetSample(sampleId: string): Promise<void> {
+  const generation = ++datasetPreviewGeneration;
+  const state = store.getState();
+  const sample = state.datasetSamples.find((candidate) => candidate.id === sampleId);
+  if (!sample) { toast("sample 정보를 찾을 수 없습니다."); return; }
+  try {
+    const connection = runtimeConnection();
+    const media = await trainingSamples.loadDatasetSampleMedia(
+      sample, connection.baseUrl, connection.accessToken, connection.origin,
+    );
+    if (generation !== datasetPreviewGeneration) return;
+    if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
+    datasetPreviewUrl = URL.createObjectURL(media);
+    $<HTMLImageElement>("#dataset-preview-image").src = datasetPreviewUrl;
+    $("#dataset-preview-title").textContent = `${sample.modelId} · ${sample.label}`;
+    $("#dataset-preview-meta").textContent =
+      `${sample.requirementId} · ${sample.captureSession} · ${sample.width}×${sample.height}`;
+    const dialog = $<HTMLDialogElement>("#dataset-preview-dialog");
+    if (!dialog.open) dialog.showModal();
+  } catch (error) {
+    if (generation === datasetPreviewGeneration) toast(errorMessage(error));
+  }
+}
+
+async function deleteDatasetSample(sampleId: string): Promise<void> {
+  if (!window.confirm("Jetson에 저장된 원본 sample과 metadata를 삭제할까요?")) return;
+  try {
+    const connection = runtimeConnection();
+    const samples = await trainingSamples.deleteDatasetSample(
+      sampleId, connection.baseUrl, connection.accessToken, connection.origin,
+    );
+    store.replaceDatasetSamples(samples);
+    toast("원본 sample을 Jetson에서 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+function saveDataWorkspaceSettings(): void {
+  try {
+    store.setDataWorkspace(
+      $<HTMLInputElement>("#dataset-session").value,
+      $<HTMLInputElement>("#dataset-version").value,
+    );
+  } catch (error) {
+    render();
+    toast(errorMessage(error));
+  }
+}
+
 async function deleteSubject(subjectId: string): Promise<void> {
   if (!window.confirm("등록 인물과 Jetson에 저장된 기준 사진을 삭제할까요?")) return;
   try {
@@ -369,6 +607,36 @@ async function runEventAction(eventId: string,
     }
     toast(`${eventId} 처리 상태를 저장했습니다.`);
   } catch (error) { toast(errorMessage(error)); }
+}
+
+async function generateDailySummary(): Promise<void> {
+  const button = $<HTMLButtonElement>("#generate-ai-summary");
+  const output = $("#ai-summary-output");
+  const badge = $("#ai-summary-badge");
+  button.disabled = true;
+  output.setAttribute("aria-busy", "true");
+  output.textContent = "Jetson에서 오늘의 이벤트를 요약하고 있습니다…";
+  badge.textContent = "생성 중";
+  badge.className = "badge";
+  try {
+    const connection = runtimeConnection();
+    const result = await runtime.loadDailySummary(
+      connection.baseUrl, connection.accessToken, connection.origin,
+      kstDateKey(),
+    );
+    output.textContent = result.summary;
+    badge.textContent = result.fallback ? "규칙 요약" :
+      `${result.model.replace(":", " ")}${result.filtered ? " · 출력 필터" : ""}`;
+    badge.className = `badge${result.fallback ? "" : " is-connected"}`;
+  } catch (error) {
+    output.textContent = "요약을 만들지 못했습니다. Jetson 연결과 로컬 LLM 상태를 확인해 주세요.";
+    badge.textContent = "실패";
+    badge.className = "badge is-fault";
+    toast(errorMessage(error));
+  } finally {
+    button.disabled = false;
+    output.removeAttribute("aria-busy");
+  }
 }
 
 async function viewEventMedia(eventId: string): Promise<void> {
@@ -443,6 +711,20 @@ function render(state: WardyState = store.getState()): void {
   );
   const pendingReviews = state.identityReviews.filter((review) => review.decision === "pending").length;
   $("#review-count").textContent = `${pendingReviews}건 대기`;
+  renderDatasetSamples(
+    $<HTMLTableSectionElement>("#dataset-sample-list"), state.datasetSamples,
+    (sampleId, label, status) => { void reviewDatasetSample(sampleId, label, status); },
+    (sampleId) => { void previewDatasetSample(sampleId); },
+    (sampleId) => { void deleteDatasetSample(sampleId); },
+  );
+  $("#dataset-sample-empty").toggleAttribute("hidden", state.datasetSamples.length > 0);
+  $("#dataset-sample-count").textContent = `${state.datasetSamples.length}건`;
+  const approvedSamples = state.datasetSamples.filter((sample) => sample.reviewStatus === "approved").length;
+  $("#dataset-approved-count").textContent = `승인 ${approvedSamples}건`;
+  const sessionInput = $<HTMLInputElement>("#dataset-session");
+  const versionInput = $<HTMLInputElement>("#dataset-version");
+  if (document.activeElement !== sessionInput) sessionInput.value = state.settings.dataWorkspace.captureSession;
+  if (document.activeElement !== versionInput) versionInput.value = state.settings.dataWorkspace.datasetVersion;
   renderManagedItems(
     $("#item-list"), state.managedItems,
     (id) => { void deleteManagedItem(id); }, captureManagedItemSample,
@@ -520,6 +802,7 @@ $("#demo-event").addEventListener("click", async () => {
     toast("AI와 연결되지 않은 runtime 검증 event를 Jetson에 저장했습니다.");
   } catch (error) { toast(errorMessage(error)); }
 });
+$("#generate-ai-summary").addEventListener("click", () => { void generateDailySummary(); });
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
   .forEach((control) => control.addEventListener("input", () => renderEvents(store.getState().events)));
@@ -590,6 +873,40 @@ $("#export-identity-feedback").addEventListener("click", () => {
   );
   toast("현재 로컬 식별 feedback manifest를 내보냈습니다.");
 });
+$("#export-dataset-manifest").addEventListener("click", () => {
+  const state = store.getState();
+  const version = $<HTMLInputElement>("#dataset-version").value.trim();
+  if (!version) { toast("dataset version을 입력해 주세요."); return; }
+  const approvedCount = state.datasetSamples.filter((sample) => sample.reviewStatus === "approved").length;
+  if (!approvedCount) { toast("승인된 sample이 없어 manifest를 만들 수 없습니다."); return; }
+  store.setDataWorkspace($<HTMLInputElement>("#dataset-session").value, version);
+  downloadJson(`${version.replace(/[^a-zA-Z0-9._-]+/g, "-")}-manifest.json`,
+    datasetManifest(version, state.datasetSamples));
+  toast(`승인된 sample ${approvedCount}건의 manifest를 내보냈습니다.`);
+});
+$<HTMLFormElement>("#dataset-sample-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void captureDatasetSample();
+});
+$("#choose-dataset-files").addEventListener("click", () => $<HTMLInputElement>("#dataset-file-input").click());
+$("#close-dataset-preview").addEventListener("click", closeDatasetPreview);
+$<HTMLDialogElement>("#dataset-preview-dialog").addEventListener("close", () => {
+  if (datasetPreviewUrl) URL.revokeObjectURL(datasetPreviewUrl);
+  datasetPreviewUrl = null;
+  $<HTMLImageElement>("#dataset-preview-image").removeAttribute("src");
+});
+$<HTMLDialogElement>("#dataset-preview-dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeDatasetPreview();
+});
+$<HTMLInputElement>("#dataset-file-input").addEventListener("change", (event) => {
+  const input = event.currentTarget as HTMLInputElement;
+  const files = [...(input.files ?? [])];
+  input.value = "";
+  void uploadDatasetSamples(files);
+});
+$<HTMLInputElement>("#dataset-session").addEventListener("change", saveDataWorkspaceSettings);
+$<HTMLInputElement>("#dataset-version").addEventListener("change", saveDataWorkspaceSettings);
 $("#reset-local-data").addEventListener("click", () => { if (window.confirm("현재 브라우저의 Wardy demo event와 설정을 초기화할까요?")) { credentialStore.clear(); store.reset(); toast("로컬 데모 데이터를 초기화했습니다."); } });
 
 $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: SubmitEvent) => {
@@ -610,8 +927,9 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
   }
 });
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
+$("#system-guidance-action").addEventListener("click", () => openView("jetson"));
 
-window.addEventListener("beforeunload", () => { camera.stop(); runtime.stop(); });
+window.addEventListener("beforeunload", () => { closeDatasetPreview(); camera.stop(); runtime.stop(); });
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
 
 setJetsonStatus(jetsonStatus);
