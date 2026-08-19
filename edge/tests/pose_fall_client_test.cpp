@@ -89,8 +89,8 @@ int main() {
       tracking_request.append(buffer, static_cast<std::size_t>(count));
     }
     const std::string tracking_response =
-        "{\"ok\":true,\"active_track_ids\":[1,2],\"persons\":["
-        "{\"track_id\":1,\"accepted\":true,\"fall\":{"
+        "{\"ok\":true,\"active_track_ids\":[2147483648,2],\"persons\":["
+        "{\"track_id\":2147483648,\"accepted\":true,\"fall\":{"
         "\"fall_suspected\":true,\"confidence\":0.875}},"
         "{\"track_id\":2,\"accepted\":false}]}\n";
     assert(send(connection, tracking_response.data(), tracking_response.size(), 0) ==
@@ -115,7 +115,8 @@ int main() {
   assert(tracking.ok);
   assert(tracking.active_track_ids.size() == 2);
   assert(tracking.persons.size() == 2);
-  assert(tracking.persons[0].track_id == 1);
+  assert(tracking.active_track_ids[0] == 2147483648LL);
+  assert(tracking.persons[0].track_id == 2147483648LL);
   assert(tracking.persons[0].fall_suspected &&
          *tracking.persons[0].fall_suspected);
   assert(tracking.persons[0].fall_confidence &&

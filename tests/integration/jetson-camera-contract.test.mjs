@@ -50,6 +50,18 @@ test("M-01 person 탐지는 capture와 분리된 최신-frame TensorRT worker를
   assert.match(example, /WARDY_PERSON_ENGINE/);
 });
 
+test("AI와 camera 상태 갱신은 직렬화되고 낙상 event는 전이 시에만 적용된다", async () => {
+  const api = await readFile(path.join(root, "edge/src/api/mjpeg_service.cpp"), "utf8");
+
+  assert.match(api, /std::mutex system_state_mutex/);
+  assert.equal(
+    [...api.matchAll(/lock\(state->system_state_mutex\)/g)].length,
+    3,
+  );
+  assert.match(api, /active_fall_tracks\.insert\(person\.track_id\)\.second/);
+  assert.doesNotMatch(api, /if \(apply \|\| \*person\.fall_suspected\)/);
+});
+
 test("Orin Nano WebRTC는 저지연 H264 software encode와 UDP ICE gateway를 사용한다", async () => {
   const launcher = await readFile(path.join(root, "edge/scripts/start_jetson_webrtc.sh"), "utf8");
   const gateway = await readFile(path.join(root, "edge/config/mediamtx.yml"), "utf8");
