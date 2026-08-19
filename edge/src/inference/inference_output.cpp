@@ -243,7 +243,8 @@ InferenceFrame TemporaryInferenceProducer::infer(
   PersonOutput person;
   person.detection = {
       "temporary-person-1", {0.34, 0.14, 0.26, 0.72}, "사람",
-      "돌봄 대상", "", "서 있음", 0.94, "#62b88f", std::nullopt};
+      "돌봄 대상", "", "서 있음", 0.94, "#62b88f", std::nullopt,
+      std::nullopt};
   if (scenario_ == "fall") {
     person.fall_suspected = true;
     person.detection.box = {0.25, 0.62, 0.52, 0.25};
@@ -263,7 +264,8 @@ InferenceFrame TemporaryInferenceProducer::infer(
         scenario_ == "proximity" ? std::array<double, 4>{0.55, 0.58, 0.13, 0.12}
                                   : std::array<double, 4>{0.76, 0.68, 0.13, 0.12},
         "가위", "관리 위험물", "", "", 0.91,
-        scenario_ == "proximity" ? "#d85d52" : "#d28b2d", std::nullopt};
+        scenario_ == "proximity" ? "#d85d52" : "#d28b2d", std::nullopt,
+        std::nullopt};
     hazard.near_person = scenario_ == "proximity";
     frame.hazards.push_back(hazard);
   }
