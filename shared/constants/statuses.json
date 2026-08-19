@@ -1,0 +1,5 @@
+{
+  "care_status": ["normal", "caution", "warning", "emergency"],
+  "event_status": ["new", "confirmed", "released", "false_detection"],
+  "system_status": ["idle", "connecting", "connected", "ready", "running", "processing", "fault"]
+}

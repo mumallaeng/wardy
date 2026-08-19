@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wardy.local/schemas/settings.schema.json",
+  "title": "Wardy Local Settings",
+  "type": "object",
+  "required": ["overlay", "notifications", "managed_items", "zones"],
+  "properties": {
+    "overlay": {
+      "type": "object",
+      "required": ["showClass", "showRole", "showName", "showPosture"],
+      "properties": {
+        "showClass": { "type": "boolean" }, "showRole": { "type": "boolean" }, "showName": { "type": "boolean" }, "showPosture": { "type": "boolean" }
+      }
+    },
+    "notifications": { "type": "object", "additionalProperties": { "enum": ["off", "normal", "strong"] } },
+    "managed_items": { "type": "array", "items": { "type": "object", "required": ["id", "label", "policy"], "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "policy": { "enum": ["included", "excluded"] } } } },
+    "zones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "x", "y", "width", "height"] } }
+  }
+}

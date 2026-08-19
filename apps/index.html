@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="일반 가정용 안전 확인 보조 플랫폼 Wardy">
+  <title>Wardy</title>
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#dashboard" aria-label="Wardy 대시보드">
+      <span class="brand-mark" aria-hidden="true">W</span>
+      <span><strong>Wardy</strong><small>가정 안전 확인 보조</small></span>
+    </a>
+    <nav class="nav-tabs" aria-label="주요 화면">
+      <button class="nav-tab is-active" data-view="dashboard">대시보드</button>
+      <button class="nav-tab" data-view="events">이벤트 기록</button>
+      <button class="nav-tab" data-view="settings">설정</button>
+    </nav>
+    <div class="privacy-pill"><span class="status-dot is-ok"></span>로컬 UI</div>
+  </header>
+
+  <main class="shell">
+    <section class="view is-active" data-view-panel="dashboard">
+      <div class="page-heading">
+        <div><p class="eyebrow">HOME SAFETY MONITOR</p><h1>현재 안전 확인</h1><p>감지 결과는 의심 상황을 알려주는 보조 정보이며 의료 진단이나 자동 대응 결과가 아닙니다.</p></div>
+        <div class="heading-actions"><button class="button button-secondary" id="demo-event">데모 이벤트 추가</button><button class="button" id="start-camera">카메라 시작</button></div>
+      </div>
+
+      <div class="system-strip" aria-label="시스템 상태">
+        <div><span class="status-dot" id="camera-dot"></span><small>카메라</small><strong id="camera-status">대기</strong></div>
+        <div><span class="status-dot is-muted"></span><small>안전 감지</small><strong>AI 미연결</strong></div>
+        <div><span class="status-dot is-ok"></span><small>이벤트 UI</small><strong>준비됨</strong></div>
+      </div>
+
+      <div class="dashboard-grid">
+        <section class="card camera-card">
+          <div class="card-heading"><div><span class="section-kicker">LIVE VIEW</span><h2>실시간 관찰 화면</h2></div><div class="inline-actions"><button class="text-button" id="stop-camera" disabled>중지</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
+          <div class="camera-stage" id="camera-stage">
+            <video id="camera" autoplay muted playsinline></video>
+            <canvas id="overlay" aria-label="탐지 결과와 주의 구역 표시"></canvas>
+            <div class="camera-empty" id="camera-empty"><strong>카메라가 꺼져 있습니다</strong><span>브라우저 권한을 허용하면 현재 영상만 로컬 화면에 표시합니다.</span></div>
+            <span class="demo-watermark" id="demo-watermark" hidden>UI 표시 예시 · AI 결과 아님</span>
+          </div>
+          <div class="overlay-switches" aria-label="탐지 표시 설정">
+            <label><input type="checkbox" data-overlay-setting="showClass">탐지 class</label>
+            <label><input type="checkbox" data-overlay-setting="showRole">돌봄 역할</label>
+            <label><input type="checkbox" data-overlay-setting="showName">식별 이름</label>
+            <label><input type="checkbox" data-overlay-setting="showPosture">자세·행동</label>
+          </div>
+        </section>
+
+        <aside class="card status-card">
+          <div class="card-heading"><div><span class="section-kicker">CARE STATUS</span><h2>돌봄 대상자 상태</h2></div><span class="badge" id="care-status-badge">기본</span></div>
+          <div class="care-orb is-normal" id="care-orb"><span id="care-status-label">기본</span><small id="care-status-code">normal</small></div>
+          <p class="status-reason" id="care-status-reason">활성화된 안전 이벤트가 없습니다.</p>
+          <div class="manual-state">
+            <span>UI 상태 미리보기</span>
+            <div class="segmented" id="care-state-controls">
+              <button data-care-status="normal">기본</button><button data-care-status="caution">주의</button><button data-care-status="warning">경고</button><button data-care-status="emergency">긴급</button>
+            </div>
+          </div>
+          <p class="helper">현재 버튼은 AI·rule engine과 연결되지 않은 UI 검증용입니다.</p>
+        </aside>
+      </div>
+
+      <section class="card summary-card">
+        <div class="card-heading"><div><span class="section-kicker">TODAY</span><h2>오늘의 이벤트</h2></div><button class="text-button" data-open-view="events">전체 기록 보기</button></div>
+        <div class="summary-grid" id="summary-grid"></div>
+        <div class="latest-event" id="latest-event"></div>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="events">
+      <div class="page-heading"><div><p class="eyebrow">EVENT LOG</p><h1>이벤트 기록</h1><p>저장된 이벤트를 시간순으로 확인하고 처리 상태를 변경합니다.</p></div><button class="button button-secondary" id="export-events">JSON 내보내기</button></div>
+      <section class="card">
+        <div class="filters">
+          <label class="search-field"><span>검색</span><input id="event-search" type="search" placeholder="종류, 대상, 위치"></label>
+          <label><span>처리 상태</span><select id="event-status-filter"><option value="all">전체</option><option value="new">신규</option><option value="confirmed">확인</option><option value="released">해제</option><option value="false_detection">오탐</option></select></label>
+          <label><span>돌봄 상태</span><select id="care-status-filter"><option value="all">전체</option><option value="normal">기본</option><option value="caution">주의</option><option value="warning">경고</option><option value="emergency">긴급</option></select></label>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>발생 시각</th><th>이벤트·이유</th><th>대상·위치</th><th>돌봄 상태</th><th>자료</th><th>처리 상태</th><th>작업</th></tr></thead><tbody id="event-table-body"></tbody></table></div>
+        <div class="empty-state" id="event-empty" hidden>조건에 맞는 이벤트가 없습니다.</div>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="settings">
+      <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>설정과 등록 정보는 현재 브라우저의 로컬 저장소에만 보관됩니다.</p></div><button class="button button-danger" id="reset-local-data">로컬 데모 데이터 초기화</button></div>
+      <div class="settings-grid">
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">OVERLAY</span><h2>사람 위 표시 항목</h2></div></div><div class="setting-list" id="overlay-settings"></div></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 대상자 등록 UI</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">로컬 등록</button></form><div class="list" id="subject-list"></div><p class="helper">이 화면은 이름·역할 metadata만 관리합니다. 얼굴 embedding과 식별 모델은 포함하지 않습니다.</p></section>
+        <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">MANAGED ITEMS</span><h2>관리·제외 물품</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="물품 이름"><select name="policy"><option value="included">관리 대상</option><option value="excluded">이벤트 제외</option></select><button class="button" type="submit">추가</button></form><div class="chip-list" id="item-list"></div></section>
+        <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>상황별 알림</h2></div></div><div class="setting-list" id="notification-settings"></div></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 전송</dt><dd>사용하지 않음</dd></div><div><dt>UI 저장 위치</dt><dd>브라우저 localStorage</dd></div><div><dt>AI 등록 정보</dt><dd>저장하지 않음</dd></div><div><dt>이벤트 자료</dt><dd>경로 metadata만 표시</dd></div></dl></section>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

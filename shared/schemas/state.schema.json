@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wardy.local/schemas/state.schema.json",
+  "title": "Wardy UI State",
+  "type": "object",
+  "required": ["care_state", "camera_state", "detection_state", "event_state", "updated_at"],
+  "properties": {
+    "care_state": { "type": ["string", "null"], "enum": ["normal", "caution", "warning", "emergency", null] },
+    "camera_state": { "enum": ["idle", "connecting", "connected", "fault"] },
+    "detection_state": { "enum": ["disconnected", "ready", "running", "fault"] },
+    "event_state": { "enum": ["ready", "processing", "fault"] },
+    "reason": { "type": "string" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  }
+}
