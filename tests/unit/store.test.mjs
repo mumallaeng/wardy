@@ -27,6 +27,18 @@ test("불완전한 저장 상태는 초기 상태로 복구한다", () => {
   assert.ok(Array.isArray(restored.subjects));
 });
 
+test("상속된 enum key가 포함된 저장 상태를 거부한다", () => {
+  const storage = new MemoryStorage();
+  const modified = new WardyStore(storage, "source-state").getState();
+  modified.careState.status = "warning";
+  modified.events[0].care_status = "toString";
+  storage.setItem("inherited-key-state", JSON.stringify(modified));
+
+  const restored = new WardyStore(storage, "inherited-key-state").getState();
+  assert.equal(restored.careState.status, "normal");
+  assert.notEqual(restored.events[0].care_status, "toString");
+});
+
 test("이벤트 확인, 오탐, 미디어 삭제 상태를 갱신한다", () => {
   const store = new WardyStore(new MemoryStorage());
   const [first, second] = store.getState().events;
