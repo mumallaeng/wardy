@@ -53,7 +53,7 @@ https://:8443 {
 
 # Certificate-free access is intentionally limited to clients whose source
 # address is in a private network. HTTPS remains available on 8443.
-http://:8080 {
+http://:8088 {
 	route {
 		@outside_private_network not remote_ip private_ranges
 		respond @outside_private_network "Forbidden" 403

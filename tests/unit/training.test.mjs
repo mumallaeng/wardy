@@ -24,7 +24,7 @@ test("Jetson training sample endpoint를 만든다", () => {
     trainingSampleUrl("https://jetson.local:8443/"),
     "https://jetson.local:8443/api/training/items/sample",
   );
-  assert.throws(() => trainingSampleUrl("http://jetson.local:8787/"), /port는 8080/);
+  assert.throws(() => trainingSampleUrl("http://jetson.local:8787/"), /port는 8088/);
 });
 
 test("등록 물품 정보를 보내고 저장된 sample 수를 반환한다", async () => {

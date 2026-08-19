@@ -66,7 +66,7 @@ function migrateJetsonBaseUrl(value: string): string {
   try {
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol) || url.port !== "8189") return value;
-    url.port = url.protocol === "https:" ? "8443" : "8080";
+    url.port = url.protocol === "https:" ? "8443" : "8088";
     const migrated = url.toString();
     return url.pathname === "/" && !url.search && !url.hash ? migrated.replace(/\/$/, "") : migrated;
   } catch {

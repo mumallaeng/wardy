@@ -242,9 +242,9 @@ test("Jetson runtime WebSocket은 payload를 선별하고 지수 backoff로 한 
   assert.deepEqual(cancelled, [scheduled[0]]);
   assert.equal(client.isConnected(), false);
 
-  client.connect("http://172.16.1.252:8080", "http://172.16.1.95:8000",
+  client.connect("http://172.16.1.252:8088", "http://172.16.1.95:8000",
     () => {}, () => {});
-  assert.equal(opened[1].url, "ws://172.16.1.252:8080/api/ws");
+  assert.equal(opened[1].url, "ws://172.16.1.252:8088/api/ws");
   client.stop();
 });
 
