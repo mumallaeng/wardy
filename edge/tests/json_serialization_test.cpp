@@ -2,6 +2,7 @@
 
 #undef NDEBUG
 #include <cassert>
+#include <limits>
 #include <string>
 
 int main() {
@@ -68,5 +69,16 @@ int main() {
       "2026-08-11T05:01:00Z",
   }});
   assert(review_without_confidence.find("\"confidence\":null") != std::string::npos);
+  bool rejected_non_finite_confidence = false;
+  try {
+    (void)wardy::api::identity_reviews_json({{
+        "review-3", "identity/review-3.jpg", "2026-08-11T05:02:00Z",
+        std::nullopt, std::numeric_limits<double>::infinity(), "pending",
+        std::nullopt, "2026-08-11T05:02:00Z",
+    }});
+  } catch (const std::invalid_argument&) {
+    rejected_non_finite_confidence = true;
+  }
+  assert(rejected_non_finite_confidence);
   return 0;
 }
