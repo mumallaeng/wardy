@@ -52,8 +52,19 @@
       }
     },
     "m03_pose": {
-      "default_version": "openmmlab-rtmpose-t-20230504",
+      "default_version": "openmmlab-rtmpose-m-20230504",
       "versions": {
+        "openmmlab-rtmpose-m-20230504": {
+          "source": "huggingface",
+          "repo_id": "AXERA-TECH/RTMPose",
+          "revision": "726c3acf17cff3a13958bc30da0aa6bf125312b1",
+          "files": {
+            "model.onnx": "3f0bbe036e98aa62913e8b2b1e523cb7d614e1be3255fe9cf22df3c4a8342bd3"
+          },
+          "remote_files": {
+            "model.onnx": "rtmpose_m_256x192.onnx"
+          }
+        },
         "openmmlab-rtmpose-t-20230504": {
           "source": "huggingface",
           "repo_id": "mumallaeng/wardy-m03-pose",
