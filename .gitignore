@@ -7,7 +7,7 @@
 /edge/data/
 /edge/tools/
 /node_modules/
-
+settings.json
 .env
 .env.*
 !.env.example
@@ -16,3 +16,46 @@
 
 /ml/src/data/
 /ml/src/export/
+
+# macOS, Windows, and editor metadata
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Python, Jupyter, and Colab caches
+**/__pycache__/
+*.py[cod]
+**/.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Frontend and test caches
+.vite/
+coverage/
+*.log
+
+# Local datasets, training runs, and model binaries
+/ml/data/
+/ml/datasets/
+/ml/runs/
+/ml/results/
+/ml/checkpoints/
+/ml/wandb/
+/ml/cache/
+/ml/src/models/*
+!/ml/src/models/.gitkeep
+*.pt
+*.pth
+*.onnx
+*.engine
+*.plan
+*.tflite
+*.h5

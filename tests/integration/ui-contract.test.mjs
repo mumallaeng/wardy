@@ -32,10 +32,28 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /\/api\/health/);
   assert.match(html, /:8443\/wardy\/whep/);
   assert.match(html, /<video id="camera"/);
+  assert.match(html, /id="mirror-camera"/);
+  assert.match(html, /id="start-camera"[^>]*>Jetson 카메라 연결<\/button><button[^>]*id="stop-camera"[^>]*>카메라 연결 중지<\/button>/);
   assert.match(html, /WebRTC\/UDP/);
-  assert.match(html, /event·state 동기화<\/dt><dd>WebSocket 후속 통합/);
-  assert.match(html, /\/dev\/video0/);
+  assert.match(html, /event·state 동기화<\/dt><dd>인증 WebSocket · 자동 재연결/);
+  assert.match(html, /<code>\/dev\/video0<\/code>/);
   assert.match(html, /V4L2/);
+});
+
+test("카메라 연결 placeholder와 거울 모드는 실제 상태에 맞게 전환된다", async () => {
+  const css = await readFile(path.join(root, "apps/css/app.css"), "utf8");
+  const app = await readFile(path.join(root, "apps/js/app.ts"), "utf8");
+  const overlay = await readFile(path.join(root, "apps/js/overlay.ts"), "utf8");
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  assert.match(css, /\.camera-stage\.is-mirrored video/);
+  assert.match(app, /camera-empty.*hidden = status === "connected"/);
+  assert.match(app, /setCameraMirrored/);
+  assert.match(app, /connectConfiguredJetson/);
+  assert.match(app, /status === "fault".*reconnectTimer/s);
+  assert.match(app, /JetsonCredentialStore\(window\.sessionStorage\)/);
+  assert.doesNotMatch(app, /window\.open/);
+  assert.match(overlay, /setMirrored/);
+  assert.match(overlay, /1 - zone\.x - zone\.width/);
 });
 
 test("카메라 화면은 브라우저 장치 대신 Jetson WebRTC stream만 사용한다", async () => {
@@ -84,13 +102,16 @@ test("공유 JSON 계약 파일이 모두 파싱된다", async () => {
   }
 });
 
-test("AI 작업 영역은 빈 자리표시자만 유지한다", async () => {
+test("비AI runtime은 AI 구현 파일을 import하지 않는다", async () => {
   const aiDirectories = [
-    "ml/config", "ml/notebook", "ml/result/figure", "ml/src/data", "ml/src/evaluation", "ml/src/export", "ml/src/models", "ml/test",
-    "edge/src/inference", "edge/src/tracking", "edge/src/analysis", "edge/src/rules",
+    "edge/src/inference", "edge/src/tracking", "edge/src/analysis",
   ];
   for (const directory of aiDirectories) {
     const entries = await readdir(path.join(root, directory));
     assert.deepEqual(entries, [".gitkeep"], directory);
+  }
+  for (const file of ["apps/js/app.ts", "edge/src/api/mjpeg_service.cpp", "edge/src/rules/event_runtime.cpp"]) {
+    const content = await readFile(path.join(root, file), "utf8");
+    assert.doesNotMatch(content, /ml\/src|src\/inference|src\/tracking|src\/analysis/, file);
   }
 });

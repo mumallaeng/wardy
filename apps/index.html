@@ -28,19 +28,19 @@
     <section class="view is-active" data-view-panel="dashboard">
       <div class="page-heading">
         <div><p class="eyebrow">HOME SAFETY MONITOR</p><h1>현재 안전 확인</h1><p>감지 결과는 의심 상황을 알려주는 보조 정보이며 의료 진단이나 자동 대응 결과가 아닙니다.</p></div>
-        <div class="heading-actions"><button class="button button-secondary" id="demo-event">데모 이벤트 추가</button><button class="button" id="start-camera">Jetson 카메라 연결</button></div>
+        <div class="heading-actions"><button class="button button-secondary" id="demo-event">데모 이벤트 추가</button><button class="button" id="start-camera">Jetson 카메라 연결</button><button class="button button-secondary" id="stop-camera" disabled>카메라 연결 중지</button></div>
       </div>
 
       <div class="system-strip" aria-label="시스템 상태">
         <div><span class="status-dot" id="camera-dot"></span><small>Jetson 카메라</small><strong id="camera-status">대기</strong></div>
-        <div><span class="status-dot is-muted"></span><small>안전 감지</small><strong>AI 미연결</strong></div>
-        <div><span class="status-dot is-ok"></span><small>이벤트 UI</small><strong>준비됨</strong></div>
+        <div><span class="status-dot is-muted"></span><small>안전 감지</small><strong id="detection-status">AI 미연결</strong></div>
+        <div><span class="status-dot" id="event-runtime-dot"></span><small>이벤트 처리</small><strong id="event-runtime-status">연결 대기</strong></div>
         <div><span class="status-dot" id="jetson-dot"></span><small>Jetson 서비스</small><strong id="jetson-status">확인 전</strong></div>
       </div>
 
       <div class="dashboard-grid">
         <section class="card camera-card">
-          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><button class="text-button" id="stop-camera" disabled>중지</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
+          <div class="card-heading"><div><span class="section-kicker">JETSON EDGE PREVIEW</span><h2>Jetson 카메라 미리보기</h2></div><div class="inline-actions"><button class="text-button" id="mirror-camera" type="button" aria-pressed="false">거울 모드 켜기</button><button class="text-button" id="toggle-demo-overlay">표시 예시 켜기</button></div></div>
           <div class="camera-stage" id="camera-stage">
             <video id="camera" title="Jetson WebRTC 카메라 영상" autoplay muted playsinline disablepictureinpicture></video>
             <canvas id="overlay" aria-label="탐지 결과와 주의 구역 표시"></canvas>
@@ -65,7 +65,7 @@
               <button data-care-status="normal">기본</button><button data-care-status="caution">주의</button><button data-care-status="warning">경고</button><button data-care-status="emergency">긴급</button>
             </div>
           </div>
-          <p class="helper">현재 버튼은 AI·rule engine과 연결되지 않은 UI 검증용입니다.</p>
+          <p class="helper">Jetson 연결 전에는 화면 미리보기로 사용할 수 있으며, 연결 후 상태는 event runtime이 자동으로 갱신합니다.</p>
         </aside>
       </div>
 
@@ -105,10 +105,10 @@
     </section>
 
     <section class="view" data-view-panel="settings">
-      <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>화면 설정과 등록 목록은 현재 브라우저에, 기준·학습 사진과 운영 metadata는 연결된 Jetson에 로컬 저장됩니다.</p></div><button class="button button-danger" id="reset-local-data">로컬 데모 데이터 초기화</button></div>
+      <div class="page-heading"><div><p class="eyebrow">LOCAL SETTINGS</p><h1>표시와 관리 설정</h1><p>화면 설정은 현재 브라우저에, 등록 목록·기준 사진·학습 사진과 운영 metadata는 연결된 Jetson에 로컬 저장됩니다.</p></div><button class="button button-danger" id="reset-local-data">브라우저 설정 초기화</button></div>
       <div class="settings-grid">
         <section class="card"><div class="card-heading"><div><span class="section-kicker">OVERLAY</span><h2>카메라 표시 항목</h2></div></div><div class="setting-list" id="overlay-settings"></div></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 인물 등록</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">로컬 등록</button></form><div class="list" id="subject-list"></div><p class="helper">등록 뒤 '기준 사진 촬영'으로 정면·좌·우·거리 변화 사진을 모읍니다. 사진과 metadata는 Jetson 로컬에 저장되며 embedding 생성과 모델 학습은 포함하지 않습니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 인물 등록</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">Jetson에 등록</button></form><div class="list" id="subject-list"></div><p class="helper">등록 뒤 '기준 사진 촬영'으로 정면·좌·우·거리 변화 사진을 모읍니다. 사진과 metadata는 Jetson 로컬에 저장되며 embedding 생성과 모델 학습은 포함하지 않습니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">HAZARD ITEMS</span><h2>위험물·제외 물건</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="위험물·제외 물건 이름"><select name="policy"><option value="included">위험물 탐지</option><option value="excluded">위험 event 제외</option></select><button class="button" type="submit">물건 등록</button></form><div class="chip-list" id="item-list"></div><p class="helper">위험물 또는 제외할 물건을 등록한 뒤 여러 거리·각도·조명에서 '카메라 촬영'을 눌러 Jetson 로컬 학습 사진을 모읍니다. 실제 모델 학습은 Notebook 단계에서 진행합니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>알림 설정</h2></div></div><div class="setting-list" id="notification-settings"></div></section>
@@ -119,9 +119,9 @@
     <section class="view" data-view-panel="jetson">
       <div class="page-heading"><div><p class="eyebrow">JETSON SERVICE</p><h1>Jetson 연결</h1><p>가정 내부 network의 Jetson Wardy service 상태를 확인합니다. 이 연결은 AI 추론을 구현하거나 실행하지 않습니다.</p></div><button class="button button-secondary" id="check-jetson" type="button">연결 다시 확인</button></div>
       <div class="connection-grid">
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">ENDPOINT</span><h2>서비스 주소</h2></div><span class="badge" id="jetson-badge">확인 전</span></div><form id="jetson-form" class="stack-form"><label>Jetson HTTPS URL<input id="jetson-base-url" type="url" inputmode="url" autocomplete="url" placeholder="예: https://jetson.local:8443"></label><label>데이터 API 토큰<input id="jetson-access-token" type="password" autocomplete="off" placeholder="Jetson의 WARDY_ACCESS_TOKEN"></label><label>카메라 읽기 토큰<input id="jetson-viewer-token" type="password" autocomplete="off" placeholder="Jetson의 WARDY_VIEWER_TOKEN"></label><button class="button" type="submit">저장하고 연결 확인</button></form><p class="helper">신뢰한 TLS 인증서가 적용된 HTTPS 주소만 사용할 수 있습니다. 주소만 브라우저에 저장하며 두 토큰은 현재 페이지 메모리에만 유지합니다.</p></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">HEALTH CHECK</span><h2>연결 확인 결과</h2></div></div><div class="connection-result" id="jetson-result" aria-live="polite">연결 확인을 실행해 주세요.</div><dl class="data-facts"><div><dt>현재 기준 주소</dt><dd id="jetson-resolved-url">—</dd></div><div><dt>확인 endpoint</dt><dd><code>:8443/api/health</code></dd></div><div><dt>카메라 endpoint</dt><dd><code>:8443/wardy/whep</code></dd></div><div><dt>영상 전송</dt><dd>HTTPS signaling · WebRTC/UDP media</dd></div><div><dt>event·state 동기화</dt><dd>WebSocket 후속 통합</dd></div><div><dt>AI 실행</dt><dd>포함하지 않음</dd></div></dl></section>
-        <section class="card wide-card boundary-card"><div><span class="section-kicker">CURRENT BOUNDARY</span><h2>현재 연결 범위</h2></div><p>Jetson이 수업과 같은 `/dev/video0`·V4L2 방식으로 USB webcam을 한 번만 읽고, 로컬 C++ 처리 frame과 H.264 WebRTC/UDP preview를 분기합니다. Windows browser는 같은 LAN에서 Jetson의 WebRTC endpoint에 직접 연결합니다. camera inference, tracking, event rule과 실시간 event·state 수신은 아직 연결하지 않습니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">ENDPOINT</span><h2>서비스 주소</h2></div><span class="badge" id="jetson-badge">확인 전</span></div><form id="jetson-form" class="stack-form"><label>Jetson HTTPS URL<input id="jetson-base-url" type="url" inputmode="url" autocomplete="url" placeholder="예: https://jetson.local:8443"></label><label>데이터 API 토큰<input id="jetson-access-token" type="password" autocomplete="off" placeholder="Jetson의 WARDY_ACCESS_TOKEN"></label><label>카메라 읽기 토큰<input id="jetson-viewer-token" type="password" autocomplete="off" placeholder="Jetson의 WARDY_VIEWER_TOKEN"></label><button class="button" type="submit">저장하고 연결 확인</button></form><p class="helper">최초 1회 저장하면 주소는 이 장치에, 토큰은 현재 브라우저 탭에 보관됩니다. 새로고침과 Jetson 재시작 뒤에는 자동으로 재연결합니다.</p></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">HEALTH CHECK</span><h2>연결 확인 결과</h2></div></div><div class="connection-result" id="jetson-result" aria-live="polite">연결 확인을 실행해 주세요.</div><dl class="data-facts"><div><dt>현재 기준 주소</dt><dd id="jetson-resolved-url">—</dd></div><div><dt>확인 endpoint</dt><dd><code>:8443/api/health</code></dd></div><div><dt>카메라 endpoint</dt><dd><code>:8443/wardy/whep</code></dd></div><div><dt>영상 전송</dt><dd>HTTPS signaling · WebRTC/UDP media</dd></div><div><dt>event·state 동기화</dt><dd>인증 WebSocket · 자동 재연결</dd></div><div><dt>AI 실행</dt><dd>포함하지 않음</dd></div></dl></section>
+        <section class="card wide-card boundary-card"><div><span class="section-kicker">CURRENT BOUNDARY</span><h2>현재 연결 범위</h2></div><p>Jetson이 <code>/dev/video0</code>·V4L2 USB webcam을 한 번만 읽고 로컬 C++ 처리 frame과 H.264 WebRTC/UDP preview를 분기합니다. 브라우저는 Jetson SQLite의 event·state·등록 자료를 HTTPS와 WebSocket으로 동기화합니다. camera inference와 tracking 모델은 연결하지 않습니다.</p></section>
       </div>
     </section>
 
