@@ -1,5 +1,5 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES, createInitialState } from "./constants.ts";
-import type { CareStatus, DatasetSample, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CareStatus, DatasetSample, EventType, IdentityReview, IdentityReviewDecision, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, OverlaySettingKey, Subject, SystemState, WardyEvent, WardyState, Zone, ZoneRect } from "./types.ts";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -176,6 +176,20 @@ function isManagedItem(value: unknown): value is ManagedItem {
     && ["included", "excluded"].includes(String(value.policy))
     && isOptionalCount(value.sampleCount);
 }
+
+function isZone(value: unknown): value is Zone {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.name === "string"
+    && [value.x, value.y, value.width, value.height].every(
+      (coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate),
+    );
+}
+
+function isNotificationSettings(value: unknown): value is NotificationSettings {
+  return isRecord(value) && Object.entries(value).every(
+    ([key, setting]) => Object.hasOwn(EVENT_TYPES, key) && ["off", "on"].includes(String(setting)),
+  );
+}
 function isWardyState(value: unknown): value is WardyState {
   if (!isRecord(value) || value.version !== 1) return false;
   const careState = value.careState;
@@ -300,6 +314,15 @@ export class WardyStore {
 
   replaceManagedItems(items: ManagedItem[]): WardyState {
     return this.#commit((state) => { state.managedItems = clone(items.filter(isManagedItem)); });
+  }
+
+  replaceZones(zones: Zone[]): WardyState {
+    return this.#commit((state) => { state.zones = clone(zones.filter(isZone)); });
+  }
+
+  replaceNotificationSettings(settings: NotificationSettings): WardyState {
+    if (!isNotificationSettings(settings)) throw new Error("Jetson 알림 설정 응답 형식이 올바르지 않습니다.");
+    return this.#commit((state) => { state.settings.notifications = clone(settings); });
   }
 
   replaceDatasetSamples(samples: DatasetSample[]): WardyState {

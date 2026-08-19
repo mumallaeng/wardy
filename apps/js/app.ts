@@ -14,7 +14,7 @@ import { renderManagedItems, renderNotifications, renderOverlaySettings, renderS
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState } from "./types.ts";
+import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -226,9 +226,39 @@ function openView(viewName: ViewName): void {
 }
 
 const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLVideoElement>("#camera"), (zone) => {
-  store.addZone(zone);
-  toast(`'${zone.name}' 구역을 저장했습니다.`);
+  void saveZone(zone);
 });
+
+async function saveZone(zone: ZoneRect): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const zones = await runtime.createZone(connection.baseUrl, connection.accessToken,
+      connection.origin, zone);
+    store.replaceZones(zones);
+    toast(`'${zone.name}' 구역을 Jetson에 저장했습니다.`);
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function deleteZone(zoneId: string): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const zones = await runtime.deleteZone(connection.baseUrl, connection.accessToken,
+      connection.origin, zoneId);
+    store.replaceZones(zones);
+    toast("주의 구역을 Jetson에서 삭제했습니다.");
+  } catch (error) { toast(errorMessage(error)); }
+}
+
+async function saveNotificationSetting(eventType: EventType,
+                                       value: NotificationSetting): Promise<void> {
+  try {
+    const connection = runtimeConnection();
+    const settings = await runtime.setNotificationSetting(
+      connection.baseUrl, connection.accessToken, connection.origin, eventType, value);
+    store.replaceNotificationSettings(settings);
+    toast(`${EVENT_TYPES[eventType]} 알림을 ${value.toUpperCase()}로 저장했습니다.`);
+  } catch (error) { toast(errorMessage(error)); }
+}
 
 /**
  * Updates the camera status display and controls to reflect the current state.
@@ -298,6 +328,8 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
       applyRuntimeSnapshot(snapshot);
       store.replaceSubjects(collections.subjects);
       store.replaceManagedItems(collections.managedItems);
+      store.replaceZones(collections.zones);
+      store.replaceNotificationSettings(collections.notifications);
       store.replaceDatasetSamples(datasetSamples);
       runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
     } else {
@@ -701,7 +733,8 @@ function render(state: WardyState = store.getState()): void {
   mirrorButton.textContent = state.settings.camera.mirrored ? "거울 모드 끄기" : "거울 모드 켜기";
   overlay.setZones(state.zones);
   renderOverlaySettings($("#overlay-settings"), state.settings.overlay, (key, value) => store.setOverlaySetting(key, value));
-  renderNotifications($("#notification-settings"), state.settings.notifications, (eventType, value) => store.setNotificationSetting(eventType, value));
+  renderNotifications($("#notification-settings"), state.settings.notifications,
+    (eventType, value) => { void saveNotificationSetting(eventType, value); });
   renderSubjects($("#subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderSubjects($("#data-subject-list"), state.subjects, (id) => { void deleteSubject(id); }, captureSubjectReference);
   renderIdentityReviews(
@@ -728,7 +761,7 @@ function render(state: WardyState = store.getState()): void {
     $("#item-list"), state.managedItems,
     (id) => { void deleteManagedItem(id); }, captureManagedItemSample,
   );
-  renderZones($("#zone-list"), state.zones, (id) => store.removeZone(id));
+  renderZones($("#zone-list"), state.zones, (id) => { void deleteZone(id); });
   const jetsonInput = $<HTMLInputElement>("#jetson-base-url");
   if (document.activeElement !== jetsonInput) jetsonInput.value = state.settings.jetson.baseUrl;
   const accessTokenInput = $<HTMLInputElement>("#jetson-access-token");

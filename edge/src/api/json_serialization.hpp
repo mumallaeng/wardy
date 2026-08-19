@@ -244,6 +244,33 @@ inline std::string managed_items_json(
   return body + "]}";
 }
 
+inline std::string zones_json(const std::vector<storage::ZoneRecord>& zones) {
+  std::string body = "{\"zones\":[";
+  for (std::size_t index = 0; index < zones.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& zone = zones[index];
+    body += "{\"id\":" + json_string(zone.zone_id) +
+        ",\"name\":" + json_string(zone.name) +
+        ",\"x\":" + std::to_string(zone.x) +
+        ",\"y\":" + std::to_string(zone.y) +
+        ",\"width\":" + std::to_string(zone.width) +
+        ",\"height\":" + std::to_string(zone.height) + "}";
+  }
+  return body + "]}";
+}
+
+inline std::string notification_settings_json(
+    const std::vector<storage::NotificationSettingRecord>& settings) {
+  std::string body = "{\"notifications\":{";
+  for (std::size_t index = 0; index < settings.size(); ++index) {
+    if (index > 0) body += ',';
+    const auto& setting = settings[index];
+    body += json_string(setting.event_type) + ":" +
+        json_string(std::string{setting.enabled ? "on" : "off"});
+  }
+  return body + "}}";
+}
+
 inline std::string dataset_samples_json(
     const std::vector<storage::DatasetSampleRecord>& samples) {
   std::string body = "{\"samples\":[";

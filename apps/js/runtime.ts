@@ -1,5 +1,5 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
-import type { DailySummaryResult, ManagedItem, ManagedItemPolicy, Subject, SystemState, WardyEvent } from "./types.ts";
+import type { DailySummaryResult, EventType, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
 
 export interface RuntimeSnapshot {
   state: SystemState;
@@ -9,6 +9,8 @@ export interface RuntimeSnapshot {
 interface RuntimeCollections {
   subjects: Subject[];
   managedItems: ManagedItem[];
+  zones: Zone[];
+  notifications: NotificationSettings;
 }
 
 type SnapshotHandler = (snapshot: RuntimeSnapshot) => void;
@@ -86,11 +88,18 @@ export class WardyRuntimeClient {
 
   async loadCollections(baseUrl: string, accessToken: string,
                         fallbackOrigin: string): Promise<RuntimeCollections> {
-    const [subjectBody, itemBody] = await Promise.all([
+    const [subjectBody, itemBody, zoneBody, notificationBody] = await Promise.all([
       this.request<{ subjects: Subject[] }>(baseUrl, accessToken, fallbackOrigin, "/api/subjects"),
       this.request<{ managedItems: ManagedItem[] }>(baseUrl, accessToken, fallbackOrigin, "/api/managed-items"),
+      this.request<{ zones: Zone[] }>(baseUrl, accessToken, fallbackOrigin, "/api/zones"),
+      this.request<{ notifications: NotificationSettings }>(baseUrl, accessToken, fallbackOrigin, "/api/notification-settings"),
     ]);
-    return { subjects: subjectBody.subjects, managedItems: itemBody.managedItems };
+    return {
+      subjects: subjectBody.subjects,
+      managedItems: itemBody.managedItems,
+      zones: zoneBody.zones,
+      notifications: notificationBody.notifications,
+    };
   }
 
   async eventAction(baseUrl: string, accessToken: string, fallbackOrigin: string,
@@ -175,6 +184,44 @@ export class WardyRuntimeClient {
     const body = await this.request<{ managedItems: ManagedItem[] }>(baseUrl, accessToken, fallbackOrigin,
       `/api/managed-items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
     return body.managedItems;
+  }
+
+  async createZone(baseUrl: string, accessToken: string, fallbackOrigin: string,
+                   zone: ZoneRect): Promise<Zone[]> {
+    const body = await this.request<{ zones: Zone[] }>(
+      baseUrl, accessToken, fallbackOrigin, "/api/zones", {
+        method: "POST",
+        headers: encodedHeaders({
+          "X-Wardy-Zone-Id": `zone-${crypto.randomUUID()}`,
+          "X-Wardy-Zone-Name": zone.name,
+          "X-Wardy-Zone-X": String(zone.x),
+          "X-Wardy-Zone-Y": String(zone.y),
+          "X-Wardy-Zone-Width": String(zone.width),
+          "X-Wardy-Zone-Height": String(zone.height),
+        }),
+      });
+    return body.zones;
+  }
+
+  async deleteZone(baseUrl: string, accessToken: string, fallbackOrigin: string,
+                   zoneId: string): Promise<Zone[]> {
+    const body = await this.request<{ zones: Zone[] }>(baseUrl, accessToken, fallbackOrigin,
+      `/api/zones/${encodeURIComponent(zoneId)}`, { method: "DELETE" });
+    return body.zones;
+  }
+
+  async setNotificationSetting(baseUrl: string, accessToken: string,
+                               fallbackOrigin: string, eventType: EventType,
+                               value: NotificationSetting): Promise<NotificationSettings> {
+    const body = await this.request<{ notifications: NotificationSettings }>(
+      baseUrl, accessToken, fallbackOrigin, "/api/notification-settings", {
+        method: "POST",
+        headers: encodedHeaders({
+          "X-Wardy-Event-Type": eventType,
+          "X-Wardy-Notification": value,
+        }),
+      });
+    return body.notifications;
   }
 
   connect(baseUrl: string, accessToken: string, fallbackOrigin: string,

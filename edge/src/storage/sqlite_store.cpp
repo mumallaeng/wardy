@@ -205,7 +205,7 @@ void SqliteStore::initialize() {
         throw std::runtime_error(sqlite3_errmsg(impl_->database));
       }
     }
-    if (stored_version < 0 || stored_version > 4) {
+    if (stored_version < 0 || stored_version > 5) {
       throw std::runtime_error("unsupported SQLite schema version: " +
                                std::to_string(stored_version));
     }
@@ -310,10 +310,41 @@ void SqliteStore::initialize() {
       ON dataset_samples(model_id, requirement_id, captured_at DESC);
     CREATE INDEX IF NOT EXISTS dataset_samples_review_idx
       ON dataset_samples(review_status, captured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS zones (
+      zone_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      x REAL NOT NULL CHECK(x >= 0.0 AND x <= 1.0),
+      y REAL NOT NULL CHECK(y >= 0.0 AND y <= 1.0),
+      width REAL NOT NULL CHECK(width > 0.0 AND width <= 1.0),
+      height REAL NOT NULL CHECK(height > 0.0 AND height <= 1.0),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK(x + width <= 1.0),
+      CHECK(y + height <= 1.0)
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_settings (
+      event_type TEXT PRIMARY KEY CHECK(event_type IN (
+        'fall_suspected','inactivity','hazard_detected','hazard_proximity',
+        'zone_entry','zone_dwell','camera_fault','detection_fault'
+      )),
+      enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO notification_settings(event_type,enabled,updated_at) VALUES
+      ('fall_suspected',1,'1970-01-01T00:00:00Z'),
+      ('inactivity',1,'1970-01-01T00:00:00Z'),
+      ('hazard_detected',1,'1970-01-01T00:00:00Z'),
+      ('hazard_proximity',1,'1970-01-01T00:00:00Z'),
+      ('zone_entry',1,'1970-01-01T00:00:00Z'),
+      ('zone_dwell',1,'1970-01-01T00:00:00Z'),
+      ('camera_fault',1,'1970-01-01T00:00:00Z'),
+      ('detection_fault',1,'1970-01-01T00:00:00Z');
     )SQL");
-      if (stored_version < 4) {
+      if (stored_version < 5) {
         execute(impl_->database, R"SQL(
-        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '4')
+        INSERT INTO schema_metadata(key, value) VALUES('schema_version', '5')
           ON CONFLICT(key) DO UPDATE SET value = excluded.value;
       )SQL");
       }
@@ -820,6 +851,91 @@ std::optional<std::string> SqliteStore::clear_event_media(
   bind_text(update.get(), 1, event_id);
   require_done(impl_->database, update.get());
   return media_path;
+}
+
+void SqliteStore::upsert_zone(const ZoneRecord& zone) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO zones(zone_id,name,x,y,width,height,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?)
+    ON CONFLICT(zone_id) DO UPDATE SET
+      name=excluded.name, x=excluded.x, y=excluded.y,
+      width=excluded.width, height=excluded.height, updated_at=excluded.updated_at;
+  )SQL");
+  bind_text(statement.get(), 1, zone.zone_id);
+  bind_text(statement.get(), 2, zone.name);
+  sqlite3_bind_double(statement.get(), 3, zone.x);
+  sqlite3_bind_double(statement.get(), 4, zone.y);
+  sqlite3_bind_double(statement.get(), 5, zone.width);
+  sqlite3_bind_double(statement.get(), 6, zone.height);
+  bind_text(statement.get(), 7, zone.created_at);
+  bind_text(statement.get(), 8, zone.updated_at);
+  require_done(impl_->database, statement.get());
+}
+
+std::vector<ZoneRecord> SqliteStore::list_zones() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT zone_id,name,x,y,width,height,created_at,updated_at
+    FROM zones ORDER BY created_at ASC;
+  )SQL");
+  std::vector<ZoneRecord> zones;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    zones.push_back({
+        column_text(statement.get(), 0), column_text(statement.get(), 1),
+        sqlite3_column_double(statement.get(), 2),
+        sqlite3_column_double(statement.get(), 3),
+        sqlite3_column_double(statement.get(), 4),
+        sqlite3_column_double(statement.get(), 5),
+        column_text(statement.get(), 6), column_text(statement.get(), 7),
+    });
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return zones;
+}
+
+bool SqliteStore::delete_zone(const std::string& zone_id) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, "DELETE FROM zones WHERE zone_id=?;");
+  bind_text(statement.get(), 1, zone_id);
+  require_done(impl_->database, statement.get());
+  return sqlite3_changes(impl_->database) > 0;
+}
+
+void SqliteStore::upsert_notification_setting(
+    const NotificationSettingRecord& setting) {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    INSERT INTO notification_settings(event_type,enabled,updated_at) VALUES(?,?,?)
+    ON CONFLICT(event_type) DO UPDATE SET
+      enabled=excluded.enabled, updated_at=excluded.updated_at;
+  )SQL");
+  bind_text(statement.get(), 1, setting.event_type);
+  sqlite3_bind_int(statement.get(), 2, setting.enabled ? 1 : 0);
+  bind_text(statement.get(), 3, setting.updated_at);
+  require_done(impl_->database, statement.get());
+}
+
+std::vector<NotificationSettingRecord> SqliteStore::list_notification_settings() const {
+  if (!impl_ || !impl_->database) throw std::logic_error("SQLite store is not initialized");
+  const std::lock_guard lock(impl_->mutex);
+  Statement statement(impl_->database, R"SQL(
+    SELECT event_type,enabled,updated_at FROM notification_settings ORDER BY event_type;
+  )SQL");
+  std::vector<NotificationSettingRecord> settings;
+  int result = SQLITE_ROW;
+  while ((result = sqlite3_step(statement.get())) == SQLITE_ROW) {
+    settings.push_back({column_text(statement.get(), 0),
+                        sqlite3_column_int(statement.get(), 1) != 0,
+                        column_text(statement.get(), 2)});
+  }
+  if (result != SQLITE_DONE) throw std::runtime_error(sqlite3_errmsg(impl_->database));
+  return settings;
 }
 
 std::string SqliteStore::schema_version() const {

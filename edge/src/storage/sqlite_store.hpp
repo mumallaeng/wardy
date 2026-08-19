@@ -93,6 +93,23 @@ struct DatasetSampleRecord {
   int height = 0;
 };
 
+struct ZoneRecord {
+  std::string zone_id;
+  std::string name;
+  double x = 0.0;
+  double y = 0.0;
+  double width = 0.0;
+  double height = 0.0;
+  std::string created_at;
+  std::string updated_at;
+};
+
+struct NotificationSettingRecord {
+  std::string event_type;
+  bool enabled = true;
+  std::string updated_at;
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -140,6 +157,11 @@ class SqliteStore {
       const std::string& sample_id);
   [[nodiscard]] std::optional<std::string> clear_event_media(
       const std::string& event_id);
+  void upsert_zone(const ZoneRecord& zone);
+  [[nodiscard]] std::vector<ZoneRecord> list_zones() const;
+  bool delete_zone(const std::string& zone_id);
+  void upsert_notification_setting(const NotificationSettingRecord& setting);
+  [[nodiscard]] std::vector<NotificationSettingRecord> list_notification_settings() const;
   [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;
