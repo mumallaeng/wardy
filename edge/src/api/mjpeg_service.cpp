@@ -800,26 +800,42 @@ void apply_tracking_results(
     }
   }
   for (const auto& [track_id, identity] : disappeared_falls) {
+    auto persisted_identity = identity;
+    if (!persisted_identity.first) {
+      const std::string marker = "\"track_id\":" + std::to_string(track_id);
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            event.source_results_json.find(marker) != std::string::npos) {
+          persisted_identity = {event.subject_id, event.subject_name};
+          break;
+        }
+      }
+    }
+    if (!persisted_identity.first) continue;
     apply_fall_observation(state, track_id, false, std::nullopt,
                            "낙상 의심 자세가 더 이상 감지되지 않습니다.",
-                           identity.first, identity.second);
+                           persisted_identity.first, persisted_identity.second);
   }
 
   for (const auto& person : response.persons) {
-    if (!person.fall_suspected) continue;
     bool apply = false;
+    const bool fall_active = person.fall_suspected.value_or(false);
     std::optional<std::string> event_subject_id = person.subject_id;
     std::optional<std::string> event_subject_name = person.subject_name;
     {
       std::lock_guard lock(state->active_fall_tracks_mutex);
-      if (*person.fall_suspected) {
+      if (fall_active) {
         apply = state->active_fall_tracks.insert(person.track_id).second;
         if (apply) {
           state->active_fall_identities[person.track_id] = {
               person.subject_id, person.subject_name};
         }
       } else {
-        apply = state->active_fall_tracks.erase(person.track_id) != 0;
+        // Always submit an inactive observation.  This also reconciles an
+        // active incident restored from SQLite after a service restart even
+        // when the in-memory track set has not seen the track yet.
+        apply = true;
+        state->active_fall_tracks.erase(person.track_id);
         const auto identity = state->active_fall_identities.find(person.track_id);
         if (identity != state->active_fall_identities.end()) {
           event_subject_id = identity->second.first;
@@ -828,11 +844,31 @@ void apply_tracking_results(
         }
       }
     }
+    if (!fall_active && !event_subject_id) {
+      const std::string marker = "\"track_id\":" +
+                                 std::to_string(person.track_id);
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            event.source_results_json.find(marker) != std::string::npos) {
+          event_subject_id = event.subject_id;
+          event_subject_name = event.subject_name;
+          break;
+        }
+      }
+      // Do not synthesize a track-* identity when there is no persisted
+      // incident to reconcile. This keeps a restored-event release tied to
+      // the original subject key.
+      if (!event_subject_id) apply = false;
+    }
     if (apply) {
       apply_fall_observation(
-          state, person.track_id, true,
-          person.fall_confidence,
-          "M-04 temporal pose sequence exceeded the fall threshold",
+          state, person.track_id, fall_active,
+          fall_active ? person.fall_confidence : std::nullopt,
+          fall_active
+              ? "M-04 temporal pose sequence exceeded the fall threshold"
+              : (person.fall_suspected.has_value()
+                     ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
+                     : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
           event_subject_id, event_subject_name);
     }
   }

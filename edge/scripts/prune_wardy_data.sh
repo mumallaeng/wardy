@@ -36,8 +36,9 @@ while IFS='|' read -r event_id media_path; do
   [[ -n "${event_id}" ]] || continue
   if safe_remove_relative "${event_path}" "${media_path}"; then
     escaped_id="$(printf '%s' "${event_id}" | sed "s/'/''/g")"
+    escaped_path="$(printf '%s' "${media_path}" | sed "s/'/''/g")"
     sqlite3 "${database_path}" \
-      "UPDATE events SET media_type='none',media_path=NULL,media_started_at=NULL,media_ended_at=NULL WHERE event_id='${escaped_id}';"
+      "UPDATE events SET media_type='none',media_path=NULL,media_started_at=NULL,media_ended_at=NULL WHERE event_id='${escaped_id}' AND media_path='${escaped_path}';"
   fi
 done < <(sqlite3 -separator '|' "${database_path}" \
   "SELECT event_id,media_path FROM events WHERE media_path IS NOT NULL AND julianday(COALESCE(media_ended_at,occurred_at)) < julianday('now','-${event_days} days');")
