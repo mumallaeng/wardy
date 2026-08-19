@@ -35,7 +35,13 @@ else
   default_mediamtx="mediamtx"
 fi
 mediamtx_bin="${WARDY_MEDIAMTX_BIN:-${default_mediamtx}}"
-caddy_bin="${WARDY_CADDY_BIN:-caddy}"
+bundled_caddy="${edge_dir}/tools/caddy"
+if [[ -x "${bundled_caddy}" ]]; then
+  default_caddy="${bundled_caddy}"
+else
+  default_caddy="caddy"
+fi
+caddy_bin="${WARDY_CADDY_BIN:-${default_caddy}}"
 edge_service="${WARDY_EDGE_SERVICE_BIN:-${edge_dir}/build/wardy_edge_service}"
 
 if [[ -z "${ui_origin}" || -z "${access_token}" || -z "${viewer_token}" ||
@@ -53,6 +59,7 @@ fi
 for tls_file in "${tls_certificate}" "${tls_private_key}"; do
   if [[ ! -r "${tls_file}" ]]; then
     echo "TLS file is not readable: ${tls_file}" >&2
+    echo "create local TLS files with: ${edge_dir}/scripts/create_jetson_tls.sh ${jetson_host}" >&2
     exit 1
   fi
 done

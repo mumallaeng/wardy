@@ -57,10 +57,49 @@ test("Jetson 카메라는 GStreamer 단일 capture pipeline을 선택할 수 있
 
 test("Jetson MediaMTX 설치는 고정 ARM64 release checksum을 검증한다", async () => {
   const installer = await readFile(path.join(root, "edge/scripts/install_mediamtx.sh"), "utf8");
-  assert.match(installer, /WARDY_MEDIAMTX_VERSION:-1\.18\.2/);
+  assert.match(installer, /WARDY_MEDIAMTX_VERSION/);
   assert.match(installer, /linux_arm64/);
   assert.match(installer, /checksums\.sha256/);
   assert.match(installer, /sha256sum --check --status/);
+});
+
+test("Jetson runtime 의존성은 재현 가능한 manifest와 검증 스크립트를 제공한다", async () => {
+  const packages = await readFile(path.join(root, "edge/config/jetson-apt-packages.txt"), "utf8");
+  const versions = await readFile(path.join(root, "edge/config/jetson-tool-versions.env"), "utf8");
+  const installer = await readFile(path.join(root, "edge/scripts/install_jetson_dependencies.sh"), "utf8");
+  const checker = await readFile(path.join(root, "edge/scripts/check_jetson_dependencies.sh"), "utf8");
+  const caddyInstaller = await readFile(path.join(root, "edge/scripts/install_caddy.sh"), "utf8");
+  const tlsCreator = await readFile(path.join(root, "edge/scripts/create_jetson_tls.sh"), "utf8");
+
+  for (const packageName of [
+    "build-essential",
+    "cmake",
+    "libopencv-dev",
+    "libsqlite3-dev",
+    "gstreamer1.0-plugins-bad",
+    "gstreamer1.0-tools",
+    "v4l-utils",
+  ]) {
+    assert.match(packages, new RegExp(`^${packageName.replaceAll(".", "\\.")}$`, "m"));
+  }
+  assert.match(versions, /^WARDY_CADDY_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(versions, /^WARDY_CADDY_SHA512=[a-f0-9]{128}$/m);
+  assert.match(versions, /^WARDY_MEDIAMTX_VERSION=\d+\.\d+\.\d+$/m);
+  assert.match(installer, /apt-get install/);
+  assert.match(installer, /install_caddy\.sh/);
+  assert.match(installer, /install_mediamtx\.sh/);
+  assert.match(installer, /check_jetson_dependencies\.sh/);
+  assert.match(caddyInstaller, /linux_arm64/);
+  assert.match(caddyInstaller, /sha512sum --check --status/);
+  assert.doesNotMatch(caddyInstaller, /checksums\.txt/);
+  assert.match(checker, /nvvidconv/);
+  assert.match(checker, /nvv4l2h264enc/);
+  assert.match(tlsCreator, /subjectAltName=/);
+  assert.match(tlsCreator, /WARDY_TLS_DIR:-\/etc\/wardy\/tls/);
+  assert.match(tlsCreator, /flock -n 9/);
+  assert.match(tlsCreator, /installed_artifacts/);
+  assert.match(tlsCreator, /wardy-ca\.key/);
+  assert.doesNotMatch(tlsCreator, /WARDY_(ACCESS|VIEWER|PUBLISH)_TOKEN=/);
 });
 
 test("Windows 연결 점검은 HTTPS Jetson health와 WHEP endpoint를 확인한다", async () => {

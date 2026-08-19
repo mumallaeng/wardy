@@ -1,0 +1,24 @@
+# Build toolchain
+build-essential
+cmake
+git
+pkg-config
+
+# Wardy C++ dependencies
+libopencv-dev
+libsqlite3-dev
+
+# Camera and GStreamer runtime
+gstreamer1.0-plugins-bad
+gstreamer1.0-plugins-base
+gstreamer1.0-plugins-good
+gstreamer1.0-tools
+v4l-utils
+
+# Verified external-tool and TLS installation
+ca-certificates
+coreutils
+curl
+openssl
+tar
+util-linux

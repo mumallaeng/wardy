@@ -3,7 +3,13 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 edge_dir="$(cd "${script_dir}/.." && pwd)"
-version="${WARDY_MEDIAMTX_VERSION:-1.18.2}"
+versions_file="${edge_dir}/config/jetson-tool-versions.env"
+declared_version="$(sed -n 's/^WARDY_MEDIAMTX_VERSION=//p' "${versions_file}")"
+version="${WARDY_MEDIAMTX_VERSION:-${declared_version:-1.18.2}}"
+if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "invalid MediaMTX version: ${version}" >&2
+  exit 1
+fi
 archive="mediamtx_v${version}_linux_arm64.tar.gz"
 base_url="https://github.com/bluenviron/mediamtx/releases/download/v${version}"
 target_dir="${edge_dir}/tools"
