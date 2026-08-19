@@ -42,11 +42,6 @@ https://:8443 {
 		@outside_private_network not remote_ip private_ranges
 		respond @outside_private_network "Forbidden" 403
 
-		# A top-level visit reaches the browser certificate screen first. Once the
-		# certificate is accepted, Caddy returns the phone to the configured UI.
-		@browser_bootstrap path /connect
-		redir @browser_bootstrap "{$WARDY_UI_ORIGIN}/?jetson=https://{http.request.hostport}&jetson_tls=ready" 302
-
 		import wardy_edge_routes
 	}
 }
@@ -57,9 +52,6 @@ http://:8088 {
 	route {
 		@outside_private_network not remote_ip private_ranges
 		respond @outside_private_network "Forbidden" 403
-
-		@browser_bootstrap path /connect
-		redir @browser_bootstrap "{$WARDY_UI_ORIGIN}/?jetson=http://{http.request.hostport}" 302
 
 		import wardy_edge_routes
 	}
