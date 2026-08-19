@@ -87,7 +87,19 @@ add_executable(websocket_test
 target_include_directories(websocket_test PRIVATE src)
 add_test(NAME websocket_test COMMAND websocket_test)
 
-find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
+add_library(wardy_person_detector_postprocess STATIC
+  src/inference/person_detector_postprocess.cpp
+)
+target_include_directories(wardy_person_detector_postprocess PUBLIC src)
+target_compile_options(wardy_person_detector_postprocess PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(person_detector_postprocess_test
+  tests/person_detector_postprocess_test.cpp
+)
+target_link_libraries(person_detector_postprocess_test PRIVATE wardy_person_detector_postprocess)
+add_test(NAME person_detector_postprocess_test COMMAND person_detector_postprocess_test)
+
+find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs imgproc)
 
 if(OpenCV_FOUND)
   add_library(wardy_pose_fall_client STATIC
@@ -116,6 +128,30 @@ if(OpenCV_FOUND)
   target_link_libraries(wardy_camera PUBLIC ${OpenCV_LIBS})
   target_compile_options(wardy_camera PRIVATE -Wall -Wextra -Wpedantic)
 
+  find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+    HINTS /usr/include/aarch64-linux-gnu /usr/include)
+  find_library(TENSORRT_LIBRARY nvinfer
+    HINTS /usr/lib/aarch64-linux-gnu /usr/lib)
+  find_path(CUDART_INCLUDE_DIR cuda_runtime_api.h
+    HINTS /usr/local/cuda/include)
+  find_library(CUDART_LIBRARY cudart
+    HINTS /usr/local/cuda/lib64 /usr/lib/aarch64-linux-gnu)
+
+  if(TENSORRT_INCLUDE_DIR AND TENSORRT_LIBRARY AND CUDART_INCLUDE_DIR AND CUDART_LIBRARY)
+    add_library(wardy_person_inference STATIC
+      src/inference/person_detector.cpp
+      src/inference/person_inference_runtime.cpp
+    )
+    target_include_directories(wardy_person_inference PUBLIC
+      src ${OpenCV_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} ${CUDART_INCLUDE_DIR})
+    target_link_libraries(wardy_person_inference PUBLIC
+      wardy_person_detector_postprocess ${OpenCV_LIBS}
+      ${TENSORRT_LIBRARY} ${CUDART_LIBRARY} Threads::Threads)
+    target_compile_options(wardy_person_inference PRIVATE -Wall -Wextra -Wpedantic)
+  else()
+    message(STATUS "TensorRT/CUDA development files not found: M-01 Jetson inference is disabled")
+  endif()
+
   add_library(wardy_event_media STATIC
     src/media/event_media.cpp
   )
@@ -141,6 +177,10 @@ if(OpenCV_FOUND)
   )
   target_include_directories(wardy_edge_service PRIVATE src ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(wardy_edge_service PRIVATE wardy_camera wardy_event_runtime wardy_event_media wardy_llm Threads::Threads ${OpenCV_LIBS})
+  if(TARGET wardy_person_inference)
+    target_link_libraries(wardy_edge_service PRIVATE wardy_person_inference)
+    target_compile_definitions(wardy_edge_service PRIVATE WARDY_WITH_TENSORRT=1)
+  endif()
   target_compile_options(wardy_edge_service PRIVATE -Wall -Wextra -Wpedantic)
 else()
   message(STATUS "OpenCV core/videoio/imgcodecs not found: camera library, probe, and edge service are skipped")

@@ -19,6 +19,10 @@ struct MjpegServiceConfig {
   bool llm_enabled = true;
   std::string llm_model = "qwen3.5:4b";
   int llm_timeout_seconds = 30;
+  std::string person_detector_engine_path;
+  float person_confidence_threshold = 0.5F;
+  float person_nms_iou_threshold = 0.45F;
+  int person_class_index = 0;
 
   void validate() const;
 };
