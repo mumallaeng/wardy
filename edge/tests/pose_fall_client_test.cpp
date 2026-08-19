@@ -92,7 +92,8 @@ int main() {
         "{\"ok\":true,\"active_track_ids\":[42,2],\"persons\":["
         "{\"track_id\":42,\"accepted\":true,\"bbox_xyxy\":[2,3,20,22],"
         "\"detection_confidence\":0.95,\"history_frames\":20,\"window_frames\":20,"
-        "\"fall_threshold\":0.5,\"pose\":{\"pose_quality\":0.88,\"keypoints_xyc\":["
+        "\"fall_threshold\":0.5,\"pose\":{\"pose_quality\":0.88,"
+        "\"posture\":\"standing\",\"keypoints_xyc\":["
         "[3,4,0.9],[4,5,0.9],[5,6,0.9],[6,7,0.9],[7,8,0.9],"
         "[8,9,0.9],[9,10,0.9],[10,11,0.9],[11,12,0.9],[12,13,0.9],"
         "[13,14,0.9],[14,15,0.9],[15,16,0.9],[16,17,0.9],[17,18,0.9],"
@@ -133,6 +134,8 @@ int main() {
          *tracking.persons[0].fall_confidence == 0.875);
   assert(tracking.persons[0].pose_quality &&
          *tracking.persons[0].pose_quality == 0.88);
+  assert(tracking.persons[0].posture &&
+         *tracking.persons[0].posture == "standing");
   assert(tracking.persons[0].keypoints_xyc.size() == 17);
   assert(tracking.persons[0].history_frames == 20);
   assert(tracking.persons[0].window_frames == 20);
