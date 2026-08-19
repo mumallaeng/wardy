@@ -2,3 +2,9 @@
 /dist/
 /edge/build/
 /node_modules/
+ml/src/data
+ml/src/export
+*.png
+*.jpg
+*.jpeg
+*.gif
