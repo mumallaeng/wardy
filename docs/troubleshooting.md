@@ -118,7 +118,7 @@ ss -lntup | grep -E ':(8443|8189)\b'
 openssl x509 -in /etc/wardy/tls/jetson.crt -noout -ext subjectAltName
 ```
 
-같은 Wi-Fi에 연결된 휴대전화에서는 Mac의 `./start_macos.sh`가 출력하는 주소 하나만 엽니다.
+같은 Wi-Fi에 연결된 휴대전화에서는 Mac의 `./scripts/start_macos.sh`가 출력하는 주소 하나만 엽니다.
 
 1. `휴대전화 Wardy 주소: http://MAC_WIFI_IP:8000/`
 2. 인증 확인 기록이 없으면 앱이 Jetson `/connect`로 자동 이동

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_dir}"
 step="시작 준비"
 device_file="${repo_dir}/.wardy-device"
@@ -32,7 +32,7 @@ help_on_failure() {
   echo "  node --version && npm --version" >&2
   echo "  curl -vk https://${jetson_host:-JETSON_IP}:8443/api/health" >&2
   echo "  ssh ${WARDY_SSH_USER:-mumallaeng}@${jetson_host:-JETSON_IP} 'systemctl status wardy-edge.service wardy-pose-fall.service'" >&2
-  echo "복구 후 다시 실행: ./start_macos.sh [Jetson IP]" >&2
+  echo "복구 후 다시 실행: ./scripts/start_macos.sh [Jetson IP]" >&2
   exit "${status}"
 }
 trap help_on_failure ERR
@@ -50,7 +50,7 @@ if [[ -z "${jetson_host}" ]]; then
   done
 fi
 if [[ -z "${jetson_host}" && -t 0 ]]; then read -r -p "Jetson IP 또는 DNS: " jetson_host; fi
-[[ -n "${jetson_host}" ]] || { step="Jetson 주소 탐색: ./start_macos.sh <Jetson IP>로 한 번 실행하세요"; false; }
+[[ -n "${jetson_host}" ]] || { step="Jetson 주소 탐색: ./scripts/start_macos.sh <Jetson IP>로 한 번 실행하세요"; false; }
 printf '%s\n' "${jetson_host}" >"${device_file}"
 
 ssh_target="${WARDY_SSH_ALIAS:-wardy-jetson-macos}"

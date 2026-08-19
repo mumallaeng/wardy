@@ -1,6 +1,6 @@
 param([string]$JetsonHost = $env:WARDY_JETSON_HOST)
 $ErrorActionPreference = "Stop"
-$repo = $PSScriptRoot
+$repo = Split-Path -Parent $PSScriptRoot
 $deviceFile = Join-Path $repo ".wardy-device"
 $step = "시작 준비"
 
@@ -55,6 +55,6 @@ try {
   Write-Host "  node --version; npm --version"
   Write-Host "  Test-NetConnection $JetsonHost -Port 8443"
   Write-Host "  ssh ${env:USERNAME}@$JetsonHost 'systemctl status wardy-edge.service wardy-pose-fall.service'"
-  Write-Host "복구 후 다시 실행: .\start_windows.ps1 -JetsonHost <Jetson IP>"
+  Write-Host "복구 후 다시 실행: .\scripts\start_windows.ps1 -JetsonHost <Jetson IP>"
   exit 1
 }

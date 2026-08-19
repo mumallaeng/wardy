@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_dir}"
 step="시작 준비"
 
@@ -14,7 +14,7 @@ help_on_failure() {
   echo "  journalctl -u wardy-pose-fall.service -u wardy-edge.service --since '10 minutes ago' --no-pager" >&2
   echo "  ls -l /dev/video0 && v4l2-ctl --list-devices" >&2
   echo "  ./edge/scripts/check_jetson_dependencies.sh" >&2
-  echo "복구 후 다시 실행: ./start_jetson.sh" >&2
+  echo "복구 후 다시 실행: ./scripts/start_jetson.sh" >&2
   exit "${status}"
 }
 trap help_on_failure ERR

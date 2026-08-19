@@ -77,9 +77,9 @@ test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공
 });
 
 test("기기별 원클릭 시작 스크립트와 실패 복구 안내를 제공한다", async () => {
-  const jetson = await readFile(path.join(root, "start_jetson.sh"), "utf8");
-  const macos = await readFile(path.join(root, "start_macos.sh"), "utf8");
-  const windows = await readFile(path.join(root, "start_windows.ps1"), "utf8");
+  const jetson = await readFile(path.join(root, "scripts/start_jetson.sh"), "utf8");
+  const macos = await readFile(path.join(root, "scripts/start_macos.sh"), "utf8");
+  const windows = await readFile(path.join(root, "scripts/start_windows.ps1"), "utf8");
   assert.match(jetson, /setup_jetson\.sh/);
   assert.match(jetson, /Initial setup is still running/);
   assert.match(jetson, /systemctl restart wardy-pose-fall\.service wardy-edge\.service/);
