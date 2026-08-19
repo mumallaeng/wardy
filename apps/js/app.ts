@@ -15,6 +15,7 @@ import { registerWardyServiceWorker } from "./pwa.ts";
 import { renderManagedItems, renderNotifications, renderOverlaySettings, renderSubjects, renderZones } from "./settings.ts";
 import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
+import { ColorThemeController } from "./theme.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
 import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
@@ -56,6 +57,7 @@ function errorMessage(error: unknown): string {
 }
 
 const store = new WardyStore(window.localStorage);
+const colorTheme = new ColorThemeController(window.localStorage, document);
 const credentialStore = new JetsonCredentialStore(window.sessionStorage);
 const trainingSamples = new TrainingSampleClient();
 const runtime = new WardyRuntimeClient();
@@ -928,6 +930,7 @@ function render(state: WardyState = store.getState()): void {
 }
 
 store.subscribe(render);
+colorTheme.applyCurrent();
 render();
 setCameraStatus("idle");
 
@@ -941,6 +944,8 @@ $$<HTMLButtonElement>('[data-open-view]').forEach((button) => button.addEventLis
 }));
 const initialView = location.hash.slice(1);
 if (["dashboard", "events", "data", "settings", "jetson"].includes(initialView)) openView(initialView as ViewName);
+
+$("#theme-toggle").addEventListener("click", () => colorTheme.toggle());
 
 $("#start-camera").addEventListener("click", async () => {
   try {
