@@ -41,10 +41,15 @@ class PoseFallRuntime:
         self.pose = pose
         self.fall = fall
         self.interval_ms = int(round(1000.0 / fall.target_fps))
-        # Keep temporal state through normal camera/worker scheduling jitter.
-        # A three-frame gap at 10 FPS reset the 20-frame M-04 window before it
-        # could ever produce a fall confidence on a busy Jetson.
-        self.maximum_gap_ms = self.interval_ms * max(fall.window_frames, 10)
+        # Keep temporal state through camera/worker scheduling jitter. The
+        # detector and pose worker are decoupled, so a busy Jetson can briefly
+        # deliver callbacks several seconds apart. Reset only after a longer
+        # outage; otherwise M-04 never reaches its 20-frame window and cannot
+        # produce a fall confidence at all.
+        self.maximum_gap_ms = max(
+            self.interval_ms * max(fall.window_frames, 10),
+            10_000,
+        )
         self.histories: dict[int, deque[PoseResult]] = defaultdict(
             lambda: deque(maxlen=fall.window_frames)
         )

@@ -151,10 +151,13 @@ class RuntimeContractTest(unittest.TestCase):
         reset = process(900)
         self.assertTrue(reset.accepted)
         self.assertIsNone(reset.fall)
-        gap_reset = process(2200)
+        retained = process(9_000)
+        self.assertTrue(retained.accepted)
+        self.assertEqual(retained.history_frames, 2)
+        gap_reset = process(20_000)
         self.assertTrue(gap_reset.accepted)
         self.assertIsNone(gap_reset.fall)
-        self.assertIsNone(process(2300).fall)
+        self.assertEqual(gap_reset.history_frames, 1)
 
     def test_person_box_rejects_non_positive_area(self) -> None:
         with self.assertRaises(ValueError):
