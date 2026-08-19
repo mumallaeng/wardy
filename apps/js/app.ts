@@ -42,7 +42,7 @@ function openView(viewName: ViewName): void {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), (zone) => {
+const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#camera-stage"), $<HTMLVideoElement>("#camera"), (zone) => {
   store.addZone(zone);
   toast(`'${zone.name}' 구역을 로컬에 저장했습니다.`);
 });
@@ -224,7 +224,9 @@ $<HTMLFormElement>("#subject-form").addEventListener("submit", (event: SubmitEve
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
-  store.addSubject(String(data.get("name")).trim(), String(data.get("role")).trim() || "돌봄 대상");
+  const name = String(data.get("name") ?? "").trim();
+  if (!name) { toast("이름을 입력해 주세요."); return; }
+  store.addSubject(name, String(data.get("role") ?? "").trim() || "돌봄 대상");
   form.reset();
 });
 $<HTMLFormElement>("#item-form").addEventListener("submit", (event: SubmitEvent) => {
@@ -232,7 +234,9 @@ $<HTMLFormElement>("#item-form").addEventListener("submit", (event: SubmitEvent)
   const form = event.currentTarget as HTMLFormElement;
   const data = new FormData(form);
   const policy = String(data.get("policy")) as ManagedItemPolicy;
-  store.addManagedItem(String(data.get("label")).trim(), policy);
+  const label = String(data.get("label") ?? "").trim();
+  if (!label) { toast("물품 이름을 입력해 주세요."); return; }
+  store.addManagedItem(label, policy);
   form.reset();
 });
 $("#draw-zone").addEventListener("click", () => { openView("dashboard"); overlay.beginZoneDrawing(); toast("카메라 화면에서 주의 구역을 드래그하세요."); });
