@@ -178,6 +178,7 @@ td small { display: block; margin-top: 3px; color: var(--muted); }
 .review-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .review-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .review-placeholder { display: grid; place-items: center; min-height: 150px; color: #b8c9bf; background: linear-gradient(145deg, #17251f, #2f5a48); font-weight: 800; }
+.review-placeholder img { display: block; width: 100%; height: 180px; object-fit: cover; }
 .review-body { display: grid; gap: 9px; padding: 13px; }
 .review-body small { color: var(--muted); overflow-wrap: anywhere; }
 .review-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }

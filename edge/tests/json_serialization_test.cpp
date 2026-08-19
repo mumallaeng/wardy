@@ -54,5 +54,13 @@ int main() {
   });
   assert(notifications.find("\"fall_suspected\":\"on\"") != std::string::npos);
   assert(notifications.find("\"inactivity\":\"off\"") != std::string::npos);
+  const std::string reviews = wardy::api::identity_reviews_json({{
+      "review-1", "identity/review-1.jpg", "2026-08-11T05:00:00Z",
+      std::optional<std::string>{"돌봄 대상"}, std::optional<double>{0.54},
+      "pending", std::nullopt, "2026-08-11T05:00:00Z",
+  }});
+  assert(reviews.find("\"mediaResource\":\"/api/identity-reviews/review-1/media\"") !=
+         std::string::npos);
+  assert(reviews.find("\"confidence\":0.540000") != std::string::npos);
   return 0;
 }

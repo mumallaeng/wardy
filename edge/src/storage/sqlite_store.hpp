@@ -110,6 +110,17 @@ struct NotificationSettingRecord {
   std::string updated_at;
 };
 
+struct IdentityReviewRecord {
+  std::string review_id;
+  std::string image_path;
+  std::string captured_at;
+  std::optional<std::string> predicted_name;
+  std::optional<double> confidence;
+  std::string decision = "pending";
+  std::optional<std::string> subject_id;
+  std::string updated_at;
+};
+
 class SqliteStore {
  public:
   explicit SqliteStore(std::string database_path);
@@ -162,6 +173,14 @@ class SqliteStore {
   bool delete_zone(const std::string& zone_id);
   void upsert_notification_setting(const NotificationSettingRecord& setting);
   [[nodiscard]] std::vector<NotificationSettingRecord> list_notification_settings() const;
+  void upsert_identity_review(const IdentityReviewRecord& review);
+  [[nodiscard]] std::optional<IdentityReviewRecord> get_identity_review(
+      const std::string& review_id) const;
+  [[nodiscard]] std::vector<IdentityReviewRecord> list_identity_reviews() const;
+  bool update_identity_review_decision(const std::string& review_id,
+                                       const std::string& decision,
+                                       const std::optional<std::string>& subject_id,
+                                       const std::string& updated_at);
   [[nodiscard]] std::string schema_version() const;
   [[nodiscard]] std::string journal_mode() const;
   [[nodiscard]] const std::string& path() const noexcept;

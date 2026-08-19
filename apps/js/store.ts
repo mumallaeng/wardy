@@ -36,6 +36,7 @@ function isIdentityReview(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return typeof value.id === "string"
     && typeof value.imagePath === "string"
+    && typeof value.mediaResource === "string"
     && typeof value.capturedAt === "string"
     && isStringOrNull(value.predictedName)
     && (value.confidence === null || (typeof value.confidence === "number" && Number.isFinite(value.confidence)))
@@ -75,6 +76,14 @@ function migrateJetsonBaseUrl(value: string): string {
 function migratePersistedState(value: unknown): void {
   if (!isRecord(value)) return;
   if (value.identityReviews === undefined) value.identityReviews = [];
+  if (Array.isArray(value.identityReviews)) {
+    value.identityReviews.forEach((review) => {
+      if (isRecord(review) && typeof review.id === "string"
+          && typeof review.mediaResource !== "string") {
+        review.mediaResource = `/api/identity-reviews/${review.id}/media`;
+      }
+    });
+  }
   if (value.datasetSamples === undefined) value.datasetSamples = [];
   if (Array.isArray(value.datasetSamples)) {
     const datasetSamples = value.datasetSamples.filter(
@@ -329,6 +338,12 @@ export class WardyStore {
     return this.#commit((state) => { state.datasetSamples = clone(samples.filter(isDatasetSample)); });
   }
 
+  replaceIdentityReviews(reviews: IdentityReview[]): WardyState {
+    return this.#commit((state) => {
+      state.identityReviews = clone(reviews.filter(isIdentityReview));
+    });
+  }
+
   setDataWorkspace(captureSession: string, datasetVersion: string): WardyState {
     const nextCaptureSession = captureSession.trim();
     const nextDatasetVersion = datasetVersion.trim();
@@ -435,11 +450,12 @@ export class WardyStore {
     });
   }
 
-  addIdentityReview(review: Omit<IdentityReview, "id" | "decision" | "subjectId">): WardyState {
+  addIdentityReview(review: Omit<IdentityReview, "id" | "mediaResource" | "decision" | "subjectId">): WardyState {
     return this.#commit((state) => {
       state.identityReviews.unshift({
         ...review,
         id: `review-${crypto.randomUUID()}`,
+        mediaResource: "",
         decision: "pending",
         subjectId: null,
       });
