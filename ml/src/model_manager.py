@@ -96,7 +96,7 @@ def verify_install(destination: Path, specification: dict[str, Any]) -> bool:
     )
 
 
-def _download(
+def download_file(
     url: str, destination: Path, *, headers: dict[str, str] | None = None
 ) -> None:
     request_headers = {"User-Agent": "wardy-model-manager/1"}
@@ -132,7 +132,7 @@ def _install_from_directory(
 
 def _install_archive(specification: dict[str, Any], staging: Path) -> None:
     archive_path = staging / "model.zip"
-    _download(specification["url"], archive_path)
+    download_file(specification["url"], archive_path)
     if sha256(archive_path) != specification["archive_sha256"]:
         raise RuntimeError("model archive SHA-256 mismatch")
     member_name = specification["archive_member"]
@@ -163,7 +163,7 @@ def _install_huggingface(specification: dict[str, Any], staging: Path) -> None:
         remote_name = remote_files.get(destination_name, destination_name)
         url = f"https://huggingface.co/{repo_id}/resolve/{revision}/{remote_name}?download=true"
         try:
-            _download(url, staging / destination_name, headers=headers)
+            download_file(url, staging / destination_name, headers=headers)
         except urllib.error.HTTPError as error:
             raise RuntimeError(
                 f"unable to download {repo_id}@{revision}/{remote_name}; "
@@ -180,7 +180,7 @@ def _install_direct_files(specification: dict[str, Any], staging: Path) -> None:
             raise ValueError(
                 f"direct file URL is missing: {destination_name}"
             ) from error
-        _download(url, staging / destination_name)
+        download_file(url, staging / destination_name)
 
 
 def install_model(
