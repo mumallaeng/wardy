@@ -96,6 +96,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
 
   EventTransition transition;
   bool latched_fall = false;
+  bool notify_transition = true;
   {
     const std::lock_guard lock(mutex_);
     const std::string key = active_key(observation);
@@ -117,11 +118,14 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       // or a temporary track loss must not clear an emergency before the user
       // chooses Confirmed, Released, or False detection in the UI.
       if (observation.event_type == "fall_suspected" &&
+          !observation.release_latched_fall &&
           !terminal_status(found->second.event_status)) {
         found->second.last_seen_at = observation.observed_at;
-        database_.upsert_event(found->second);
         transition.event = found->second;
         latched_fall = true;
+        // The incident was already persisted and broadcast when it was
+        // created. Detector-miss frames must not write/broadcast repeatedly.
+        notify_transition = false;
       } else {
         found->second.last_seen_at = observation.observed_at;
         found->second.event_status = "released";
@@ -164,7 +168,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       transition.created = true;
     }
   }
-  notify_change(transition.event);
+  if (notify_transition) notify_change(transition.event);
   return transition;
 }
 

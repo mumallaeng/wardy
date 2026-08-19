@@ -18,7 +18,8 @@ export type JetsonStatus = CameraStatus;
 
 export interface SourceResult {
   source: string;
-  note: string;
+  note?: string;
+  [key: string]: unknown;
 }
 
 export interface WardyEvent {

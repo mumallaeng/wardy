@@ -119,6 +119,17 @@ std::string lowercase(std::string value) {
   return value;
 }
 
+bool fall_event_has_track_id(const storage::EventRecord& event,
+                             std::int64_t track_id) {
+  const std::string marker = "\"track_id\":" + std::to_string(track_id);
+  const std::size_t position = event.source_results_json.find(marker);
+  if (position == std::string::npos) return false;
+  const std::size_t end = position + marker.size();
+  return end < event.source_results_json.size() &&
+      (event.source_results_json[end] == ',' ||
+       event.source_results_json[end] == '}');
+}
+
 std::optional<std::string> request_header(const std::string& request,
                                           const std::string& requested_name) {
   const std::string expected = lowercase(requested_name);
@@ -744,6 +755,7 @@ void apply_fall_observation(const std::shared_ptr<StreamState>& state,
                             std::int64_t track_id, bool active,
                             const std::optional<double>& confidence,
                             const std::string& reason,
+                            bool release_latched_fall = false,
                             const std::optional<std::string>& subject_id = std::nullopt,
                             const std::optional<std::string>& subject_name = std::nullopt) {
   rules::EventObservation observation;
@@ -753,6 +765,7 @@ void apply_fall_observation(const std::shared_ptr<StreamState>& state,
   observation.subject_id = subject_id.value_or("track-" + std::to_string(track_id));
   observation.subject_name = subject_name;
   observation.subject_location = "unknown";
+  observation.release_latched_fall = release_latched_fall;
   observation.reason = reason;
   observation.source_results_json =
       "[{\"source\":\"m02_m04_pose_sequence\",\"track_id\":" +
@@ -802,10 +815,9 @@ void apply_tracking_results(
   for (const auto& [track_id, identity] : disappeared_falls) {
     auto persisted_identity = identity;
     if (!persisted_identity.first) {
-      const std::string marker = "\"track_id\":" + std::to_string(track_id);
       for (const auto& event : state->database->list_active_events()) {
         if (event.event_type == "fall_suspected" &&
-            event.source_results_json.find(marker) != std::string::npos) {
+            fall_event_has_track_id(event, track_id)) {
           persisted_identity = {event.subject_id, event.subject_name};
           break;
         }
@@ -814,12 +826,18 @@ void apply_tracking_results(
     if (!persisted_identity.first) continue;
     apply_fall_observation(state, track_id, false, std::nullopt,
                            "낙상 의심 자세가 더 이상 감지되지 않습니다.",
+                           false,
                            persisted_identity.first, persisted_identity.second);
   }
 
   for (const auto& person : response.persons) {
     bool apply = false;
-    const bool fall_active = person.fall_suspected.value_or(false);
+    // M-04 can produce a high score from a noisy seated or standing pose.
+    // Keep an incident active only while M-03 confirms the person is lying;
+    // standing/sitting observations also reconcile and release a stale fall.
+    const bool fall_active = person.fall_suspected.value_or(false) &&
+                             person.posture.has_value() &&
+                             *person.posture == "lying";
     std::optional<std::string> event_subject_id = person.subject_id;
     std::optional<std::string> event_subject_name = person.subject_name;
     {
@@ -845,11 +863,9 @@ void apply_tracking_results(
       }
     }
     if (!fall_active && !event_subject_id) {
-      const std::string marker = "\"track_id\":" +
-                                 std::to_string(person.track_id);
       for (const auto& event : state->database->list_active_events()) {
         if (event.event_type == "fall_suspected" &&
-            event.source_results_json.find(marker) != std::string::npos) {
+            fall_event_has_track_id(event, person.track_id)) {
           event_subject_id = event.subject_id;
           event_subject_name = event.subject_name;
           break;
@@ -860,6 +876,19 @@ void apply_tracking_results(
       // the original subject key.
       if (!event_subject_id) apply = false;
     }
+    if (!fall_active) {
+      // After a restart the in-memory identity map is empty. Always prefer
+      // the persisted incident identity when reconciling a track recovery,
+      // including events created with the track-* fallback subject ID.
+      for (const auto& event : state->database->list_active_events()) {
+        if (event.event_type == "fall_suspected" &&
+            fall_event_has_track_id(event, person.track_id)) {
+          event_subject_id = event.subject_id;
+          event_subject_name = event.subject_name;
+          break;
+        }
+      }
+    }
     if (apply) {
       apply_fall_observation(
           state, person.track_id, fall_active,
@@ -869,6 +898,8 @@ void apply_tracking_results(
               : (person.fall_suspected.has_value()
                      ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
                      : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
+          !fall_active && person.posture.has_value() &&
+              (*person.posture == "standing" || *person.posture == "sitting"),
           event_subject_id, event_subject_name);
     }
   }
@@ -907,10 +938,13 @@ void apply_tracking_results(
         if (*person.posture == "lying") return std::string{"누워 있음"};
         return std::string{"자세 확인 불가"};
       }();
-      rendered.detection.posture = person.fall_suspected.value_or(false)
+      const bool displayed_fall = person.fall_suspected.value_or(false) &&
+                                  person.posture.has_value() &&
+                                  *person.posture == "lying";
+      rendered.detection.posture = displayed_fall
           ? "낙상 의심" : posture_label;
       rendered.detection.confidence = person.detection_confidence;
-      rendered.detection.color = person.fall_suspected.value_or(false)
+      rendered.detection.color = displayed_fall
           ? "#d85d52" : "#62b88f";
       inference::FallDiagnostics diagnostics;
       diagnostics.track_id = person.track_id;
