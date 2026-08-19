@@ -13,10 +13,15 @@ from m02_identity.runtime import RegisteredSubjectIdentifier, _GalleryFeature, _
 
 
 class _Detector:
-    def setInputSize(self, _size: tuple[int, int]) -> None:
-        pass
+    def __init__(self) -> None:
+        self.input_size: tuple[int, int] | None = None
+        self.image_shape: tuple[int, ...] | None = None
 
-    def detect(self, _image: np.ndarray) -> tuple[None, np.ndarray]:
+    def setInputSize(self, size: tuple[int, int]) -> None:
+        self.input_size = size
+
+    def detect(self, image: np.ndarray) -> tuple[None, np.ndarray]:
+        self.image_shape = image.shape
         return None, np.array([[2, 2, 12, 12, 3, 5, 10, 5, 6, 9, 4, 12, 10, 12, 0.99]])
 
 
@@ -94,6 +99,24 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         self.assertEqual(result[7]["status"], "registered")
         self.assertEqual(result[7]["subject_id"], "subject-1")
         self.assertEqual(result[7]["subject_name"], "김연우")
+
+    def test_yunet_input_is_letterboxed_and_face_coordinates_are_restored(self) -> None:
+        image = np.full((61, 47, 3), 100, dtype=np.uint8)
+        face = self.runtime._largest_face(image)
+        self.assertIsNotNone(face)
+        self.assertEqual(self.runtime.detector.input_size, (320, 320))
+        self.assertEqual(self.runtime.detector.image_shape, (320, 320, 3))
+        scale = 320 / 61
+        expected = np.array(
+            [2, 2, 12, 12, 3, 5, 10, 5, 6, 9, 4, 12, 10, 12, 0.99],
+            dtype=np.float64,
+        )
+        expected[:14] /= scale
+        np.testing.assert_allclose(
+            face,
+            expected,
+            rtol=1e-6,
+        )
 
     def test_unknown_face_creates_one_rate_limited_local_review(self) -> None:
         frame = np.full((30, 30, 3), 50, dtype=np.uint8)
