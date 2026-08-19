@@ -5,7 +5,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../..");
 
-test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", async () => {
+test("주요 운영 화면과 명시적인 안전 감지 연결 상태를 제공한다", async () => {
   const html = await readFile(path.join(root, "apps/index.html"), "utf8");
   for (const view of ["dashboard", "events", "data", "settings", "jetson"]) {
     assert.match(html, new RegExp(`data-view-panel=["']${view}["']`));
@@ -18,8 +18,9 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   }
   assert.match(html, /ON-DEVICE LLM/);
   assert.match(html, /이름·식별자·사진·영상은 프롬프트에 포함하지 않으며/);
-  assert.match(html, /요청형 로컬 이벤트 요약/);
-  assert.match(html, /AI 미연결/);
+  assert.match(html, /안전 감지 미연결/);
+  assert.match(html, /M-02가 로컬에서 식별 특징을 생성해 등록 인물과 비교합니다/);
+  assert.match(html, /온디바이스 안전 감지 · 요청형 이벤트 요약/);
   assert.doesNotMatch(html, /데모 이벤트 추가|표시 예시 켜기|검토 UI 예시|UI 상태 미리보기/);
   assert.match(html, /카메라 표시 항목/);
   assert.match(html, /돌봄 인물 등록/);

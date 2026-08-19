@@ -171,7 +171,7 @@ function renderSystemState(): void {
     inferenceState = null;
     overlay.setDetections([]);
   }
-  const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
+  const detectionLabels = { disconnected: "안전 감지 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
   const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
   const detectionState = runtimeState?.detection_state ?? "disconnected";
   const detectionLabel = inferenceState?.source === "temporary" && detectionState === "running"
