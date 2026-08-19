@@ -90,6 +90,25 @@ add_test(NAME websocket_test COMMAND websocket_test)
 find_package(OpenCV QUIET COMPONENTS core videoio imgcodecs)
 
 if(OpenCV_FOUND)
+  add_library(wardy_pose_fall_client STATIC
+    src/inference/pose_fall_client.cpp
+  )
+  target_include_directories(wardy_pose_fall_client PUBLIC src ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(wardy_pose_fall_client PUBLIC ${OpenCV_LIBS})
+  target_compile_options(wardy_pose_fall_client PRIVATE -Wall -Wextra -Wpedantic)
+
+  add_executable(pose_fall_client_test
+    tests/pose_fall_client_test.cpp
+  )
+  target_link_libraries(pose_fall_client_test PRIVATE wardy_pose_fall_client Threads::Threads)
+  add_test(NAME pose_fall_client_test COMMAND pose_fall_client_test)
+
+  add_executable(wardy_pose_fall_probe
+    src/inference/pose_fall_probe.cpp
+  )
+  target_link_libraries(wardy_pose_fall_probe PRIVATE wardy_pose_fall_client)
+  target_compile_options(wardy_pose_fall_probe PRIVATE -Wall -Wextra -Wpedantic)
+
   add_library(wardy_camera STATIC
     src/input/camera_capture.cpp
   )

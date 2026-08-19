@@ -6,6 +6,9 @@
 /edge/db/*.sqlite-wal
 /edge/data/
 /edge/tools/
+/edge/.venv-ml/
+/edge/models/
+/edge/run/
 /node_modules/
 settings.json
 .env

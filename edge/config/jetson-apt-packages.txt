@@ -8,6 +8,12 @@ pkg-config
 libopencv-dev
 libsqlite3-dev
 
+# M-03/M-04 Python inference runtime
+python3-pip
+python3-venv
+python3-numpy
+python3-opencv
+
 # Camera and GStreamer runtime
 gstreamer1.0-plugins-bad
 gstreamer1.0-plugins-base
