@@ -791,6 +791,7 @@ void apply_tracking_results(
         if (identity != state->active_fall_identities.end()) {
           event_subject_id = identity->second.first;
           event_subject_name = identity->second.second;
+          state->active_fall_identities.erase(identity);
         }
       }
     }
@@ -802,10 +803,6 @@ void apply_tracking_results(
               ? "M-04 temporal pose sequence exceeded the fall threshold"
               : "M-04 temporal pose sequence returned below the fall threshold",
           event_subject_id, event_subject_name);
-      if (!*person.fall_suspected) {
-        std::lock_guard lock(state->active_fall_tracks_mutex);
-        state->active_fall_identities.erase(person.track_id);
-      }
     }
   }
 

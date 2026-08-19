@@ -95,8 +95,12 @@ void InferenceOutputRuntime::validate(const InferenceFrame& frame) {
 }
 
 std::string InferenceOutputRuntime::event_key(
-    const rules::EventObservation& observation) {
-  return observation.event_type + "|" + observation.subject_id.value_or("") +
+    const rules::EventObservation& observation,
+    const std::string& stable_subject_id) {
+  return observation.event_type + "|" +
+      (stable_subject_id.empty()
+           ? observation.subject_id.value_or("")
+           : stable_subject_id) +
       "|" + observation.object_id.value_or("");
 }
 
@@ -133,13 +137,15 @@ void InferenceOutputRuntime::apply(const InferenceFrame& frame) {
         auto event = observation(frame, person.detection, "fall_suspected",
             "낙상 의심 자세가 감지되었습니다.", false);
         event.source_results_json = source_results(frame, person.detection.confidence);
-        next_events.emplace(event_key(event), ActiveObservation{event});
+        next_events.emplace(event_key(event, person.detection.id),
+                            ActiveObservation{event});
       }
       if (person.inactive) {
         auto event = observation(frame, person.detection, "inactivity",
             "움직임이 기준 시간 이상 감지되지 않았습니다.", false);
         event.source_results_json = source_results(frame, person.detection.confidence);
-        next_events.emplace(event_key(event), ActiveObservation{event});
+        next_events.emplace(event_key(event, person.detection.id),
+                            ActiveObservation{event});
       }
     }
     for (const auto& hazard : frame.hazards) {
@@ -163,6 +169,15 @@ void InferenceOutputRuntime::apply(const InferenceFrame& frame) {
     std::lock_guard lock(mutex_);
     snapshot_ = next;
     previous_events = active_events_;
+    for (auto& [key, active] : next_events) {
+      const auto previous = previous_events.find(key);
+      if (previous == previous_events.end()) continue;
+      // EventRuntime correlates persisted events with their initial subject ID.
+      // Keep that metadata stable until release while the outer key follows the
+      // M-02 track ID and tolerates frame-to-frame identity flicker.
+      active.observation.subject_id = previous->second.observation.subject_id;
+      active.observation.subject_name = previous->second.observation.subject_name;
+    }
     active_events_ = next_events;
   }
 

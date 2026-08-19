@@ -45,6 +45,26 @@ class HubPublisherTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 load_manifest(root)
 
+    def test_manifest_rejects_artifact_outside_source_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            outside = root / "outside.onnx"
+            outside.write_bytes(b"outside")
+            digest = hashlib.sha256(outside.read_bytes()).hexdigest()
+            (source / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "model_id": "m03_pose",
+                        "version": "v1",
+                        "files": {"../outside.onnx": digest},
+                    }
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "unsafe model artifact path"):
+                load_manifest(source)
+
     def test_staged_publish_layout_can_be_installed_and_verified(self) -> None:
         content = b"wardy-published-model"
         digest = hashlib.sha256(content).hexdigest()

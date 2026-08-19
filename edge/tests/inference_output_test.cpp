@@ -31,13 +31,20 @@ int main() {
   assert(database.list_events().empty());
 
   wardy::inference::TemporaryInferenceProducer fall("fall");
-  runtime.apply(fall.infer("frame-2", "2026-08-12T00:00:01Z"));
+  auto recognized_fall = fall.infer("frame-2", "2026-08-12T00:00:01Z");
+  recognized_fall.people.front().detection.subject_id = "subject-1";
+  recognized_fall.people.front().detection.name = "등록 인물";
+  runtime.apply(recognized_fall);
   assert(database.list_events().size() == 1);
   assert(database.list_events().front().event_type == "fall_suspected");
   assert(database.list_events().front().event_status == "new");
+  assert(database.list_events().front().subject_id == "subject-1");
 
+  // Recognition can disappear frame-to-frame while the M-02 track remains.
+  // The active event must keep its track-derived key instead of churning.
   runtime.apply(fall.infer("frame-3", "2026-08-12T00:00:02Z"));
   assert(database.list_events().size() == 1);
+  assert(database.list_events().front().event_status == "new");
 
   runtime.apply(normal.infer("frame-4", "2026-08-12T00:00:03Z"));
   assert(database.list_events().front().event_status == "released");

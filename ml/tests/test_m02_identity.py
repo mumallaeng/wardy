@@ -21,10 +21,14 @@ class _Detector:
 
 
 class _Recognizer:
+    def __init__(self) -> None:
+        self.feature_calls = 0
+
     def alignCrop(self, image: np.ndarray, _face: np.ndarray) -> np.ndarray:
         return image
 
     def feature(self, image: np.ndarray) -> np.ndarray:
+        self.feature_calls += 1
         return np.array([[float(image.mean())]], dtype=np.float32)
 
     def match(self, feature: np.ndarray, candidate: np.ndarray, _metric: int) -> float:
@@ -141,6 +145,73 @@ class RegisteredSubjectIdentifierTest(unittest.TestCase):
         outside = self.training.parent / "outside.jpg"
         outside.write_bytes(b"outside")
         self.assertIsNone(self.runtime._stored_path("../outside.jpg"))
+
+    def test_malformed_person_does_not_discard_other_identity_results(self) -> None:
+        frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        result = self.runtime.identify(
+            frame,
+            [
+                {"track_id": 11, "bbox_xyxy": [50, 50, 60, 60]},
+                {"track_id": 12, "bbox_xyxy": [0, 0, 30, 30]},
+            ],
+            captured_at="2026-08-12T00:00:00Z",
+        )
+        self.assertEqual(result[11]["status"], "no_face")
+        self.assertEqual(result[12]["status"], "unknown")
+
+    def test_gallery_features_are_reused_after_unrelated_database_write(self) -> None:
+        reference = self.training / "identity" / "subject-1" / "reference.jpg"
+        reference.parent.mkdir(parents=True)
+        self.assertTrue(cv2.imwrite(str(reference), np.full((30, 30, 3), 80, dtype=np.uint8)))
+        with self.runtime._connection:
+            self.runtime._connection.execute(
+                "INSERT INTO subjects(subject_id,name,role) VALUES(?,?,?)",
+                ("subject-1", "등록 인물", "돌봄 대상"),
+            )
+            self.runtime._connection.execute(
+                "INSERT INTO subject_reference_samples(sample_id,subject_id,image_path) VALUES(?,?,?)",
+                ("sample-1", "subject-1", "identity/subject-1/reference.jpg"),
+            )
+        self.runtime._refresh_gallery_if_needed()
+        self.assertEqual(self.runtime.recognizer.feature_calls, 1)
+
+        other = sqlite3.connect(self.database)
+        other.execute("CREATE TABLE unrelated(value TEXT)")
+        other.execute("INSERT INTO unrelated(value) VALUES('changed')")
+        other.commit()
+        other.close()
+        self.runtime._refresh_gallery_if_needed()
+        self.assertEqual(self.runtime.recognizer.feature_calls, 1)
+
+    def test_pending_review_retention_removes_oldest_image_and_row(self) -> None:
+        self.runtime.max_pending_reviews = 2
+        self.runtime.review_cooldown_seconds = 0.0
+        frame = np.full((30, 30, 3), 50, dtype=np.uint8)
+        first = self.runtime.identify(
+            frame,
+            [{"track_id": 20, "bbox_xyxy": [0, 0, 30, 30]}],
+            captured_at="2026-08-12T00:00:00Z",
+        )
+        first_path = self.runtime._connection.execute(
+            "SELECT image_path FROM identity_reviews WHERE review_id=?",
+            (first[20]["review_id"],),
+        ).fetchone()[0]
+        for track_id, captured_at in (
+            (21, "2026-08-12T00:00:01Z"),
+            (22, "2026-08-12T00:00:02Z"),
+        ):
+            self.runtime.identify(
+                frame,
+                [{"track_id": track_id, "bbox_xyxy": [0, 0, 30, 30]}],
+                captured_at=captured_at,
+            )
+        self.assertEqual(
+            self.runtime._connection.execute(
+                "SELECT COUNT(*) FROM identity_reviews WHERE decision='pending'"
+            ).fetchone()[0],
+            2,
+        )
+        self.assertFalse((self.training / first_path).exists())
 
 
 if __name__ == "__main__":

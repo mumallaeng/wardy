@@ -89,6 +89,54 @@ class DatasetManagerTest(unittest.TestCase):
                 )
             self.assertFalse((root / "datasets" / "m05_hazard" / "commit-1").exists())
 
+    def test_failed_forced_promotion_restores_verified_dataset(self) -> None:
+        old_content = b"old-dataset"
+        new_content = b"new-dataset"
+        registry = {
+            "schema_version": 1,
+            "datasets": {
+                "m05_hazard": {
+                    "default_version": "commit-1",
+                    "versions": {
+                        "commit-1": {
+                            "source": "huggingface",
+                            "repo_id": "example/hazard",
+                            "revision": "commit-1",
+                            "files": {
+                                "dataset.zip": hashlib.sha256(new_content).hexdigest()
+                            },
+                        }
+                    },
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry_path = root / "registry.json"
+            registry_path.write_text(json.dumps(registry))
+            destination = root / "datasets" / "m05_hazard" / "commit-1"
+            destination.mkdir(parents=True)
+            (destination / "dataset.zip").write_bytes(old_content)
+
+            def download(_url: str, target: Path, **_: object) -> None:
+                target.write_bytes(new_content)
+
+            def replace(source: Path, target: Path) -> None:
+                if source.name.startswith(".commit-1-") and not source.name.endswith("-backup"):
+                    raise OSError("simulated promotion failure")
+                source.replace(target)
+
+            with patch("dataset_manager.download_file", side_effect=download), patch(
+                "dataset_manager._replace_path", side_effect=replace
+            ), self.assertRaisesRegex(OSError, "simulated promotion failure"):
+                install_dataset(
+                    "m05_hazard",
+                    dataset_root=root / "datasets",
+                    registry_path=registry_path,
+                    force=True,
+                )
+            self.assertEqual((destination / "dataset.zip").read_bytes(), old_content)
+
 
 if __name__ == "__main__":
     unittest.main()
