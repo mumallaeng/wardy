@@ -61,6 +61,16 @@ int main() {
   assert(fallback.find("긴급 1건") != std::string::npos);
   assert(fallback.find("미확인 2건") != std::string::npos);
 
+  auto system_fault = event("normal", "new");
+  system_fault.event_id = "fault-private";
+  system_fault.event_type = "camera_fault";
+  const std::vector<wardy::storage::EventRecord> events_with_fault = {
+      events[0], events[1], events[2], system_fault};
+  const std::string fault_fallback =
+      wardy::llm::deterministic_summary(events_with_fault);
+  assert(fault_fallback.find("총 4건") != std::string::npos);
+  assert(fault_fallback.find("정상 0건") != std::string::npos);
+
   const std::string generated =
       "오늘 총 3건의 안전 확인 이벤트가 기록되었습니다. 정상 0건, 주의 1건, "
       "경고 1건, 긴급 1건이며 미확인 2건입니다.";

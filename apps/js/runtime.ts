@@ -1,5 +1,5 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
-import type { DailySummaryResult, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
+import type { DailySummaryResult, DataCollectionSettings, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, ManagedItem, ManagedItemPolicy, NotificationSetting, NotificationSettings, Subject, SystemState, WardyEvent, Zone, ZoneRect } from "./types.ts";
 
 export interface RuntimeSnapshot {
   state: SystemState;
@@ -277,6 +277,31 @@ export class WardyRuntimeClient {
         }),
       });
     return body.notifications;
+  }
+
+  async loadDataCollectionSettings(baseUrl: string, accessToken: string,
+                                   fallbackOrigin: string): Promise<DataCollectionSettings> {
+    const body = await this.request<{ dataCollection: DataCollectionSettings }>(
+      baseUrl, accessToken, fallbackOrigin, "/api/data-collection-settings");
+    return body.dataCollection;
+  }
+
+  async saveDataCollectionSettings(baseUrl: string, accessToken: string,
+                                   fallbackOrigin: string,
+                                   settings: DataCollectionSettings): Promise<DataCollectionSettings> {
+    const body = await this.request<{ dataCollection: DataCollectionSettings }>(
+      baseUrl, accessToken, fallbackOrigin, "/api/data-collection-settings", {
+        method: "POST",
+        headers: encodedHeaders({
+          "X-Wardy-Identity-Review-Enabled": String(settings.identityReviewEnabled),
+          "X-Wardy-Event-Media-Enabled": String(settings.eventMediaEnabled),
+          "X-Wardy-Model-Improvement-Enabled": String(settings.modelImprovementEnabled),
+          "X-Wardy-Event-Media-Retention-Days": String(settings.eventMediaRetentionDays),
+          "X-Wardy-Training-Data-Retention-Days": String(settings.trainingDataRetentionDays),
+          "X-Wardy-Consent-Version": settings.consentVersion,
+        }),
+      });
+    return body.dataCollection;
   }
 
   async resolveIdentityReview(baseUrl: string, accessToken: string,

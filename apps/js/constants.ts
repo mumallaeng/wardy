@@ -7,6 +7,38 @@ export const CARE_STATUS: Readonly<Record<CareStatus, { label: string; reason: s
   emergency: { label: "긴급", reason: "즉시 확인이 필요한 의심 상황입니다.", rank: 3 },
 });
 
+/** Convert runtime diagnostics into caregiver-facing status text. */
+export function userFacingCareReason(status: CareStatus, reason: string): string {
+  const normalized = reason.trim().toLocaleLowerCase("en-US");
+  if (normalized.includes("fall threshold") || normalized.includes("m-04")) {
+    return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+  }
+  if (normalized.includes("event runtime") || normalized.includes("worker")) {
+    return CARE_STATUS[status].reason;
+  }
+  if (!reason.trim() || /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold)\b/i.test(reason)) {
+    return CARE_STATUS[status].reason;
+  }
+  return reason;
+}
+
+/** Keep implementation diagnostics out of caregiver-facing event descriptions. */
+export function userFacingEventReason(eventType: EventType, reason: string): string {
+  const technical = /\b(m-0[1-5]|sqlite|onnx|opencv|runtime|worker|threshold|failed|error|exception|cannot|unable|stopped|recovered|input|encode|encoding|frame)\b/i.test(reason);
+  if (!technical) return reason.trim() || CARE_STATUS.normal.reason;
+  switch (eventType) {
+    case "fall_suspected": return "낙상 의심 신호가 일정 시간 누적되었습니다.";
+    case "camera_fault": return "카메라 입력을 확인해 주세요.";
+    case "detection_fault": return "안전 감지 기능을 확인해 주세요.";
+    case "hazard_detected": return "위험물이 감지되었습니다.";
+    case "hazard_proximity": return "위험물이 돌봄 대상자 가까이에 있습니다.";
+    case "inactivity": return "장시간 움직임이 없어 확인이 필요합니다.";
+    case "zone_entry": return "주의 구역 진입이 감지되었습니다.";
+    case "zone_dwell": return "주의 구역에 오래 머물고 있습니다.";
+    default: return CARE_STATUS.normal.reason;
+  }
+}
+
 export const EVENT_STATUS: Readonly<Record<EventStatus, string>> = Object.freeze({
   new: "신규",
   confirmed: "확인",
@@ -30,6 +62,7 @@ export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: stri
   { key: "showRole", label: "돌봄 역할", description: "돌봄 대상·일반 인물 역할 표시" },
   { key: "showName", label: "식별 이름", description: "등록 대상의 이름 표시" },
   { key: "showPosture", label: "M-03 자세·스켈레톤", description: "관절선과 서 있음·앉음·누움 자세 표시" },
+  { key: "showFall", label: "M-04 낙상 감지", description: "낙상 시퀀스 점수와 분석 진행 상태 표시" },
 ]);
 
 /**
@@ -44,7 +77,7 @@ export function createInitialState(): WardyState {
     careState: { status: "normal", reason: CARE_STATUS.normal.reason, updatedAt: new Date().toISOString(), source: "manual_ui" },
     events: [],
     settings: {
-      overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
+      overlay: { showClass: true, showRole: true, showName: true, showPosture: true, showFall: true },
       notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       camera: { mirrored: false },
       jetson: { baseUrl: "" },

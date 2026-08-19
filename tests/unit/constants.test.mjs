@@ -1,0 +1,26 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { userFacingCareReason, userFacingEventReason } from "../../apps/js/constants.ts";
+
+test("돌봄 상태에는 M-04 내부 진단 문구 대신 사용자용 설명을 표시한다", () => {
+  assert.equal(
+    userFacingCareReason("emergency", "M-04 temporal pose sequence exceeded the fall threshold"),
+    "낙상 의심 신호가 일정 시간 누적되었습니다.",
+  );
+  assert.equal(
+    userFacingCareReason("normal", "Event runtime is starting"),
+    "활성화된 안전 이벤트가 없습니다.",
+  );
+});
+
+test("이벤트 기록에도 모델 내부 진단 문구를 노출하지 않는다", () => {
+  assert.equal(
+    userFacingEventReason("fall_suspected", "M-04 temporal pose sequence exceeded the fall threshold"),
+    "낙상 의심 신호가 일정 시간 누적되었습니다.",
+  );
+  assert.equal(userFacingEventReason("fall_suspected", "낙상 의심"), "낙상 의심");
+  assert.equal(userFacingEventReason("hazard_detected", "위험물이 탐지됨"), "위험물이 탐지됨");
+  assert.equal(userFacingEventReason("camera_fault", "카메라 입력이 중단됨"), "카메라 입력이 중단됨");
+  assert.equal(userFacingEventReason("camera_fault", "failed to encode the Jetson camera frame"), "카메라 입력을 확인해 주세요.");
+});

@@ -285,3 +285,30 @@ test("오늘의 이벤트 요약은 인증된 Jetson LLM endpoint를 사용한�
   assert.equal(calls[0].init.headers["X-Wardy-Summary-Date"], "2026-08-11");
   assert.ok(calls[0].init.signal instanceof AbortSignal);
 });
+
+test("데이터 수집 동의와 보존기간은 인증된 Jetson API에 저장한다", async () => {
+  const calls = [];
+  const settings = {
+    identityReviewEnabled: true,
+    eventMediaEnabled: false,
+    modelImprovementEnabled: true,
+    eventMediaRetentionDays: 7,
+    trainingDataRetentionDays: 90,
+    consentVersion: "wardy-privacy-v1",
+    consentedAt: "2026-08-13T07:00:00Z",
+    updatedAt: "2026-08-13T07:00:00Z",
+  };
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({ dataCollection: settings });
+  };
+  const client = new WardyRuntimeClient(fetchImpl);
+  assert.deepEqual(await client.loadDataCollectionSettings(
+    "https://jetson.local:8443", "token", ""), settings);
+  assert.deepEqual(await client.saveDataCollectionSettings(
+    "https://jetson.local:8443", "token", "", settings), settings);
+  assert.equal(calls[1].init.method, "POST");
+  assert.equal(calls[1].init.headers["X-Wardy-Identity-Review-Enabled"], "true");
+  assert.equal(calls[1].init.headers["X-Wardy-Event-Media-Retention-Days"], "7");
+  assert.ok(calls.every((call) => call.init.headers["X-Wardy-Access-Token"] === "token"));
+});

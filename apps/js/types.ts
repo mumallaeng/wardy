@@ -10,7 +10,7 @@ export type EventType =
   | "camera_fault"
   | "detection_fault";
 export type MediaType = "none" | "image" | "video";
-export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture";
+export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture" | "showFall";
 export type NotificationSetting = "off" | "on";
 export type ManagedItemPolicy = "included" | "excluded";
 export type CameraStatus = "idle" | "connecting" | "connected" | "fault";
@@ -134,6 +134,17 @@ export interface Subject {
   role: string;
   createdAt: string;
   referenceSampleCount?: number;
+}
+
+export interface DataCollectionSettings {
+  identityReviewEnabled: boolean;
+  eventMediaEnabled: boolean;
+  modelImprovementEnabled: boolean;
+  eventMediaRetentionDays: number;
+  trainingDataRetentionDays: number;
+  consentVersion: string;
+  consentedAt: string | null;
+  updatedAt: string;
 }
 
 export interface WardyState {

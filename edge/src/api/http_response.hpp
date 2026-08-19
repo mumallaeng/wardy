@@ -9,7 +9,7 @@ inline std::string common_headers(const std::string& allowed_origin) {
   return "Access-Control-Allow-Origin: " + allowed_origin + "\r\n"
          "Vary: Origin\r\n"
          "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n"
-         "Access-Control-Allow-Headers: Accept, Content-Type, X-Wardy-Access-Token, X-Wardy-Summary-Date, X-Wardy-Item-Id, X-Wardy-Item-Label, X-Wardy-Item-Policy, X-Wardy-Subject-Id, X-Wardy-Subject-Name, X-Wardy-Subject-Role, X-Wardy-Event-Type, X-Wardy-Event-Active, X-Wardy-Observed-At, X-Wardy-Subject-Location, X-Wardy-Object-Id, X-Wardy-Object-Class, X-Wardy-Zone-Id, X-Wardy-Reason, X-Wardy-Model-Id, X-Wardy-Requirement-Id, X-Wardy-Label, X-Wardy-Capture-Session, X-Wardy-Review-Status, X-Wardy-Original-Filename\r\n"
+         "Access-Control-Allow-Headers: Accept, Content-Type, X-Wardy-Access-Token, X-Wardy-Summary-Date, X-Wardy-Item-Id, X-Wardy-Item-Label, X-Wardy-Item-Policy, X-Wardy-Subject-Id, X-Wardy-Subject-Name, X-Wardy-Subject-Role, X-Wardy-Event-Type, X-Wardy-Event-Active, X-Wardy-Observed-At, X-Wardy-Subject-Location, X-Wardy-Object-Id, X-Wardy-Object-Class, X-Wardy-Zone-Id, X-Wardy-Reason, X-Wardy-Model-Id, X-Wardy-Requirement-Id, X-Wardy-Label, X-Wardy-Capture-Session, X-Wardy-Review-Status, X-Wardy-Original-Filename, X-Wardy-Identity-Review-Enabled, X-Wardy-Event-Media-Enabled, X-Wardy-Model-Improvement-Enabled, X-Wardy-Event-Media-Retention-Days, X-Wardy-Training-Data-Retention-Days\r\n"
          "Cache-Control: no-store\r\n";
 }
 
