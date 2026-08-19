@@ -29,7 +29,7 @@ export const OVERLAY_FIELDS: ReadonlyArray<{ key: OverlaySettingKey; label: stri
   { key: "showClass", label: "탐지 class", description: "사람·물건 class 표시" },
   { key: "showRole", label: "돌봄 역할", description: "돌봄 대상·일반 인물 역할 표시" },
   { key: "showName", label: "식별 이름", description: "등록 대상의 이름 표시" },
-  { key: "showPosture", label: "자세·행동", description: "서 있음·앉음 등 상태 표시" },
+  { key: "showPosture", label: "M-03 자세·스켈레톤", description: "관절선과 서 있음·앉음·누움 자세 표시" },
 ]);
 
 /**

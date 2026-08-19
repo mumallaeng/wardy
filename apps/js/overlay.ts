@@ -156,25 +156,33 @@ export class OverlayController {
     const y = (content.y + ny * content.height) * dpr;
     const width = nw * content.width * dpr;
     const height = nh * content.height * dpr;
-    const labels = [];
-    if (this.settings.showClass && detection.className) labels.push(detection.className);
-    if (this.settings.showRole && detection.role) labels.push(detection.role);
-    if (this.settings.showName && detection.name) labels.push(detection.name);
-    if (this.settings.showPosture && detection.posture) labels.push(detection.posture);
+    const labels: string[] = [];
     this.context.save();
     this.context.strokeStyle = detection.color;
     this.context.lineWidth = 3 * dpr;
-    this.context.strokeRect(x, y, width, height);
-    this.#drawSkeleton(detection, dpr, content);
+    if (this.settings.showClass) this.context.strokeRect(x, y, width, height);
+    if (this.settings.showPosture) this.#drawSkeleton(detection, dpr, content);
     if (detection.fallDiagnostics) {
       const diagnostic = detection.fallDiagnostics;
-      labels.length = 0;
-      labels.push(`[M-01] person ${Math.round(diagnostic.detectorConfidence * 100)}%`);
-      labels.push(`[M-02] track #${diagnostic.trackId}`);
-      labels.push(`[M-03] pose ${diagnostic.poseQuality === null ? "--" : `${Math.round(diagnostic.poseQuality * 100)}%`}`);
-      labels.push(diagnostic.fallConfidence === null
-        ? `[M-04] collecting ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
-        : `[M-04] fall ${Math.round(diagnostic.fallConfidence * 100)}% / threshold ${Math.round(diagnostic.fallThreshold * 100)}%`);
+      if (this.settings.showClass) {
+        labels.push(`[M-01] ${detection.className || "person"} ${Math.round(diagnostic.detectorConfidence * 100)}%`);
+      }
+      if (this.settings.showRole || this.settings.showName) {
+        const identity = [detection.role, detection.name].filter(Boolean).join(" · ");
+        labels.push(`[M-02] track #${diagnostic.trackId}${identity ? ` · ${identity}` : ""}`);
+      }
+      if (this.settings.showPosture) {
+        const quality = diagnostic.poseQuality === null ? "--" : `${Math.round(diagnostic.poseQuality * 100)}%`;
+        labels.push(`[M-03] ${detection.posture || "자세 확인 불가"} · ${quality}`);
+        labels.push(diagnostic.fallConfidence === null
+          ? `[M-04] 수집 ${diagnostic.historyFrames}/${diagnostic.windowFrames}`
+          : `[M-04] 낙상 ${Math.round(diagnostic.fallConfidence * 100)}% · 기준 ${Math.round(diagnostic.fallThreshold * 100)}%`);
+      }
+    } else {
+      if (this.settings.showClass && detection.className) labels.push(detection.className);
+      if (this.settings.showRole && detection.role) labels.push(detection.role);
+      if (this.settings.showName && detection.name) labels.push(detection.name);
+      if (this.settings.showPosture && detection.posture) labels.push(detection.posture);
     }
     if (labels.length) {
       this.context.font = `700 ${13 * dpr}px system-ui`;
