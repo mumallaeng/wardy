@@ -20,7 +20,7 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.match(html, /이름·식별자·사진·영상은 프롬프트에 포함하지 않으며/);
   assert.match(html, /요청형 로컬 이벤트 요약/);
   assert.match(html, /AI 미연결/);
-  assert.match(html, /AI 결과 아님/);
+  assert.doesNotMatch(html, /데모 이벤트 추가|표시 예시 켜기|검토 UI 예시|UI 상태 미리보기/);
   assert.match(html, /카메라 표시 항목/);
   assert.match(html, /돌봄 인물 등록/);
   assert.match(html, /알림 설정/);
