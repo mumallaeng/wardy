@@ -44,7 +44,7 @@ std::string korean_care_status(const std::optional<std::string>& status) {
   if (status == "caution") return "주의";
   if (status == "warning") return "경고";
   if (status == "emergency") return "긴급";
-  return "기본";
+  return "정상";
 }
 
 std::string korean_event_status(const std::string& status) {
@@ -349,7 +349,7 @@ std::string deterministic_summary(const std::vector<storage::EventRecord>& event
   if (events.empty()) return "오늘 기록된 안전 확인 이벤트가 없습니다.";
   const auto counts = count_events(events);
   return "오늘 총 " + std::to_string(events.size()) +
-      "건의 안전 확인 이벤트가 기록되었습니다. 기본 " + std::to_string(counts.normal) +
+      "건의 안전 확인 이벤트가 기록되었습니다. 정상 " + std::to_string(counts.normal) +
       "건, 주의 " + std::to_string(counts.caution) + "건, 경고 " +
       std::to_string(counts.warning) + "건, 긴급 " +
       std::to_string(counts.emergency) + "건이며 미확인 " +

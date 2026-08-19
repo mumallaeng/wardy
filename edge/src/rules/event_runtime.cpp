@@ -208,14 +208,12 @@ bool EventRuntime::has_active_event_type(const std::string& event_type) const {
 std::optional<std::string> EventRuntime::current_care_status() const {
   const std::lock_guard lock(mutex_);
   std::optional<std::string> current;
-  bool system_fault = false;
   for (const auto& [key, event] : active_events_) {
     (void)key;
     if (event.event_status == "confirmed") continue;
-    if (!event.care_status) system_fault = true;
+    if (!event.care_status) continue;
     if (care_rank(event.care_status) > care_rank(current)) current = event.care_status;
   }
-  if (system_fault) return std::nullopt;
   return current.value_or("normal");
 }
 
@@ -225,7 +223,7 @@ std::string EventRuntime::current_reason() const {
   for (const auto& [key, event] : active_events_) {
     (void)key;
     if (event.event_status == "confirmed") continue;
-    if (!event.care_status) return event.reason;
+    if (!event.care_status) continue;
     if (!current || care_rank(event.care_status) > care_rank(current->care_status)) {
       current = &event;
     }
