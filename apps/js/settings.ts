@@ -1,6 +1,14 @@
 import { EVENT_TYPES, OVERLAY_FIELDS } from "./constants.ts";
 import type { EventType, ManagedItem, NotificationLevel, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
 
+/**
+ * Creates an accessible checkbox switch with an initial state and change callback.
+ *
+ * @param checked - Whether the switch starts checked
+ * @param onChange - Callback invoked with the switch's current checked state
+ * @param label - Accessible label for the switch
+ * @returns The switch element
+ */
 function switchControl(checked: boolean, onChange: (checked: boolean) => void, label: string): HTMLLabelElement {
   const wrapper = document.createElement("label");
   wrapper.className = "switch";
@@ -14,6 +22,12 @@ function switchControl(checked: boolean, onChange: (checked: boolean) => void, l
   return wrapper;
 }
 
+/**
+ * Renders a toggle row for each overlay setting and reports changes through the callback.
+ *
+ * @param settings - The current values for the overlay settings
+ * @param onChange - Called with the setting key and updated value when a toggle changes
+ */
 export function renderOverlaySettings(
   container: HTMLElement,
   settings: OverlaySettings,
@@ -34,6 +48,12 @@ export function renderOverlaySettings(
   });
 }
 
+/**
+ * Renders notification level controls for configurable event types.
+ *
+ * @param settings - Notification levels for each event type; unset levels default to `"normal"`.
+ * @param onChange - Callback invoked with the event type and selected notification level.
+ */
 export function renderNotifications(
   container: HTMLElement,
   settings: NotificationSettings,
@@ -66,6 +86,13 @@ export function renderNotifications(
   });
 }
 
+/**
+ * Creates a button for removing an item.
+ *
+ * @param label - The item label included in the button's accessible name
+ * @param onClick - The callback invoked when the button is clicked
+ * @returns The configured removal button
+ */
 function removeButton(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
@@ -76,6 +103,12 @@ function removeButton(label: string, onClick: () => void): HTMLButtonElement {
   return button;
 }
 
+/**
+ * Renders subjects with their names, roles, IDs, and removal controls.
+ *
+ * @param subjects - The subjects to display.
+ * @param onRemove - Called with a subject ID when its removal control is activated.
+ */
 export function renderSubjects(container: HTMLElement, subjects: readonly Subject[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   subjects.forEach((subject) => {
@@ -92,6 +125,12 @@ export function renderSubjects(container: HTMLElement, subjects: readonly Subjec
   });
 }
 
+/**
+ * Renders managed items as removable chips.
+ *
+ * @param items - The managed items to display, including their labels and policies
+ * @param onRemove - Called with an item's ID when its remove button is clicked
+ */
 export function renderManagedItems(container: HTMLElement, items: readonly ManagedItem[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   items.forEach((item) => {
@@ -109,6 +148,13 @@ export function renderManagedItems(container: HTMLElement, items: readonly Manag
   });
 }
 
+/**
+ * Renders saved zones with their names, dimensions, and removal controls.
+ *
+ * @param container - The element that receives the rendered zone list
+ * @param zones - The zones to display
+ * @param onRemove - Callback invoked with a zone ID when its removal control is activated
+ */
 export function renderZones(container: HTMLElement, zones: readonly Zone[], onRemove: (id: string) => void): void {
   container.replaceChildren();
   if (!zones.length) {

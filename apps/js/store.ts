@@ -11,6 +11,12 @@ type StoreListener = (state: WardyState) => void;
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+/**
+ * Determines whether a value has the required structure for Wardy state.
+ *
+ * @param value - The value to validate
+ * @returns `true` if the value has version 1, an events array, and settings; `false` otherwise.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -45,7 +51,6 @@ function isWardyEvent(value: unknown): value is WardyEvent {
     && isStringOrNull(value.media_started_at)
     && isStringOrNull(value.media_ended_at);
 }
-
 function isWardyState(value: unknown): value is WardyState {
   if (!isRecord(value) || value.version !== 1) return false;
   const careState = value.careState;

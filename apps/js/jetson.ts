@@ -8,10 +8,24 @@ interface JetsonConnectionOptions {
   onStatus?: JetsonStatusHandler;
 }
 
+/**
+ * Converts an unknown error value to a message string.
+ *
+ * @param error - The error value to convert
+ * @returns The error message or string representation of `error`
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Normalizes and validates a Jetson base URL.
+ *
+ * @param value - The preferred Jetson URL.
+ * @param fallbackOrigin - The URL to use when `value` is empty.
+ * @returns The normalized HTTP(S) base URL without trailing slashes, query strings, or fragments.
+ * @throws Error if no URL is provided, the URL is invalid, uses another protocol, or contains credentials.
+ */
 export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): string {
   const candidate = String(value ?? "").trim() || String(fallbackOrigin ?? "").trim();
   if (!candidate) throw new Error("Jetson 서비스 주소를 입력해 주세요.");
@@ -24,6 +38,13 @@ export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): stri
   return url.toString().replace(/\/$/, "");
 }
 
+/**
+ * Builds the Jetson health endpoint URL from a base URL.
+ *
+ * @param value - The Jetson base URL.
+ * @param fallbackOrigin - The origin to use when `value` is empty.
+ * @returns The normalized base URL with `/api/health` appended.
+ */
 export function jetsonHealthUrl(value: string, fallbackOrigin = ""): string {
   return `${normalizeJetsonBaseUrl(value, fallbackOrigin)}/api/health`;
 }
