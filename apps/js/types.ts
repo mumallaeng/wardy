@@ -5,14 +5,13 @@ export type EventType =
   | "inactivity"
   | "hazard_detected"
   | "hazard_proximity"
-  | "managed_item_moved"
   | "zone_entry"
   | "zone_dwell"
   | "camera_fault"
   | "detection_fault";
 export type MediaType = "none" | "image" | "video";
 export type OverlaySettingKey = "showClass" | "showRole" | "showName" | "showPosture";
-export type NotificationLevel = "off" | "normal" | "strong";
+export type NotificationSetting = "off" | "on";
 export type ManagedItemPolicy = "included" | "excluded";
 export type CameraStatus = "idle" | "connecting" | "connected" | "fault";
 export type JetsonStatus = CameraStatus;
@@ -48,7 +47,7 @@ export interface WardyEvent {
 }
 
 export interface OverlaySettings extends Record<OverlaySettingKey, boolean> {}
-export type NotificationSettings = Partial<Record<EventType, NotificationLevel>>;
+export type NotificationSettings = Partial<Record<EventType, NotificationSetting>>;
 
 export interface CareState {
   status: CareStatus;
@@ -61,6 +60,25 @@ export interface ManagedItem {
   id: string;
   label: string;
   policy: ManagedItemPolicy;
+  sampleCount?: number;
+}
+
+export interface TrainingSampleResult {
+  sampleId: string;
+  imagePath: string;
+  sampleCount: number;
+}
+
+export type IdentityReviewDecision = "pending" | "subject" | "unknown" | "excluded";
+
+export interface IdentityReview {
+  id: string;
+  imagePath: string;
+  capturedAt: string;
+  predictedName: string | null;
+  confidence: number | null;
+  decision: IdentityReviewDecision;
+  subjectId: string | null;
 }
 
 export interface ZoneRect {
@@ -80,6 +98,7 @@ export interface Subject {
   name: string;
   role: string;
   createdAt: string;
+  referenceSampleCount?: number;
 }
 
 export interface WardyState {
@@ -94,6 +113,7 @@ export interface WardyState {
   managedItems: ManagedItem[];
   zones: Zone[];
   subjects: Subject[];
+  identityReviews: IdentityReview[];
 }
 
 export interface Detection {

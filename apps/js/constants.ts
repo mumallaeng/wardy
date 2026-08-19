@@ -19,7 +19,6 @@ export const EVENT_TYPES: Readonly<Record<EventType, string>> = Object.freeze({
   inactivity: "장시간 정지",
   hazard_detected: "위험물 탐지",
   hazard_proximity: "위험물 근접",
-  managed_item_moved: "관리 물품 이동",
   zone_entry: "주의 구역 진입",
   zone_dwell: "주의 구역 장시간 체류",
   camera_fault: "카메라 입력 이상",
@@ -38,10 +37,21 @@ export const DEMO_DETECTIONS: ReadonlyArray<Detection> = Object.freeze([
   { id: "object-demo-01", box: [0.66, 0.57, 0.16, 0.18], className: "가위", role: "관리 위험물", name: "", posture: "", color: "#ef6b61" },
 ]);
 
+/**
+ * Creates an ISO 8601 timestamp for a specified number of minutes before the current time.
+ *
+ * @param minutes - The number of minutes to subtract from the current time
+ * @returns The resulting ISO 8601 timestamp
+ */
 function isoMinutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
+/**
+ * Creates the predefined demo events used to populate the application.
+ *
+ * @returns An array of sample hazardous-proximity, hazard-detected, and inactivity events
+ */
 export function createDemoEvents(): WardyEvent[] {
   return [
     {
@@ -119,6 +129,11 @@ export function createDemoEvents(): WardyEvent[] {
   ];
 }
 
+/**
+ * Creates the initial application state with default settings, managed items, demo events, and a demo care subject.
+ *
+ * @returns The initial application state
+ */
 export function createInitialState(): WardyState {
   return {
     version: 1,
@@ -126,7 +141,7 @@ export function createInitialState(): WardyState {
     events: createDemoEvents(),
     settings: {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
-      notifications: { fall_suspected: "strong", inactivity: "normal", hazard_detected: "normal", hazard_proximity: "strong" },
+      notifications: { fall_suspected: "on", inactivity: "on", hazard_detected: "on", hazard_proximity: "on" },
       jetson: { baseUrl: "" },
     },
     managedItems: [
@@ -136,9 +151,16 @@ export function createInitialState(): WardyState {
     ],
     zones: [],
     subjects: [{ id: "subject-demo-01", name: "조정민", role: "돌봄 대상", createdAt: new Date().toISOString() }],
+    identityReviews: [],
   };
 }
 
+/**
+ * Creates a demo fall-suspected event with current timestamps and sequence-based identifiers.
+ *
+ * @param sequence - The numeric suffix used for the event and media identifiers
+ * @returns A new emergency event in the unconfirmed state
+ */
 export function createDemoEvent(sequence: number): WardyEvent {
   const now = new Date().toISOString();
   return {

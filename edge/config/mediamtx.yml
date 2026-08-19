@@ -1,0 +1,40 @@
+logLevel: info
+
+authMethod: internal
+authInternalUsers:
+  - user: wardy-publisher
+    pass: change-me-publisher
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+        path: wardy
+  - user: wardy-viewer
+    pass: change-me-viewer
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: read
+        path: wardy
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+
+webrtc: true
+# HTTPS is terminated by Caddy; this listener is loopback-only.
+webrtcAddress: 127.0.0.1:8889
+webrtcEncryption: false
+webrtcAllowOrigins: ["http://localhost:8000"]
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: true
+webrtcAdditionalHosts: []
+
+paths:
+  wardy:
+    source: publisher

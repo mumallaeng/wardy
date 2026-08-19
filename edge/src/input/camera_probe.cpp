@@ -11,6 +11,14 @@
 
 namespace {
 
+/**
+ * @brief Parses an integer from a string view.
+ *
+ * @param value Text containing the integer to parse.
+ * @param name Argument name used in the error message.
+ * @return int Parsed integer value.
+ * @throws std::invalid_argument If the value is not a complete integer.
+ */
 int parse_integer(std::string_view value, std::string_view name) {
   int result = 0;
   const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
@@ -20,7 +28,13 @@ int parse_integer(std::string_view value, std::string_view name) {
   return result;
 }
 
-}  // namespace
+}  /**
+ * @brief Probes a camera and reads a requested number of frames.
+ *
+ * @param argc Number of command-line arguments.
+ * @param argv Command-line arguments for the device index, resolution, and frame count.
+ * @return 0 on success, 1 if configuration or camera setup fails, or 2 if a frame cannot be read.
+ */
 
 int main(int argc, char** argv) {
   try {
