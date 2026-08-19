@@ -11,18 +11,18 @@ import {
 test("Jetson 주소를 정규화하고 health endpoint를 만든다", () => {
   assert.equal(normalizeJetsonBaseUrl(" https://jetson.local:8443/ "), "https://jetson.local:8443");
   assert.equal(normalizeJetsonBaseUrl("https://jetson.local"), "https://jetson.local:8443");
-  assert.equal(normalizeJetsonBaseUrl(" http://172.16.1.252:8080/ "), "http://172.16.1.252:8080");
-  assert.equal(normalizeJetsonBaseUrl("http://172.16.1.252"), "http://172.16.1.252:8080");
+  assert.equal(normalizeJetsonBaseUrl(" http://172.16.1.252:8088/ "), "http://172.16.1.252:8088");
+  assert.equal(normalizeJetsonBaseUrl("http://172.16.1.252"), "http://172.16.1.252:8088");
   assert.equal(jetsonHealthUrl("", "https://127.0.0.1:8443"), "https://127.0.0.1:8443/api/health");
-  assert.equal(jetsonHealthUrl("http://172.16.1.252"), "http://172.16.1.252:8080/api/health");
+  assert.equal(jetsonHealthUrl("http://172.16.1.252"), "http://172.16.1.252:8088/api/health");
   assert.equal(jetsonBrowserBootstrapUrl("https://jetson.local"), "https://jetson.local:8443/connect");
-  assert.equal(jetsonBrowserBootstrapUrl("http://172.16.1.252"), "http://172.16.1.252:8080/connect");
+  assert.equal(jetsonBrowserBootstrapUrl("http://172.16.1.252"), "http://172.16.1.252:8088/connect");
   assert.throws(() => normalizeJetsonBaseUrl("ws://jetson.local"), /HTTP 또는 HTTPS/);
-  assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8787"), /port는 8080/);
+  assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8787"), /port는 8088/);
   assert.throws(() => normalizeJetsonBaseUrl("https://user:secret@jetson.local"), /계정 정보/);
   assert.throws(() => normalizeJetsonBaseUrl("https://jetson.local:443"), /port는 8443/);
   assert.throws(() => normalizeJetsonBaseUrl("https://jetson.local:8189"), /8189는 WebRTC 전송 전용/);
-  assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8443"), /port는 8080/);
+  assert.throws(() => normalizeJetsonBaseUrl("http://jetson.local:8443"), /port는 8088/);
 });
 
 test("Jetson health 응답을 연결 정보로 반환한다", async () => {

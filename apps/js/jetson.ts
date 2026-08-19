@@ -34,7 +34,7 @@ export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): stri
     throw new Error("Jetson 주소는 HTTP 또는 HTTPS 형식이어야 합니다.");
   }
   if (url.username || url.password) throw new Error("주소에 계정 정보를 포함할 수 없습니다.");
-  const servicePort = url.protocol === "https:" ? "8443" : "8080";
+  const servicePort = url.protocol === "https:" ? "8443" : "8088";
   const authority = candidate.match(/^https?:\/\/([^/?#]+)/i)?.[1] ?? "";
   const hostPort = authority.slice(authority.lastIndexOf("@") + 1);
   const explicitPort = hostPort.startsWith("[")
