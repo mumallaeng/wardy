@@ -1,6 +1,7 @@
 #include "rules/event_runtime.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -69,10 +70,17 @@ int EventRuntime::care_rank(const std::optional<std::string>& care_status) {
 }
 
 std::string EventRuntime::next_event_id(const std::string& event_type) {
+  // Include a process-local nonce so an event created immediately after a
+  // service restart cannot reuse the previous runtime's millisecond/sequence
+  // identifier.
+  static const auto process_nonce =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  static std::atomic_uint64_t process_sequence{0};
   const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch()).count();
   return "EVT-" + event_type + "-" + std::to_string(milliseconds) + "-" +
-         std::to_string(++sequence_);
+         std::to_string(process_nonce) + "-" +
+         std::to_string(++process_sequence);
 }
 
 EventTransition EventRuntime::apply(const EventObservation& observation) {
@@ -87,6 +95,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
   }
 
   EventTransition transition;
+  bool latched_fall = false;
   {
     const std::lock_guard lock(mutex_);
     const std::string key = active_key(observation);
@@ -104,14 +113,25 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       if (found == active_events_.end()) {
         return transition;
       }
-      found->second.last_seen_at = observation.observed_at;
-      found->second.event_status = "released";
-      found->second.released_at = observation.observed_at;
-      database_.upsert_event(found->second);
-      transition.event = found->second;
-      transition.released = true;
-      active_events_.erase(found);
-    } else if (found != active_events_.end()) {
+      // A fall incident is operator-latched.  Pose recovery, detector misses,
+      // or a temporary track loss must not clear an emergency before the user
+      // chooses Confirmed, Released, or False detection in the UI.
+      if (observation.event_type == "fall_suspected" &&
+          !terminal_status(found->second.event_status)) {
+        found->second.last_seen_at = observation.observed_at;
+        database_.upsert_event(found->second);
+        transition.event = found->second;
+        latched_fall = true;
+      } else {
+        found->second.last_seen_at = observation.observed_at;
+        found->second.event_status = "released";
+        found->second.released_at = observation.observed_at;
+        database_.upsert_event(found->second);
+        transition.event = found->second;
+        transition.released = true;
+        active_events_.erase(found);
+      }
+    } else if (!latched_fall && found != active_events_.end()) {
       found->second.last_seen_at = observation.observed_at;
       found->second.subject_name = observation.subject_name;
       found->second.subject_location = observation.subject_location;
@@ -120,7 +140,7 @@ EventTransition EventRuntime::apply(const EventObservation& observation) {
       found->second.source_results_json = observation.source_results_json;
       database_.upsert_event(found->second);
       transition.event = found->second;
-    } else {
+    } else if (!latched_fall) {
       storage::EventRecord event;
       event.event_id = next_event_id(observation.event_type);
       event.event_type = observation.event_type;
@@ -175,11 +195,11 @@ bool EventRuntime::update_status(const std::string& event_id,
         }
       }
     } else if (updated && status == "confirmed") {
-      for (auto& [key, event] : active_events_) {
-        (void)key;
-        if (event.event_id == event_id) {
-          event.event_status = "confirmed";
-          event.confirmed_at = changed_at;
+      for (auto iterator = active_events_.begin(); iterator != active_events_.end();) {
+        if (iterator->second.event_id == event_id) {
+          iterator = active_events_.erase(iterator);
+        } else {
+          ++iterator;
         }
       }
     }
@@ -229,6 +249,7 @@ std::string EventRuntime::current_reason() const {
 void EventRuntime::restore_active_events() {
   const std::lock_guard lock(mutex_);
   for (auto& event : database_.list_active_events()) {
+    if (event.event_status == "confirmed") continue;
     active_events_.insert_or_assign(active_key(event), std::move(event));
   }
 }

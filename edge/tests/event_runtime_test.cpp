@@ -51,8 +51,11 @@ int main() {
   fall.active = false;
   fall.observed_at = "2026-08-10T10:00:03Z";
   const auto latched = runtime.apply(fall);
-  assert(latched.released);
-  assert(latched.event.event_status == "released");
+  assert(!latched.released);
+  assert(latched.event.event_status == "new");
+  assert(runtime.current_care_status() == "emergency");
+  assert(runtime.update_status(emergency.event.event_id, "released",
+                               "2026-08-10T10:00:04Z"));
   assert(runtime.current_care_status() == "caution");
 
   assert(runtime.update_status(created.event.event_id, "confirmed",
@@ -101,16 +104,26 @@ int main() {
   wardy::rules::EventRuntime after_restart(persisted_database);
   persisted_fall.active = false;
   persisted_fall.observed_at = "2026-08-10T10:01:01Z";
-  const auto persisted_released = after_restart.apply(persisted_fall);
-  assert(persisted_released.released);
-  assert(persisted_released.event.subject_id ==
+  const auto persisted_latched = after_restart.apply(persisted_fall);
+  assert(!persisted_latched.released);
+  assert(persisted_latched.event.subject_id ==
          std::optional<std::string>("subject-7"));
+  assert(after_restart.update_status(persisted_created.event.event_id, "confirmed",
+                                     "2026-08-10T10:01:02Z"));
+  assert(!after_restart.has_active_event_type("fall_suspected"));
+  const auto confirmed_inactive = after_restart.apply(persisted_fall);
+  assert(confirmed_inactive.event.event_id.empty());
+  persisted_fall.active = true;
+  persisted_fall.observed_at = "2026-08-10T10:01:03Z";
+  const auto subsequent_fall = after_restart.apply(persisted_fall);
+  assert(subsequent_fall.created);
+  assert(subsequent_fall.event.event_id != persisted_created.event.event_id);
 
   wardy::storage::SqliteStore restore_database(":memory:");
   restore_database.initialize();
   wardy::storage::EventRecord old_active = created.event;
   old_active.event_id = "EVT-OLD-ACTIVE";
-  old_active.event_status = "confirmed";
+  old_active.event_status = "new";
   old_active.occurred_at = "2020-01-01T00:00:00Z";
   old_active.first_seen_at = old_active.occurred_at;
   old_active.last_seen_at = old_active.occurred_at;
@@ -127,6 +140,6 @@ int main() {
   }
   wardy::rules::EventRuntime restored_runtime(restore_database);
   assert(restored_runtime.has_active_event_type("hazard_detected"));
-  assert(restored_runtime.current_care_status() == "normal");
+  assert(restored_runtime.current_care_status() == "caution");
   return 0;
 }

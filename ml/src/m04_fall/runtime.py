@@ -41,7 +41,10 @@ class PoseFallRuntime:
         self.pose = pose
         self.fall = fall
         self.interval_ms = int(round(1000.0 / fall.target_fps))
-        self.maximum_gap_ms = self.interval_ms * 3
+        # Keep temporal state through normal camera/worker scheduling jitter.
+        # A three-frame gap at 10 FPS reset the 20-frame M-04 window before it
+        # could ever produce a fall confidence on a busy Jetson.
+        self.maximum_gap_ms = self.interval_ms * max(fall.window_frames, 10)
         self.histories: dict[int, deque[PoseResult]] = defaultdict(
             lambda: deque(maxlen=fall.window_frames)
         )
@@ -77,9 +80,11 @@ class PoseFallRuntime:
                 pose=None,
                 fall=None,
                 **self.diagnostics(person.track_id),
-            )
+        )
         result = self.pose.infer(frame_bgr, person)
+        raw_posture = result.posture
         posture_history = self.posture_histories[person.track_id]
+        previous_postures = tuple(posture_history)
         if result.posture != "unknown":
             posture_history.append(result.posture)
         if posture_history:
@@ -95,7 +100,26 @@ class PoseFallRuntime:
         history.append(result)
         self.last_timestamp[person.track_id] = person.timestamp_ms
         fall_result = None
-        if len(history) >= self.fall.window_frames:
+        # A rapid standing-to-lying transition is a strong fall candidate even
+        # before the full temporal model window is available. Require two
+        # consecutive smoothed standing samples to avoid one-frame pose noise.
+        rapid_transition = (
+            raw_posture == "lying"
+            and len(previous_postures) >= 2
+            and previous_postures[-1] == "standing"
+            and previous_postures[-2] == "standing"
+        )
+        if rapid_transition:
+            result = replace(result, posture="lying")
+            fall_result = FallResult(
+                track_id=person.track_id,
+                timestamp_ms=person.timestamp_ms,
+                fall_suspected=True,
+                confidence=1.0,
+                threshold=self.fall.threshold,
+                model_name="standing_to_lying_transition",
+            )
+        elif len(history) >= self.fall.window_frames:
             features = pose_results_to_features(list(history))
             fall_result = self.fall.predict(
                 features, person.track_id, person.timestamp_ms
