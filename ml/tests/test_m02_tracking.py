@@ -46,6 +46,21 @@ class _FakePoseFallRuntime:
         self.reset_count += 1
 
 
+class _FakeHazard:
+    def to_dict(self) -> dict:
+        return {
+            "detection_id": "frame-1:hazard:0",
+            "class_name": "scissors",
+            "confidence": 0.9,
+            "bbox_xyxy": [70.0, 60.0, 90.0, 90.0],
+        }
+
+
+class _FakeHazardDetector:
+    def infer(self, _frame: np.ndarray, _frame_id: str) -> list[_FakeHazard]:
+        return [_FakeHazard()]
+
+
 class GeometricMultiObjectTrackerTest(unittest.TestCase):
     def test_nearby_detections_keep_the_same_track_id(self) -> None:
         tracker = GeometricMultiObjectTracker()
@@ -230,6 +245,25 @@ class TrackingPoseFallRuntimeTest(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["persons"][0]["track_id"], 1)
         self.assertEqual(response["persons"][0]["processed_track_id"], 1)
+
+    def test_worker_adds_m05_hazard_output_to_the_same_frame(self) -> None:
+        encoded, jpeg = cv2.imencode(".jpg", self.frame)
+        self.assertTrue(encoded)
+        response = process_request(
+            {
+                "frame_id": "frame-1",
+                "timestamp_ms": 0,
+                "person_detections": [
+                    {"bbox_xyxy": [10, 10, 60, 110], "confidence": 0.95}
+                ],
+                "frame_jpeg_base64": base64.b64encode(jpeg).decode(),
+            },
+            self.runtime,
+            _FakeHazardDetector(),  # type: ignore[arg-type]
+        )
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["persons"][0]["track_id"], 1)
+        self.assertEqual(response["hazards"][0]["class_name"], "scissors")
 
     def test_reset_clears_tracking_and_temporal_runtime(self) -> None:
         self.runtime.process_frame(

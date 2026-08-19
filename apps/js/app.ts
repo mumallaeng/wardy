@@ -17,7 +17,7 @@ import { WardyStore } from "./store.ts";
 import { TrainingSampleClient } from "./training.ts";
 import { ColorThemeController } from "./theme.ts";
 import { WardyRuntimeClient } from "./runtime.ts";
-import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
+import type { CameraStatus, DatasetReviewStatus, DatasetSampleMetadata, EventFilters, EventType, IdentityReview, IdentityReviewDecision, InferenceSnapshot, JetsonStatus, JetsonStatusDetail, ManagedItemPolicy, NotificationSetting, OverlaySettingKey, OverlaySettings, SystemState, WardyEvent, WardyState, ZoneRect } from "./types.ts";
 
 type ViewName = "dashboard" | "events" | "data" | "settings" | "jetson";
 
@@ -65,6 +65,8 @@ let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
+let inferenceState: InferenceSnapshot | null = null;
+let inferenceExpiryTimer: number | null = null;
 let datasetPreviewUrl: string | null = null;
 let datasetPreviewGeneration = 0;
 let knownEventIds: Set<string> | null = null;
@@ -90,10 +92,22 @@ function runtimeConnection(): { baseUrl: string; accessToken: string; origin: st
   };
 }
 
-function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent[] }): void {
+function applyInferenceSnapshot(snapshot: InferenceSnapshot): void {
+  inferenceState = snapshot;
+  overlay.setDetections(snapshot.operational ? snapshot.detections : []);
+  if (inferenceExpiryTimer !== null) window.clearTimeout(inferenceExpiryTimer);
+  inferenceExpiryTimer = window.setTimeout(() => {
+    inferenceExpiryTimer = null;
+    renderSystemState();
+  }, INFERENCE_STALE_MS);
+  renderSystemState();
+}
+
+function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent[]; inference?: InferenceSnapshot }): void {
   runtimeState = snapshot.state;
   store.applyRuntimeSnapshot(snapshot.state, snapshot.events);
   notifyNewEvents(snapshot.events);
+  if (snapshot.inference) applyInferenceSnapshot(snapshot.inference);
   renderSystemState();
 }
 
@@ -144,12 +158,28 @@ function renderNotificationPermission(): void {
   button.textContent = permission === "granted" ? "브라우저 알림 허용됨" : "브라우저 알림 허용";
 }
 
+const INFERENCE_STALE_MS = 5_000;
+
+function inferenceIsStale(): boolean {
+  if (!inferenceState) return false;
+  const observed = Date.parse(inferenceState.observed_at);
+  return !Number.isFinite(observed) || Date.now() - observed > INFERENCE_STALE_MS;
+}
+
 function renderSystemState(): void {
+  if (inferenceIsStale()) {
+    inferenceState = null;
+    overlay.setDetections([]);
+  }
   const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
   const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
   const detectionState = runtimeState?.detection_state ?? "disconnected";
-  $("#detection-status").textContent = detectionLabels[detectionState];
+  const detectionLabel = inferenceState?.source === "temporary" && detectionState === "running"
+    ? "임시 출력" : detectionLabels[detectionState];
+  $("#detection-status").textContent = detectionLabel;
   $("#detection-dot").className = `status-dot${["ready", "running"].includes(detectionState) ? " is-ok" : detectionState === "fault" ? " is-fault" : " is-muted"}`;
+  const inferenceBadge = $("#inference-source-badge");
+  inferenceBadge.toggleAttribute("hidden", inferenceState?.source !== "temporary");
   $("#event-runtime-status").textContent = runtimeState ? eventLabels[runtimeState.event_state] : "연결 대기";
   $("#event-runtime-dot").className = `status-dot${runtimeState?.event_state === "ready" ? " is-ok" : runtimeState?.event_state === "fault" ? " is-fault" : ""}`;
   renderSystemGuidance();
@@ -228,6 +258,13 @@ function currentSystemGuidance(): SystemGuidance {
     return {
       tone: "limited", label: "안전 감지 미연결", title: "현재는 카메라와 이벤트 UI만 사용할 수 있습니다",
       message: "안전 감지가 연결되기 전에는 의심 상황을 판단하지 않습니다. 연결 후에도 감지 결과에는 오탐·미탐 가능성이 있습니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (inferenceState?.source === "temporary") {
+    return {
+      tone: "limited", label: "임시 출력", title: "후속 기능 연결을 검증 중입니다",
+      message: "현재 탐지 표시와 이벤트는 실제 모델 대신 구조화된 임시 값으로 생성됩니다. 실제 모델은 같은 출력 계약에 연결됩니다.",
       actionLabel: "연결 상태 보기",
     };
   }
@@ -437,6 +474,14 @@ const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCam
  */
 function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}): void {
   jetsonStatus = status;
+  if (status === "fault" || status === "idle") {
+    inferenceState = null;
+    overlay.setDetections([]);
+    if (inferenceExpiryTimer !== null) {
+      window.clearTimeout(inferenceExpiryTimer);
+      inferenceExpiryTimer = null;
+    }
+  }
   const labels: Record<JetsonStatus, string> = { idle: "확인 전", connecting: "연결 확인 중", connected: "연결됨", fault: "연결 실패" };
   const connected = status === "connected";
   $("#jetson-status").textContent = labels[status] ?? status;
@@ -480,7 +525,8 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
       if (collections.notifications) store.replaceNotificationSettings(collections.notifications);
       if (collections.identityReviews) store.replaceIdentityReviews(collections.identityReviews);
       store.replaceDatasetSamples(datasetSamples);
-      runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin, applyRuntimeSnapshot);
+      runtime.connect(configured.baseUrl, credentials.accessToken, window.location.origin,
+        applyRuntimeSnapshot, applyInferenceSnapshot);
     } else {
       runtime.stop();
     }

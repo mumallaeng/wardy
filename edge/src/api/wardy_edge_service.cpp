@@ -85,6 +85,12 @@ int main(int argc, char* argv[]) {
     if (const char* socket_path = std::getenv("WARDY_POSE_FALL_SOCKET")) {
       config.pose_fall_socket_path = socket_path;
     }
+    if (const char* source = std::getenv("WARDY_INFERENCE_SOURCE")) {
+      config.inference_source = source;
+    }
+    if (const char* scenario = std::getenv("WARDY_TEMPORARY_INFERENCE_SCENARIO")) {
+      config.temporary_inference_scenario = scenario;
+    }
     if (argc > 1) config.port = parse_integer(argv[1], "port");
     if (argc > 2) config.camera.device_index = parse_integer(argv[2], "device index");
     if (argc > 3) config.camera.width = parse_integer(argv[3], "width");

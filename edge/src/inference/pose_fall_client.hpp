@@ -31,14 +31,25 @@ struct PoseFallResponse {
 struct TrackedFallResult {
   std::int64_t track_id{};
   bool accepted{};
+  std::array<float, 4> bbox_xyxy{};
+  float detection_confidence{};
+  std::optional<double> pose_quality;
   std::optional<bool> fall_suspected;
   std::optional<double> fall_confidence;
+};
+
+struct HazardDetectionResult {
+  std::string detection_id;
+  std::string class_name;
+  std::array<float, 4> bbox_xyxy{};
+  double confidence{};
 };
 
 struct TrackingPoseFallResponse {
   bool ok{};
   std::vector<std::int64_t> active_track_ids;
   std::vector<TrackedFallResult> persons;
+  std::vector<HazardDetectionResult> hazards;
   std::string error;
   std::string raw_json;
 };
