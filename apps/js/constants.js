@@ -125,6 +125,7 @@ export function createInitialState() {
     settings: {
       overlay: { showClass: true, showRole: true, showName: true, showPosture: true },
       notifications: { fall_suspected: "strong", inactivity: "normal", hazard_detected: "normal", hazard_proximity: "strong" },
+      jetson: { baseUrl: "" },
     },
     managedItems: [
       { id: "item-scissors", label: "가위", policy: "included" },
