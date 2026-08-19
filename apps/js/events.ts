@@ -50,7 +50,8 @@ export function summarizeEvents(events: readonly WardyEvent[], now = new Date())
   const today = events.filter((event) => kstDateKey(new Date(event.occurred_at)) === kstDateKey(now));
   const result: EventSummary = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
   today.forEach((event) => {
-    if (event.care_status && event.care_status in result) result[event.care_status] += 1;
+    const systemFault = event.event_type === "camera_fault" || event.event_type === "detection_fault";
+    if (!systemFault && event.care_status in result) result[event.care_status] += 1;
     if (event.event_status === "new") result.unconfirmed += 1;
   });
   return result;

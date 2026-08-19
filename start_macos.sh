@@ -6,11 +6,15 @@ cd "${repo_dir}"
 step="시작 준비"
 device_file="${repo_dir}/.wardy-device"
 tunnel_pid=""
+loopback_alias_added=0
 
 cleanup() {
   if [[ -n "${tunnel_pid}" ]] && kill -0 "${tunnel_pid}" 2>/dev/null; then
     kill "${tunnel_pid}" 2>/dev/null || true
     wait "${tunnel_pid}" 2>/dev/null || true
+  fi
+  if (( loopback_alias_added )); then
+    sudo ifconfig lo0 -alias "${jetson_host}" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -53,6 +57,7 @@ if ! curl -kfsS --max-time 2 "https://${jetson_host}:8443/api/health" >/dev/null
     step="Jetson 터널용 로컬 주소 준비"
     echo "Preparing the local Jetson tunnel address. macOS may request your password."
     sudo ifconfig lo0 alias "${jetson_host}" 255.255.255.255
+    loopback_alias_added=1
   fi
   # The Wardy SSH alias owns its LocalForward declarations. Repeating the
   # same -L options here makes OpenSSH bind each address twice and leaves the
