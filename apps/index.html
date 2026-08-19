@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#18352a">
   <meta name="description" content="일반 가정용 안전 확인 보조 플랫폼 Wardy">
   <title>Wardy</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/wardy-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./css/app.css">
 </head>
 <body>
@@ -138,7 +141,7 @@
         <section class="card"><div class="card-heading"><div><span class="section-kicker">SUBJECT</span><h2>돌봄 인물 등록</h2></div></div><form id="subject-form" class="stack-form"><label>이름<input name="name" maxlength="40" required placeholder="예: 조정민"></label><label>역할<input name="role" maxlength="40" value="돌봄 대상"></label><button class="button" type="submit">Jetson에 등록</button></form><div class="list" id="subject-list"></div><p class="helper">등록 뒤 '기준 사진 촬영'으로 정면·좌·우·거리 변화 사진을 모읍니다. 사진과 metadata는 Jetson 로컬에 저장되며 embedding 생성과 모델 학습은 포함하지 않습니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">HAZARD ITEMS</span><h2>위험물·제외 물건</h2></div></div><form id="item-form" class="inline-form"><input name="label" maxlength="40" required placeholder="위험물·제외 물건 이름"><select name="policy"><option value="included">위험물 탐지</option><option value="excluded">위험 event 제외</option></select><button class="button" type="submit">물건 등록</button></form><div class="chip-list" id="item-list"></div><p class="helper">위험물 또는 제외할 물건을 등록한 뒤 여러 거리·각도·조명에서 '카메라 촬영'을 눌러 Jetson 로컬 학습 사진을 모읍니다. 실제 모델 학습은 Notebook 단계에서 진행합니다.</p></section>
         <section class="card wide-card"><div class="card-heading"><div><span class="section-kicker">CAUTION ZONES</span><h2>주의 구역</h2></div><button class="button button-secondary" id="draw-zone">영상에서 구역 그리기</button></div><p class="helper" id="zone-helper">카메라 화면에서 시작점과 끝점을 드래그해 구역을 지정할 수 있습니다.</p><div class="list" id="zone-list"></div></section>
-        <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>알림 설정</h2></div></div><div class="setting-list" id="notification-settings"></div></section>
+        <section class="card"><div class="card-heading"><div><span class="section-kicker">NOTIFICATION</span><h2>알림 설정</h2></div><button class="text-button" id="enable-browser-notifications" type="button">브라우저 알림 허용</button></div><p class="helper" id="notification-permission">브라우저 권한을 허용하면 새 이벤트를 화면 밖에서도 알립니다.</p><div class="setting-list" id="notification-settings"></div></section>
         <section class="card"><div class="card-heading"><div><span class="section-kicker">PRIVACY</span><h2>로컬 데이터</h2></div></div><dl class="data-facts"><div><dt>외부 cloud</dt><dd>사용하지 않음</dd></div><div><dt>화면·연결 설정</dt><dd>브라우저 localStorage</dd></div><div><dt>기준·학습 사진</dt><dd>Jetson 로컬 파일</dd></div><div><dt>운영 metadata</dt><dd>Jetson SQLite</dd></div><div><dt>이벤트 자료</dt><dd>연결 후 Jetson 로컬 저장</dd></div></dl></section>
       </div>
     </section>
