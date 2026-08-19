@@ -58,6 +58,16 @@ let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 
+type SystemGuidanceTone = "setup" | "checking" | "limited" | "fault" | "ok";
+
+interface SystemGuidance {
+  tone: SystemGuidanceTone;
+  label: string;
+  title: string;
+  message: string;
+  actionLabel?: string;
+}
+
 function runtimeConnection(): { baseUrl: string; accessToken: string; origin: string } {
   return {
     baseUrl: store.getState().settings.jetson.baseUrl,
@@ -75,9 +85,103 @@ function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent
 function renderSystemState(): void {
   const detectionLabels = { disconnected: "AI 미연결", ready: "준비됨", running: "실행 중", fault: "오류" } as const;
   const eventLabels = { ready: "준비됨", processing: "처리 중", fault: "오류" } as const;
-  $("#detection-status").textContent = runtimeState ? detectionLabels[runtimeState.detection_state] : "AI 미연결";
+  const detectionState = runtimeState?.detection_state ?? "disconnected";
+  $("#detection-status").textContent = detectionLabels[detectionState];
+  $("#detection-dot").className = `status-dot${["ready", "running"].includes(detectionState) ? " is-ok" : detectionState === "fault" ? " is-fault" : " is-muted"}`;
   $("#event-runtime-status").textContent = runtimeState ? eventLabels[runtimeState.event_state] : "연결 대기";
   $("#event-runtime-dot").className = `status-dot${runtimeState?.event_state === "ready" ? " is-ok" : runtimeState?.event_state === "fault" ? " is-fault" : ""}`;
+  renderSystemGuidance();
+}
+
+function currentSystemGuidance(): SystemGuidance {
+  const hasBaseUrl = Boolean(store.getState().settings.jetson.baseUrl);
+  const credentials = credentialStore.get();
+  if (!hasBaseUrl) {
+    return {
+      tone: "setup", label: "연결 준비", title: "Jetson 연결을 설정해 주세요",
+      message: "서비스 주소와 토큰을 최초 1회 저장하면 이후 접속부터 자동으로 다시 연결합니다.",
+      actionLabel: "연결 설정 열기",
+    };
+  }
+  if (jetsonStatus === "connecting" || cameraStatus === "connecting") {
+    return {
+      tone: "checking", label: "자동 연결 중", title: "Jetson 상태를 확인하고 있습니다",
+      message: "연결이 끊겨도 Wardy가 자동으로 다시 시도합니다. 잠시 후에도 계속되면 Jetson 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (jetsonStatus === "fault") {
+    return {
+      tone: "fault", label: "서비스 이상", title: "Jetson 서비스에 연결할 수 없습니다",
+      message: "Jetson 전원과 Wardy 서비스, 같은 network 연결 및 TLS 인증서 신뢰 상태를 확인해 주세요. 연결 전에는 안전 확인이 중단됩니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (!credentials.accessToken && jetsonStatus === "connected") {
+    return {
+      tone: "limited", label: "기능 제한", title: "이벤트·상태 동기화 토큰이 없습니다",
+      message: "카메라 영상만 연결될 수 있으며 이벤트와 돌봄 상태는 갱신되지 않습니다. 데이터 API 토큰을 저장해 주세요.",
+      actionLabel: "토큰 입력하기",
+    };
+  }
+  if (credentials.accessToken && jetsonStatus === "connected" && !runtimeState) {
+    return {
+      tone: "limited", label: "동기화 확인 필요", title: "이벤트·상태 정보를 아직 받지 못했습니다",
+      message: "Jetson 서비스는 연결됐지만 runtime 상태가 확인되지 않았습니다. 자동 재연결 뒤에도 계속되면 데이터 API 토큰과 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.event_state === "fault") {
+    return {
+      tone: "fault", label: "이벤트 처리 이상", title: "이벤트 기록 처리가 중단되었습니다",
+      message: "현재 판단 결과가 저장되거나 갱신되지 않을 수 있습니다. Jetson 서비스를 다시 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.detection_state === "fault") {
+    return {
+      tone: "fault", label: "안전 감지 이상", title: "안전 감지 기능이 중단되었습니다",
+      message: "카메라 영상이 보여도 의심 상황을 판단하지 못합니다. 감지 기능을 복구한 뒤 상태가 '실행 중'인지 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (cameraStatus === "fault") {
+    return {
+      tone: "fault", label: "카메라 이상", title: "Jetson 카메라 연결이 끊겼습니다",
+      message: "Wardy가 5초 간격으로 자동 재연결합니다. 계속 실패하면 camera 연결과 Jetson 서비스를 확인해 주세요.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (runtimeState?.detection_state === "disconnected") {
+    return {
+      tone: "limited", label: "안전 감지 미연결", title: "현재는 카메라와 이벤트 UI만 사용할 수 있습니다",
+      message: "안전 감지가 연결되기 전에는 의심 상황을 판단하지 않습니다. 연결 후에도 감지 결과에는 오탐·미탐 가능성이 있습니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  if (cameraStatus === "idle") {
+    return {
+      tone: "limited", label: "카메라 중지", title: "카메라 미리보기가 중지되어 있습니다",
+      message: "카메라를 다시 연결해야 현재 영상과 안전 확인 상태를 볼 수 있습니다.",
+      actionLabel: "연결 상태 보기",
+    };
+  }
+  return {
+    tone: "ok", label: "시스템 정상", title: "카메라와 안전 확인 기능이 작동 중입니다",
+    message: "감지 결과는 확인을 돕는 정보이며 오탐·미탐 가능성이 있습니다. 긴급 상황은 사용자가 직접 확인해 주세요.",
+  };
+}
+
+function renderSystemGuidance(): void {
+  const guidance = currentSystemGuidance();
+  const container = $("#system-guidance");
+  container.className = `system-guidance is-${guidance.tone}`;
+  $("#system-guidance-label").textContent = guidance.label;
+  $("#system-guidance-title").textContent = guidance.title;
+  $("#system-guidance-message").textContent = guidance.message;
+  const action = $<HTMLButtonElement>("#system-guidance-action");
+  action.hidden = !guidance.actionLabel;
+  action.textContent = guidance.actionLabel ?? "";
 }
 
 /**
@@ -126,6 +230,7 @@ function setCameraStatus(status: CameraStatus): void {
   if (status === "fault" && credentialStore.get().viewerToken && reconnectTimer === null) {
     reconnectTimer = window.setTimeout(() => { void connectConfiguredJetson(true).catch(() => undefined); }, 5000);
   }
+  renderSystemGuidance();
 }
 
 const camera = new JetsonCameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
@@ -148,6 +253,7 @@ function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}):
   $("#jetson-result").textContent = connected
     ? `${detail.service ?? "wardy-edge"}${detail.version ? ` ${detail.version}` : ""} · ${detail.endpoint ?? ""}`
     : detail.message ?? (status === "connecting" ? `${detail.endpoint ?? "Jetson endpoint"} 확인 중` : "연결 확인을 실행해 주세요.");
+  renderSystemGuidance();
 }
 
 const jetson = new JetsonConnection({ onStatus: setJetsonStatus });
@@ -610,6 +716,7 @@ $<HTMLFormElement>("#jetson-form").addEventListener("submit", async (event: Subm
   }
 });
 $("#check-jetson").addEventListener("click", checkJetsonConnection);
+$("#system-guidance-action").addEventListener("click", () => openView("jetson"));
 
 window.addEventListener("beforeunload", () => { camera.stop(); runtime.stop(); });
 window.addEventListener("online", () => { void connectConfiguredJetson(true).catch(() => undefined); });
