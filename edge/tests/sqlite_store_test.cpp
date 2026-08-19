@@ -1,6 +1,7 @@
 #include "storage/sqlite_store.hpp"
 
 #undef NDEBUG
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <sqlite3.h>
@@ -100,6 +101,33 @@ int main() {
   assert(stored_event.has_value());
   assert(stored_event->reason == event.reason);
   assert(!store.get_event("missing").has_value());
+
+  wardy::storage::SqliteStore boundary_store(":memory:");
+  boundary_store.initialize();
+  auto boundary_event = event;
+  boundary_event.event_id = event.event_id;
+  boundary_store.upsert_event(boundary_event);
+  boundary_event.event_id = "EVT-KST-START";
+  boundary_event.occurred_at = "2026-08-05T15:00:00Z";
+  boundary_event.first_seen_at = boundary_event.occurred_at;
+  boundary_event.last_seen_at = boundary_event.occurred_at;
+  boundary_store.upsert_event(boundary_event);
+  boundary_event.event_id = "EVT-KST-END";
+  boundary_event.occurred_at = "2026-08-06T15:00:00Z";
+  boundary_event.first_seen_at = boundary_event.occurred_at;
+  boundary_event.last_seen_at = boundary_event.occurred_at;
+  boundary_store.upsert_event(boundary_event);
+  const auto kst_events = boundary_store.list_events_for_kst_date("2026-08-06");
+  assert(kst_events.size() == 2);
+  assert(std::any_of(kst_events.begin(), kst_events.end(), [&](const auto& candidate) {
+    return candidate.event_id == event.event_id;
+  }));
+  assert(std::any_of(kst_events.begin(), kst_events.end(), [](const auto& candidate) {
+    return candidate.event_id == "EVT-KST-START";
+  }));
+  assert(std::none_of(kst_events.begin(), kst_events.end(), [](const auto& candidate) {
+    return candidate.event_id == "EVT-KST-END";
+  }));
 
   assert(store.update_event_status(event.event_id, "confirmed",
                                    "2026-08-06T12:01:00+09:00"));

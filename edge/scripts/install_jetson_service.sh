@@ -32,8 +32,8 @@ trap cleanup EXIT
 cat > "${unit_file}" <<EOF
 [Unit]
 Description=Wardy Jetson camera and local edge service
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target ollama.service
+After=network-online.target ollama.service
 
 [Service]
 Type=simple

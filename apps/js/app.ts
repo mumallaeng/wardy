@@ -1,7 +1,7 @@
 import { CARE_STATUS, DEMO_DETECTIONS, EVENT_TYPES } from "./constants.ts";
 import { JetsonCameraController } from "./camera.ts";
 import { JetsonCredentialStore } from "./credentials.ts";
-import { filterEvents, formatDateTime, renderEventRows, summarizeEvents } from "./events.ts";
+import { filterEvents, formatDateTime, kstDateKey, renderEventRows, summarizeEvents } from "./events.ts";
 import { JetsonConnection, normalizeJetsonBaseUrl } from "./jetson.ts";
 import {
   datasetManifest,
@@ -609,6 +609,36 @@ async function runEventAction(eventId: string,
   } catch (error) { toast(errorMessage(error)); }
 }
 
+async function generateDailySummary(): Promise<void> {
+  const button = $<HTMLButtonElement>("#generate-ai-summary");
+  const output = $("#ai-summary-output");
+  const badge = $("#ai-summary-badge");
+  button.disabled = true;
+  output.setAttribute("aria-busy", "true");
+  output.textContent = "Jetson에서 오늘의 이벤트를 요약하고 있습니다…";
+  badge.textContent = "생성 중";
+  badge.className = "badge";
+  try {
+    const connection = runtimeConnection();
+    const result = await runtime.loadDailySummary(
+      connection.baseUrl, connection.accessToken, connection.origin,
+      kstDateKey(),
+    );
+    output.textContent = result.summary;
+    badge.textContent = result.fallback ? "규칙 요약" :
+      `${result.model.replace(":", " ")}${result.filtered ? " · 출력 필터" : ""}`;
+    badge.className = `badge${result.fallback ? "" : " is-connected"}`;
+  } catch (error) {
+    output.textContent = "요약을 만들지 못했습니다. Jetson 연결과 로컬 LLM 상태를 확인해 주세요.";
+    badge.textContent = "실패";
+    badge.className = "badge is-fault";
+    toast(errorMessage(error));
+  } finally {
+    button.disabled = false;
+    output.removeAttribute("aria-busy");
+  }
+}
+
 async function viewEventMedia(eventId: string): Promise<void> {
   try {
     const connection = runtimeConnection();
@@ -772,6 +802,7 @@ $("#demo-event").addEventListener("click", async () => {
     toast("AI와 연결되지 않은 runtime 검증 event를 Jetson에 저장했습니다.");
   } catch (error) { toast(errorMessage(error)); }
 });
+$("#generate-ai-summary").addEventListener("click", () => { void generateDailySummary(); });
 
 [$<HTMLInputElement>("#event-search"), $<HTMLSelectElement>("#event-status-filter"), $<HTMLSelectElement>("#care-status-filter")]
   .forEach((control) => control.addEventListener("input", () => renderEvents(store.getState().events)));

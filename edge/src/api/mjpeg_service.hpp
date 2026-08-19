@@ -16,6 +16,9 @@ struct MjpegServiceConfig {
   std::string event_media_path = "edge/data/events";
   std::string allowed_origin = "http://localhost:8000";
   std::string access_token;
+  bool llm_enabled = true;
+  std::string llm_model = "qwen3.5:4b";
+  int llm_timeout_seconds = 30;
 
   void validate() const;
 };

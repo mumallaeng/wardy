@@ -1,5 +1,5 @@
 import { normalizeJetsonBaseUrl } from "./jetson.ts";
-import type { ManagedItem, ManagedItemPolicy, Subject, SystemState, WardyEvent } from "./types.ts";
+import type { DailySummaryResult, ManagedItem, ManagedItemPolicy, Subject, SystemState, WardyEvent } from "./types.ts";
 
 export interface RuntimeSnapshot {
   state: SystemState;
@@ -18,6 +18,7 @@ type CancelTimeout = (handle: TimeoutHandle) => void;
 
 const REQUEST_TIMEOUT_MS = 10_000;
 const MEDIA_TIMEOUT_MS = 60_000;
+const LLM_TIMEOUT_MS = 45_000;
 const RECONNECT_INITIAL_MS = 2_000;
 const RECONNECT_MAX_MS = 30_000;
 
@@ -96,6 +97,15 @@ export class WardyRuntimeClient {
                     eventId: string, action: "confirm" | "release" | "false-detection"): Promise<WardyEvent> {
     return this.request(baseUrl, accessToken, fallbackOrigin,
       `/api/events/${encodeURIComponent(eventId)}/${action}`, { method: "POST" });
+  }
+
+  async loadDailySummary(baseUrl: string, accessToken: string,
+                         fallbackOrigin: string, date: string): Promise<DailySummaryResult> {
+    return this.request(baseUrl, accessToken, fallbackOrigin, "/api/llm/daily-summary", {
+      method: "POST",
+      headers: { "X-Wardy-Summary-Date": date },
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+    });
   }
 
   async loadEventMedia(baseUrl: string, accessToken: string, fallbackOrigin: string,

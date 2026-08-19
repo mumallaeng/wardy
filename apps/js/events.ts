@@ -1,6 +1,12 @@
 import { CARE_STATUS, EVENT_STATUS, EVENT_TYPES } from "./constants.ts";
 import type { EventFilters, EventSummary, WardyEvent } from "./types.ts";
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+export function kstDateKey(date = new Date()): string {
+  return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 /**
  * Sorts events by care-status priority and occurrence time.
  *
@@ -35,14 +41,13 @@ export function filterEvents(events: readonly WardyEvent[], filters: EventFilter
 }
 
 /**
- * Summarizes events that occurred on the same local calendar day as the reference time.
+ * Summarizes events that occurred on the same Korean calendar day as the reference time.
  *
  * @param now - The reference time used to determine the calendar day.
  * @returns Counts for total events, each care status, and events with a `"new"` status.
  */
 export function summarizeEvents(events: readonly WardyEvent[], now = new Date()): EventSummary {
-  const dayKey = (date: Date): string => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  const today = events.filter((event) => dayKey(new Date(event.occurred_at)) === dayKey(now));
+  const today = events.filter((event) => kstDateKey(new Date(event.occurred_at)) === kstDateKey(now));
   const result: EventSummary = { total: today.length, normal: 0, caution: 0, warning: 0, emergency: 0, unconfirmed: 0 };
   today.forEach((event) => {
     if (event.care_status && event.care_status in result) result[event.care_status] += 1;
