@@ -832,12 +832,11 @@ void apply_tracking_results(
 
   for (const auto& person : response.persons) {
     bool apply = false;
-    // M-04 can produce a high score from a noisy seated or standing pose.
-    // Keep an incident active only while M-03 confirms the person is lying;
-    // standing/sitting observations also reconcile and release a stale fall.
-    const bool fall_active = person.fall_suspected.value_or(false) &&
-                             person.posture.has_value() &&
-                             *person.posture == "lying";
+    // M-04 owns the temporal fall decision. M-03 posture is diagnostic
+    // context and must not suppress a high-confidence fall signal because a
+    // camera angle or partial occlusion can misclassify a fallen person as
+    // standing or sitting.
+    const bool fall_active = person.fall_suspected.value_or(false);
     std::optional<std::string> event_subject_id = person.subject_id;
     std::optional<std::string> event_subject_name = person.subject_name;
     {
@@ -898,8 +897,7 @@ void apply_tracking_results(
               : (person.fall_suspected.has_value()
                      ? "낙상 의심 자세가 더 이상 감지되지 않습니다."
                      : "포즈 결과가 없어 낙상 의심 사건을 해제합니다."),
-          !fall_active && person.posture.has_value() &&
-              (*person.posture == "standing" || *person.posture == "sitting"),
+          !fall_active && person.fall_suspected.has_value(),
           event_subject_id, event_subject_name);
     }
   }
@@ -938,9 +936,7 @@ void apply_tracking_results(
         if (*person.posture == "lying") return std::string{"누워 있음"};
         return std::string{"자세 확인 불가"};
       }();
-      const bool displayed_fall = person.fall_suspected.value_or(false) &&
-                                  person.posture.has_value() &&
-                                  *person.posture == "lying";
+      const bool displayed_fall = person.fall_suspected.value_or(false);
       rendered.detection.posture = displayed_fall
           ? "낙상 의심" : posture_label;
       rendered.detection.confidence = person.detection_confidence;
