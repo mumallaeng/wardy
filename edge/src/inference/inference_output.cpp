@@ -49,7 +49,8 @@ rules::EventObservation observation(
     result.object_id = detection.class_name;
     result.object_class = detection.class_name;
   } else {
-    result.subject_id = detection.id;
+    result.subject_id = detection.subject_id.value_or(detection.id);
+    if (!detection.name.empty()) result.subject_name = detection.name;
   }
   return result;
 }
@@ -252,7 +253,9 @@ std::string inference_json(const InferenceSnapshot& snapshot) {
         ",\"name\":" + api::json_string(detection.name) +
         ",\"posture\":" + api::json_string(detection.posture) +
         ",\"confidence\":" + api::json_number(detection.confidence) +
-        ",\"color\":" + api::json_string(detection.color) + "}";
+        ",\"color\":" + api::json_string(detection.color) +
+        ",\"subjectId\":" +
+        (detection.subject_id ? api::json_string(*detection.subject_id) : "null") + "}";
   }
   return body + "]}";
 }
