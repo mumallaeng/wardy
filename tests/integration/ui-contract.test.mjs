@@ -18,6 +18,8 @@ test("주요 비AI 화면과 명시적 AI 미연결 표시를 제공한다", asy
   assert.doesNotMatch(html, /Arduino|ARDUINO|아두이노|Web Serial|buzzer|부저/);
   assert.match(html, /\/api\/health/);
   assert.match(html, /event·state 동기화<\/dt><dd>후속 통합/);
+  assert.match(html, /\/dev\/video0/);
+  assert.match(html, /V4L2/);
 });
 
 test("이벤트 작업 버튼은 표 셀 내부 그룹으로 정렬한다", async () => {
