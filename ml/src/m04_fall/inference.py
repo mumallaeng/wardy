@@ -10,6 +10,11 @@ import onnxruntime as ort
 
 from .features import FEATURE_NAMES
 
+# Keep the deployed decision gate conservative enough to avoid turning a
+# single noisy pose sequence into a fall incident. A model may publish a
+# higher calibrated threshold; never lower the operational gate below 60%.
+MIN_OPERATIONAL_FALL_THRESHOLD = 0.60
+
 
 @dataclass(frozen=True)
 class FallResult:
@@ -65,7 +70,8 @@ class FallInferenceSession:
         self.session = ort.InferenceSession(str(model_path), providers=selected)
         self.input_name = self.metadata["input_name"]
         self.output_name = self.metadata["output_name"]
-        self.threshold = float(self.metadata["decision_threshold"])
+        calibrated_threshold = float(self.metadata["decision_threshold"])
+        self.threshold = max(calibrated_threshold, MIN_OPERATIONAL_FALL_THRESHOLD)
 
     @property
     def window_frames(self) -> int:

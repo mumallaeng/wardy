@@ -66,6 +66,7 @@ const runtime = new WardyRuntimeClient();
 let jetsonStatus: JetsonStatus = "idle";
 let cameraStatus: CameraStatus = "idle";
 let reconnectTimer: number | null = null;
+let eventRefreshTimer: number | null = null;
 let runtimeState: SystemState | null = null;
 let inferenceState: InferenceSnapshot | null = null;
 let dataCollectionSettings: DataCollectionSettings | null = null;
@@ -149,6 +150,29 @@ function applyRuntimeSnapshot(snapshot: { state: SystemState; events: WardyEvent
   notifyNewEvents(snapshot.events);
   if (snapshot.inference) applyInferenceSnapshot(snapshot.inference);
   renderSystemState();
+}
+
+function startEventRefresh(): void {
+  if (eventRefreshTimer !== null) window.clearInterval(eventRefreshTimer);
+  eventRefreshTimer = window.setInterval(() => {
+    const connection = runtimeConnection();
+    if (!connection.baseUrl) return;
+    void runtime.loadEvents(connection.baseUrl, connection.accessToken, connection.origin)
+      .then((events) => {
+        const current = store.getState();
+        if (events.length || current.events.length === 0) {
+          store.applyRuntimeSnapshot(runtimeState ?? {
+            care_state: current.careState.status,
+            camera_state: "connected",
+            detection_state: "running",
+            event_state: "processing",
+            reason: current.careState.reason,
+            updated_at: current.careState.updatedAt,
+          }, events);
+        }
+      })
+      .catch(() => undefined);
+  }, 3000);
 }
 
 function notifyNewEvents(events: readonly WardyEvent[]): void {
@@ -615,6 +639,7 @@ async function connectConfiguredJetson(startCamera = true): Promise<void> {
     store.replaceDatasetSamples(datasetSamples);
     runtime.connect(configured.baseUrl, window.location.origin,
       applyRuntimeSnapshot, applyInferenceSnapshot);
+    startEventRefresh();
     if (startCamera && cameraStatus !== "connected" && cameraStatus !== "connecting") {
       await camera.start(configured.baseUrl, window.location.origin);
     }
