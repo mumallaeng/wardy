@@ -52,7 +52,8 @@ function isFallDiagnostics(value: unknown): boolean {
       !Number.isInteger(value.windowFrames) || Number(value.windowFrames) <= 0 ||
       Number(value.historyFrames) > Number(value.windowFrames) ||
       !(value.fallConfidence === null || isProbability(value.fallConfidence)) ||
-      !isProbability(value.fallThreshold) || !Array.isArray(value.keypoints)) return false;
+      !isProbability(value.fallThreshold) || !Array.isArray(value.keypoints) ||
+      (value.keypoints.length !== 0 && value.keypoints.length !== 17)) return false;
   return value.keypoints.every((keypoint) => Array.isArray(keypoint) && keypoint.length === 3 &&
     keypoint.every((part) => isProbability(part)));
 }
