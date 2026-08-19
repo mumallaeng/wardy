@@ -8,6 +8,7 @@ int main() {
   if (config.width != 640) return 11;
   if (config.height != 480) return 12;
   if (config.buffer_size != 1) return 13;
+  if (!config.gstreamer_pipeline.empty()) return 14;
   config.validate();
 
   config.device_index = -1;

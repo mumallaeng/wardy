@@ -20,7 +20,7 @@ interface ContentRect {
 export class OverlayController {
   private readonly canvas: HTMLCanvasElement;
   private readonly container: HTMLElement;
-  private readonly video: HTMLVideoElement;
+  private readonly media: HTMLVideoElement | HTMLIFrameElement;
   private readonly context: CanvasRenderingContext2D;
   private readonly onZoneCreated: (zone: ZoneRect) => void;
   private detections: readonly Detection[] = [];
@@ -29,18 +29,22 @@ export class OverlayController {
   private drawing: Drawing | null = null;
   private readonly resizeObserver: ResizeObserver;
 
-  constructor(canvas: HTMLCanvasElement, container: HTMLElement, video: HTMLVideoElement, onZoneCreated: (zone: ZoneRect) => void) {
+  constructor(canvas: HTMLCanvasElement, container: HTMLElement, media: HTMLVideoElement | HTMLIFrameElement, onZoneCreated: (zone: ZoneRect) => void) {
     this.canvas = canvas;
     this.container = container;
-    this.video = video;
+    this.media = media;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("2D canvas를 초기화할 수 없습니다.");
     this.context = context;
     this.onZoneCreated = onZoneCreated;
     this.resizeObserver = new ResizeObserver(() => this.draw());
     this.resizeObserver.observe(container);
-    video.addEventListener("loadedmetadata", () => this.draw());
-    video.addEventListener("resize", () => this.draw());
+    if (media instanceof HTMLVideoElement) {
+      media.addEventListener("loadedmetadata", () => this.draw());
+      media.addEventListener("resize", () => this.draw());
+    } else {
+      media.addEventListener("load", () => this.draw());
+    }
     canvas.addEventListener("pointerdown", (event) => this.#pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.#pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.#pointerUp(event));
@@ -53,18 +57,21 @@ export class OverlayController {
 
   #contentRect(): ContentRect {
     const canvasRect = this.canvas.getBoundingClientRect();
-    const videoRect = this.video.getBoundingClientRect();
-    const sourceWidth = this.video.videoWidth;
-    const sourceHeight = this.video.videoHeight;
-    if (sourceWidth <= 0 || sourceHeight <= 0 || videoRect.width <= 0 || videoRect.height <= 0) {
+    const mediaRect = this.media.getBoundingClientRect();
+    if (mediaRect.width <= 0 || mediaRect.height <= 0) {
       return { x: 0, y: 0, width: canvasRect.width, height: canvasRect.height };
     }
-    const scale = Math.min(videoRect.width / sourceWidth, videoRect.height / sourceHeight);
+    if (!(this.media instanceof HTMLVideoElement) || this.media.videoWidth <= 0 || this.media.videoHeight <= 0) {
+      return { x: mediaRect.left - canvasRect.left, y: mediaRect.top - canvasRect.top, width: mediaRect.width, height: mediaRect.height };
+    }
+    const scale = Math.min(mediaRect.width / this.media.videoWidth, mediaRect.height / this.media.videoHeight);
+    const sourceWidth = this.media.videoWidth;
+    const sourceHeight = this.media.videoHeight;
     const width = sourceWidth * scale;
     const height = sourceHeight * scale;
     return {
-      x: videoRect.left - canvasRect.left + (videoRect.width - width) / 2,
-      y: videoRect.top - canvasRect.top + (videoRect.height - height) / 2,
+      x: mediaRect.left - canvasRect.left + (mediaRect.width - width) / 2,
+      y: mediaRect.top - canvasRect.top + (mediaRect.height - height) / 2,
       width,
       height,
     };

@@ -40,8 +40,9 @@ CameraCapture& CameraCapture::operator=(CameraCapture&&) noexcept = default;
 /**
  * @brief Opens the configured camera device.
  *
- * Closes any currently open device before opening the configured device and
- * applying its frame dimensions, buffer size, and optional frame-rate request.
+ * Closes any currently open device first. A configured GStreamer pipeline takes
+ * precedence and owns its capture properties; otherwise the V4L2 device is
+ * opened and the requested dimensions, buffer size, and frame rate are applied.
  *
  * @throws std::logic_error If called on a moved-from camera capture.
  * @throws std::runtime_error If the camera device cannot be opened.
@@ -51,6 +52,13 @@ void CameraCapture::open() {
     throw std::logic_error("cannot open a moved-from camera capture");
   }
   close();
+
+  if (!impl_->config.gstreamer_pipeline.empty()) {
+    if (!impl_->capture.open(impl_->config.gstreamer_pipeline, cv::CAP_GSTREAMER)) {
+      throw std::runtime_error("failed to open the Jetson GStreamer camera pipeline");
+    }
+    return;
+  }
 
   // The Korcham Jetson labs use a USB webcam at /dev/video0 through V4L2.
   if (!impl_->capture.open(impl_->config.device_index, cv::CAP_V4L2)) {

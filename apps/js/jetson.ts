@@ -24,13 +24,13 @@ function errorMessage(error: unknown): string {
  * @param value - The preferred Jetson URL.
  * @param fallbackOrigin - The URL to use when `value` is empty.
  * @returns The normalized HTTP(S) base URL without trailing slashes, query strings, or fragments.
- * @throws Error if no URL is provided, the URL is invalid, uses another protocol, or contains credentials.
+ * @throws Error if no URL is provided, the URL is invalid, does not use HTTPS, or contains credentials.
  */
 export function normalizeJetsonBaseUrl(value: string, fallbackOrigin = ""): string {
   const candidate = String(value ?? "").trim() || String(fallbackOrigin ?? "").trim();
   if (!candidate) throw new Error("Jetson 서비스 주소를 입력해 주세요.");
   const url = new URL(candidate);
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Jetson 주소는 http 또는 https 형식이어야 합니다.");
+  if (url.protocol !== "https:") throw new Error("Jetson 주소는 HTTPS 형식이어야 합니다.");
   if (url.username || url.password) throw new Error("주소에 계정 정보를 포함할 수 없습니다.");
   url.pathname = url.pathname.replace(/\/+$/, "");
   url.search = "";

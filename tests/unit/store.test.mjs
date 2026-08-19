@@ -39,6 +39,18 @@ test("상속된 enum key가 포함된 저장 상태를 거부한다", () => {
   assert.notEqual(restored.events[0].care_status, "toString");
 });
 
+test("잘못된 식별 검토 배열이 포함된 저장 상태를 거부한다", () => {
+  const storage = new MemoryStorage();
+  const modified = new WardyStore(null).getState();
+  modified.careState.status = "warning";
+  modified.identityReviews = "invalid";
+  storage.setItem("invalid-review-state", JSON.stringify(modified));
+
+  const restored = new WardyStore(storage, "invalid-review-state").getState();
+  assert.equal(restored.careState.status, "normal");
+  assert.deepEqual(restored.identityReviews, []);
+});
+
 test("이벤트 확인, 오탐, 미디어 삭제 상태를 갱신한다", () => {
   const store = new WardyStore(new MemoryStorage());
   const [first, second] = store.getState().events;
@@ -67,4 +79,67 @@ test("초기화하면 독립된 초기 상태로 돌아간다", () => {
   assert.equal(state.careState.status, "normal");
   assert.equal(state.managedItems.length, initialItemCount);
   assert.equal(state.managedItems.some((item) => item.label === "테스트 물품"), false);
+});
+
+test("관리 물품의 Jetson 학습 사진 수를 보존한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "training-samples");
+  store.addManagedItem("주방 칼", "included");
+  const item = store.getState().managedItems.at(-1);
+  store.setManagedItemSampleCount(item.id, 4);
+  const restored = new WardyStore(storage, "training-samples").getState();
+  assert.equal(restored.managedItems.find((candidate) => candidate.id === item.id).sampleCount, 4);
+});
+
+test("인물 기준 사진 수와 식별 검토 답변을 로컬에 저장한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "identity-feedback");
+  const subject = store.getState().subjects[0];
+  store.setSubjectReferenceSampleCount(subject.id, 4);
+  store.addIdentityReview({
+    imagePath: "identity/review-1.jpg",
+    capturedAt: "2026-08-06T12:00:00Z",
+    predictedName: "조정민",
+    confidence: 0.55,
+  });
+  const review = store.getState().identityReviews[0];
+  store.resolveIdentityReview(review.id, "subject", subject.id);
+  const restored = new WardyStore(storage, "identity-feedback").getState();
+  assert.equal(restored.subjects[0].referenceSampleCount, 4);
+  assert.equal(restored.identityReviews[0].decision, "subject");
+  assert.equal(restored.identityReviews[0].subjectId, subject.id);
+});
+
+test("상황별 알림은 ON과 OFF만 저장한다", () => {
+  const storage = new MemoryStorage();
+  const store = new WardyStore(storage, "notification-toggle");
+  store.setNotificationSetting("fall_suspected", "off");
+  assert.equal(store.getState().settings.notifications.fall_suspected, "off");
+  store.setNotificationSetting("fall_suspected", "on");
+  assert.equal(store.getState().settings.notifications.fall_suspected, "on");
+});
+
+test("기존 알림 강도 값은 ON으로 이전한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.settings.notifications = { fall_suspected: "strong", inactivity: "normal", hazard_detected: "off" };
+  storage.setItem("legacy-notifications", JSON.stringify(initial));
+  const restored = new WardyStore(storage, "legacy-notifications").getState();
+  assert.deepEqual(restored.settings.notifications, {
+    fall_suspected: "on", inactivity: "on", hazard_detected: "off",
+  });
+});
+
+test("제거된 관리 물품 이동 event를 제외하고 기존 상태를 복구한다", () => {
+  const storage = new MemoryStorage();
+  const initial = new WardyStore(null).getState();
+  initial.careState.status = "warning";
+  initial.events.push({ ...initial.events[0], event_id: "EVT-LEGACY", event_type: "managed_item_moved" });
+  initial.settings.notifications.managed_item_moved = "on";
+  storage.setItem("legacy-managed-item-event", JSON.stringify(initial));
+
+  const restored = new WardyStore(storage, "legacy-managed-item-event").getState();
+  assert.equal(restored.careState.status, "warning");
+  assert.equal(restored.events.some((event) => event.event_id === "EVT-LEGACY"), false);
+  assert.equal("managed_item_moved" in restored.settings.notifications, false);
 });

@@ -1,5 +1,5 @@
 import { EVENT_TYPES, OVERLAY_FIELDS } from "./constants.ts";
-import type { EventType, ManagedItem, NotificationLevel, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
+import type { EventType, ManagedItem, NotificationSetting, NotificationSettings, OverlaySettingKey, OverlaySettings, Subject, Zone } from "./types.ts";
 
 /**
  * Creates an accessible checkbox switch with an initial state and change callback.
@@ -57,7 +57,7 @@ export function renderOverlaySettings(
 export function renderNotifications(
   container: HTMLElement,
   settings: NotificationSettings,
-  onChange: (eventType: EventType, value: NotificationLevel) => void,
+  onChange: (eventType: EventType, value: NotificationSetting) => void,
 ): void {
   container.replaceChildren();
   const configurableEventTypes: EventType[] = ["fall_suspected", "inactivity", "hazard_detected", "hazard_proximity"];
@@ -68,20 +68,10 @@ export function renderNotifications(
     const title = document.createElement("strong");
     title.textContent = EVENT_TYPES[eventType];
     const description = document.createElement("small");
-    description.textContent = "알림 사용 여부와 강도";
+    description.textContent = "알림 ON/OFF";
     label.append(title, description);
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `${EVENT_TYPES[eventType]} 알림`);
-    const options: Array<[NotificationLevel, string]> = [["off", "사용 안 함"], ["normal", "일반"], ["strong", "강하게"]];
-    options.forEach(([value, text]) => {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = text;
-      select.append(option);
-    });
-    select.value = settings[eventType] ?? "normal";
-    select.addEventListener("change", () => onChange(eventType, select.value as NotificationLevel));
-    row.append(label, select);
+    const enabled = settings[eventType] !== "off";
+    row.append(label, switchControl(enabled, (checked) => onChange(eventType, checked ? "on" : "off"), `${EVENT_TYPES[eventType]} 알림`));
     container.append(row);
   });
 }
@@ -108,8 +98,14 @@ function removeButton(label: string, onClick: () => void): HTMLButtonElement {
  *
  * @param subjects - The subjects to display.
  * @param onRemove - Called with a subject ID when its removal control is activated.
+ * @param onCapture - Called with a subject ID when its reference capture control is activated.
  */
-export function renderSubjects(container: HTMLElement, subjects: readonly Subject[], onRemove: (id: string) => void): void {
+export function renderSubjects(
+  container: HTMLElement,
+  subjects: readonly Subject[],
+  onRemove: (id: string) => void,
+  onCapture: (id: string) => Promise<void> | void,
+): void {
   container.replaceChildren();
   subjects.forEach((subject) => {
     const item = document.createElement("div");
@@ -118,9 +114,20 @@ export function renderSubjects(container: HTMLElement, subjects: readonly Subjec
     const title = document.createElement("strong");
     title.textContent = subject.name;
     const meta = document.createElement("small");
-    meta.textContent = `${subject.role} · ${subject.id}`;
+    meta.textContent = `${subject.role} · 기준 사진 ${subject.referenceSampleCount ?? 0}장 · ${subject.id}`;
     copy.append(title, meta);
-    item.append(copy, removeButton(subject.name, () => onRemove(subject.id)));
+    const actions = document.createElement("div");
+    actions.className = "inline-actions";
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.className = "button button-secondary button-small";
+    capture.textContent = "기준 사진 촬영";
+    capture.addEventListener("click", async () => {
+      capture.disabled = true;
+      try { await onCapture(subject.id); } finally { capture.disabled = false; }
+    });
+    actions.append(capture, removeButton(subject.name, () => onRemove(subject.id)));
+    item.append(copy, actions);
     container.append(item);
   });
 }
@@ -130,20 +137,34 @@ export function renderSubjects(container: HTMLElement, subjects: readonly Subjec
  *
  * @param items - The managed items to display, including their labels and policies
  * @param onRemove - Called with an item's ID when its remove button is clicked
+ * @param onCapture - Called with an item's ID when its camera capture button is clicked
  */
-export function renderManagedItems(container: HTMLElement, items: readonly ManagedItem[], onRemove: (id: string) => void): void {
+export function renderManagedItems(
+  container: HTMLElement,
+  items: readonly ManagedItem[],
+  onRemove: (id: string) => void,
+  onCapture: (id: string) => Promise<void> | void,
+): void {
   container.replaceChildren();
   items.forEach((item) => {
     const chip = document.createElement("span");
     chip.className = `item-chip${item.policy === "excluded" ? " is-excluded" : ""}`;
     const label = document.createElement("span");
-    label.textContent = `${item.label} · ${item.policy === "included" ? "관리" : "제외"}`;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "×";
-    button.setAttribute("aria-label", `${item.label} 삭제`);
-    button.addEventListener("click", () => onRemove(item.id));
-    chip.append(label, button);
+    label.textContent = `${item.label} · ${item.policy === "included" ? "위험물 탐지" : "event 제외"} · 학습 사진 ${item.sampleCount ?? 0}장`;
+    const capture = document.createElement("button");
+    capture.type = "button";
+    capture.className = "item-capture-button";
+    capture.textContent = "카메라 촬영";
+    capture.addEventListener("click", async () => {
+      capture.disabled = true;
+      try { await onCapture(item.id); } finally { capture.disabled = false; }
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `${item.label} 삭제`);
+    remove.addEventListener("click", () => onRemove(item.id));
+    chip.append(label, capture, remove);
     container.append(chip);
   });
 }
