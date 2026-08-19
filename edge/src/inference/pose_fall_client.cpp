@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -174,6 +175,57 @@ void parse_fall_result(const cv::FileNode& container,
   }
 }
 
+std::optional<std::string> optional_string(const cv::FileNode& container,
+                                           const char* key) {
+  const cv::FileNode value = container[key];
+  if (value.empty() || value.isNone()) return std::nullopt;
+  if (!value.isString()) {
+    throw std::runtime_error(std::string{"tracking response identity contains invalid "} + key);
+  }
+  const auto parsed = static_cast<std::string>(value);
+  return parsed.empty() ? std::nullopt : std::optional<std::string>{parsed};
+}
+
+void parse_identity_result(const cv::FileNode& container,
+                           TrackedFallResult& person) {
+  const cv::FileNode identity = container["identity"];
+  if (identity.empty()) return;
+  if (identity.type() != cv::FileNode::MAP) {
+    throw std::runtime_error("tracking response contains an invalid identity result");
+  }
+  const cv::FileNode status = identity["status"];
+  if (!status.isString()) {
+    throw std::runtime_error("tracking response identity is missing status");
+  }
+  const std::string identity_status = static_cast<std::string>(status);
+  static const std::set<std::string> allowed_statuses = {
+      "registered", "uncertain", "unknown", "no_face"};
+  if (!allowed_statuses.count(identity_status)) {
+    throw std::runtime_error("tracking response identity contains invalid status");
+  }
+  person.subject_id = optional_string(identity, "subject_id");
+  person.subject_name = optional_string(identity, "subject_name");
+  person.subject_role = optional_string(identity, "subject_role");
+  const cv::FileNode confidence = identity["confidence"];
+  if (!confidence.empty() && !confidence.isNone()) {
+    if (!confidence.isInt() && !confidence.isReal()) {
+      throw std::runtime_error("tracking response identity contains invalid confidence");
+    }
+    const double parsed = static_cast<double>(confidence);
+    if (!std::isfinite(parsed) || parsed < -1.0 || parsed > 1.0) {
+      throw std::runtime_error("tracking response identity confidence is outside [-1,1]");
+    }
+  }
+  if (identity_status == "registered" &&
+      (!person.subject_id || !person.subject_name || !person.subject_role)) {
+    throw std::runtime_error("registered identity is missing subject metadata");
+  }
+  if (identity_status != "registered" &&
+      (person.subject_id || person.subject_name || person.subject_role)) {
+    throw std::runtime_error("unregistered identity contains subject metadata");
+  }
+}
+
 std::array<float, 4> parse_bbox(const cv::FileNode& node,
                                 const char* error_message) {
   if (node.type() != cv::FileNode::SEQ || node.size() != 4) {
@@ -257,6 +309,7 @@ TrackingPoseFallResponse parse_tracking_response(std::string response) {
       person.pose_quality = static_cast<double>(quality);
     }
     parse_fall_result(node, person.fall_suspected, person.fall_confidence);
+    parse_identity_result(node, person);
     parsed.persons.push_back(std::move(person));
   }
   for (const auto& node : hazards) {
