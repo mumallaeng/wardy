@@ -38,10 +38,21 @@ export const DEMO_DETECTIONS: ReadonlyArray<Detection> = Object.freeze([
   { id: "object-demo-01", box: [0.66, 0.57, 0.16, 0.18], className: "가위", role: "관리 위험물", name: "", posture: "", color: "#ef6b61" },
 ]);
 
+/**
+ * Creates an ISO 8601 timestamp for a specified number of minutes before the current time.
+ *
+ * @param minutes - The number of minutes to subtract from the current time
+ * @returns The resulting ISO 8601 timestamp
+ */
 function isoMinutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
+/**
+ * Creates the predefined demo events used to populate the application.
+ *
+ * @returns An array of sample hazardous-proximity, hazard-detected, and inactivity events
+ */
 export function createDemoEvents(): WardyEvent[] {
   return [
     {
@@ -119,6 +130,11 @@ export function createDemoEvents(): WardyEvent[] {
   ];
 }
 
+/**
+ * Creates the initial application state with default settings, managed items, demo events, and a demo care subject.
+ *
+ * @returns The initial application state
+ */
 export function createInitialState(): WardyState {
   return {
     version: 1,
@@ -139,6 +155,12 @@ export function createInitialState(): WardyState {
   };
 }
 
+/**
+ * Creates a demo fall-suspected event with current timestamps and sequence-based identifiers.
+ *
+ * @param sequence - The numeric suffix used for the event and media identifiers
+ * @returns A new emergency event in the unconfirmed state
+ */
 export function createDemoEvent(sequence: number): WardyEvent {
   const now = new Date().toISOString();
   return {

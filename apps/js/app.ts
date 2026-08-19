@@ -9,16 +9,37 @@ import type { CameraStatus, CareStatus, EventFilters, JetsonStatus, JetsonStatus
 
 type ViewName = "dashboard" | "events" | "settings" | "jetson";
 
+/**
+ * Finds a required element within the specified root node.
+ *
+ * @param selector - The CSS selector for the required element
+ * @param root - The node within which to search
+ * @returns The matching element
+ * @throws Error if no matching element is found
+ */
 function $<T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T {
   const element = root.querySelector<T>(selector);
   if (!element) throw new Error(`필수 UI 요소를 찾을 수 없습니다: ${selector}`);
   return element;
 }
 
+/**
+ * Finds all elements matching a CSS selector within a parent node.
+ *
+ * @param selector - The CSS selector to match
+ * @param root - The parent node to search
+ * @returns An array of matching elements
+ */
 function $$<T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T[] {
   return [...root.querySelectorAll<T>(selector)];
 }
 
+/**
+ * Converts an unknown error value into a displayable message.
+ *
+ * @param error - The error value to convert
+ * @returns The error message, or the string representation of the value
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -27,6 +48,11 @@ const store = new WardyStore(window.localStorage);
 let demoOverlayEnabled = false;
 let jetsonStatus: JetsonStatus = "idle";
 
+/**
+ * Displays a temporary notification message.
+ *
+ * @param message - The message to display
+ */
 function toast(message: string): void {
   const element = document.createElement("div");
   element.className = "toast";
@@ -35,6 +61,11 @@ function toast(message: string): void {
   window.setTimeout(() => element.remove(), 3200);
 }
 
+/**
+ * Activates the specified view and updates the URL hash.
+ *
+ * @param viewName - The view to display
+ */
 function openView(viewName: ViewName): void {
   $$<HTMLButtonElement>(".nav-tab").forEach((button) => button.classList.toggle("is-active", button.dataset.view === viewName));
   $$("[data-view-panel]").forEach((panel) => panel.classList.toggle("is-active", panel.dataset.viewPanel === viewName));
@@ -47,6 +78,11 @@ const overlay = new OverlayController($<HTMLCanvasElement>("#overlay"), $("#came
   toast(`'${zone.name}' 구역을 로컬에 저장했습니다.`);
 });
 
+/**
+ * Updates the camera status display and controls to reflect the current state.
+ *
+ * @param status - The camera connection state to display.
+ */
 function setCameraStatus(status: CameraStatus): void {
   const labels: Record<CameraStatus, string> = { idle: "대기", connecting: "연결 중", connected: "정상", fault: "연결 끊김" };
   $("#camera-status").textContent = labels[status] ?? status;
@@ -58,6 +94,12 @@ function setCameraStatus(status: CameraStatus): void {
 
 const camera = new CameraController($<HTMLVideoElement>("#camera"), setCameraStatus);
 
+/**
+ * Updates the Jetson connection status and related interface elements.
+ *
+ * @param status - The current Jetson connection state
+ * @param detail - Optional service, version, endpoint, or status message details
+ */
 function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}): void {
   jetsonStatus = status;
   const labels: Record<JetsonStatus, string> = { idle: "확인 전", connecting: "연결 확인 중", connected: "연결됨", fault: "연결 실패" };
@@ -74,6 +116,9 @@ function setJetsonStatus(status: JetsonStatus, detail: JetsonStatusDetail = {}):
 
 const jetson = new JetsonConnection({ onStatus: setJetsonStatus });
 
+/**
+ * Checks the configured Jetson Wardy service connection and reports the result to the user.
+ */
 async function checkJetsonConnection() {
   const baseUrl = store.getState().settings.jetson?.baseUrl ?? "";
   try {
@@ -84,6 +129,11 @@ async function checkJetsonConnection() {
   }
 }
 
+/**
+ * Renders the current care status and highlights its corresponding control.
+ *
+ * @param state - The current Wardy application state
+ */
 function renderCareState(state: WardyState): void {
   const care = CARE_STATUS[state.careState.status] ?? CARE_STATUS.normal;
   $("#care-status-label").textContent = care.label;
@@ -94,6 +144,11 @@ function renderCareState(state: WardyState): void {
   $$("#care-state-controls button").forEach((button) => button.classList.toggle("is-active", button.dataset.careStatus === state.careState.status));
 }
 
+/**
+ * Renders event summary counts and the most recent event in the dashboard.
+ *
+ * @param events - Events to summarize and display.
+ */
 function renderSummary(events: readonly WardyEvent[]): void {
   const summary = summarizeEvents(events);
   const tiles: Array<[string, number]> = [
@@ -128,6 +183,11 @@ function renderSummary(events: readonly WardyEvent[]): void {
   }
 }
 
+/**
+ * Reads the current event list filter settings from the interface.
+ *
+ * @returns The active search query, event status filter, and care status filter
+ */
 function currentFilters(): EventFilters {
   return {
     query: $<HTMLInputElement>("#event-search").value,
@@ -136,12 +196,22 @@ function currentFilters(): EventFilters {
   };
 }
 
+/**
+ * Renders events matching the current filters in the events table.
+ *
+ * @param events - The events to filter and display
+ */
 function renderEvents(events: readonly WardyEvent[]): void {
   const filtered = filterEvents(events, currentFilters());
   renderEventRows($<HTMLTableSectionElement>("#event-table-body"), filtered);
   $("#event-empty").hidden = filtered.length > 0;
 }
 
+/**
+ * Renders the current overlay settings in the dashboard controls.
+ *
+ * @param settings - The overlay settings to display.
+ */
 function renderDashboardOverlayControls(settings: OverlaySettings): void {
   $$<HTMLInputElement>('[data-overlay-setting]').forEach((input) => {
     const key = input.dataset.overlaySetting as OverlaySettingKey;
@@ -149,6 +219,11 @@ function renderDashboardOverlayControls(settings: OverlaySettings): void {
   });
 }
 
+/**
+ * Renders the current application state across the Wardy interface.
+ *
+ * @param state - The application state to display; defaults to the store's current state.
+ */
 function render(state: WardyState = store.getState()): void {
   renderCareState(state);
   renderSummary(state.events);

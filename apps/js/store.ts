@@ -11,6 +11,12 @@ type StoreListener = (state: WardyState) => void;
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+/**
+ * Determines whether a value has the required structure for Wardy state.
+ *
+ * @param value - The value to validate
+ * @returns `true` if the value has version 1, an events array, and settings; `false` otherwise.
+ */
 function isWardyState(value: unknown): value is WardyState {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<WardyState>;
